@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft, Paperclip, X } from "lucide-react"
 import Link from "next/link"
 
@@ -9,10 +9,14 @@ interface Group {
   id: string
   name: string
   participants: number
+  clientId: string | null
 }
 
 export default function NovoAgendamentoPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const clientId = searchParams.get("clientId")
+
   const [groups, setGroups] = useState<Group[]>([])
   const [selectedGroups, setSelectedGroups] = useState<string[]>([])
   const [text, setText] = useState("")
@@ -22,10 +26,15 @@ export default function NovoAgendamentoPage() {
   const [error, setError] = useState("")
 
   useEffect(() => {
-    fetch("/api/groups")
+    // Se tem clientId, busca so os grupos deste cliente. Senao, todos os ativos.
+    const url = clientId ? `/api/groups/all` : "/api/groups"
+    fetch(url)
       .then((r) => r.json())
-      .then((data) => setGroups(data.groups ?? []))
-  }, [])
+      .then((data) => {
+        const all: Group[] = data.groups ?? []
+        setGroups(clientId ? all.filter((g) => g.clientId === clientId) : all)
+      })
+  }, [clientId])
 
   function toggleGroup(id: string) {
     setSelectedGroups((prev) =>
@@ -67,6 +76,7 @@ export default function NovoAgendamentoPage() {
           text,
           scheduledAt: new Date(scheduledAt).toISOString(),
           groupIds: selectedGroups,
+          clientId: clientId ?? undefined,
           mediaPath,
           mediaType,
           mediaName,

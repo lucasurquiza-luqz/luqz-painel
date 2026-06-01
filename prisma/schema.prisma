@@ -7,6 +7,19 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Client {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  groups   Group[]
+  messages ScheduledMessage[]
+  users    User[]
+}
+
 model User {
   id        String   @id @default(cuid())
   name      String
@@ -16,6 +29,9 @@ model User {
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id])
 
   messages ScheduledMessage[]
 }
@@ -34,6 +50,9 @@ model Group {
   active       Boolean  @default(true)
   syncedAt     DateTime @default(now())
 
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id])
+
   messages GroupMessage[]
 }
 
@@ -47,6 +66,9 @@ model ScheduledMessage {
   status      MessageStatus @default(PENDING)
   createdAt   DateTime      @default(now())
   sentAt      DateTime?
+
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id])
 
   createdById String
   createdBy   User   @relation(fields: [createdById], references: [id])

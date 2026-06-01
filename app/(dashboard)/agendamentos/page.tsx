@@ -20,6 +20,7 @@ export default async function AgendamentosPage() {
     orderBy: { scheduledAt: "desc" },
     include: {
       createdBy: { select: { name: true } },
+      client: { select: { id: true, name: true } },
       groups: { include: { group: { select: { name: true } } } },
     },
     take: 100,
@@ -64,6 +65,11 @@ export default async function AgendamentosPage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-zinc-100 line-clamp-2">{msg.text}</p>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">
+                    {msg.client && (
+                      <Link href={`/clientes/${msg.client.id}`} className="text-xs text-blue-400 hover:underline font-medium">
+                        {msg.client.name}
+                      </Link>
+                    )}
                     <span className="text-xs text-zinc-500">
                       {groupNames || "Sem grupos"}
                     </span>

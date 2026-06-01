@@ -2,13 +2,14 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { CalendarClock, Users, Smartphone, LogOut } from "lucide-react"
+import { CalendarClock, Users, Smartphone, LogOut, Building2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const nav = [
-  { href: "/agendamentos", label: "Agendamentos", icon: CalendarClock },
-  { href: "/grupos", label: "Grupos", icon: Smartphone },
-  { href: "/usuarios", label: "Usuarios", icon: Users, adminOnly: true },
+  { href: "/clientes",      label: "Clientes",      icon: Building2 },
+  { href: "/agendamentos",  label: "Agendamentos",  icon: CalendarClock },
+  { href: "/grupos",        label: "Grupos",        icon: Smartphone },
+  { href: "/usuarios",      label: "Usuarios",      icon: Users, adminOnly: true },
 ]
 
 interface SidebarProps {

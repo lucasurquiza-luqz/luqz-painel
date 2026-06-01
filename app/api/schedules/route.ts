@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   const session = await getIronSession<SessionData>(await cookies(), sessionOptions)
   if (!session.userId) return NextResponse.json({ error: "Nao autorizado." }, { status: 401 })
 
-  const { text, scheduledAt, groupIds, mediaPath, mediaType, mediaName } = await req.json()
+  const { text, scheduledAt, groupIds, clientId, mediaPath, mediaType, mediaName } = await req.json()
 
   if (!text || !scheduledAt || !groupIds?.length) {
     return NextResponse.json({ error: "Campos obrigatorios: text, scheduledAt, groupIds." }, { status: 400 })
@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
       mediaPath: mediaPath ?? null,
       mediaType: mediaType ?? null,
       mediaName: mediaName ?? null,
+      clientId: clientId ?? null,
       createdById: session.userId,
       groups: {
         create: (groupIds as string[]).map((groupId) => ({ groupId })),
