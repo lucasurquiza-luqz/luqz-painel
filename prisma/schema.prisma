@@ -15,9 +15,10 @@ model Client {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  groups   Group[]
-  messages ScheduledMessage[]
-  users    User[]
+  groups        Group[]
+  messages      ScheduledMessage[]
+  users         User[]
+  conversations WaConversation[]
 }
 
 model User {
@@ -53,7 +54,8 @@ model Group {
   clientId String?
   client   Client? @relation(fields: [clientId], references: [id])
 
-  messages GroupMessage[]
+  messages      GroupMessage[]
+  conversation  WaConversation?
 }
 
 model ScheduledMessage {
@@ -106,4 +108,36 @@ model MessageLog {
   createdAt DateTime @default(now())
 
   message ScheduledMessage @relation(fields: [messageId], references: [id])
+}
+
+// Chat (estilo Chatwoot)
+
+model WaConversation {
+  id            String    @id @default(cuid())
+  groupId       String    @unique
+  clientId      String
+  unreadCount   Int       @default(0)
+  lastMessageAt DateTime?
+  createdAt     DateTime  @default(now())
+
+  group    Group      @relation(fields: [groupId], references: [id])
+  client   Client     @relation(fields: [clientId], references: [id])
+  messages WaMessage[]
+}
+
+model WaMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  evolutionId    String?  @unique
+  fromJid        String
+  fromName       String?
+  text           String?
+  mediaUrl       String?
+  mediaType      String?
+  mediaName      String?
+  isFromMe       Boolean  @default(false)
+  timestamp      DateTime
+  createdAt      DateTime @default(now())
+
+  conversation WaConversation @relation(fields: [conversationId], references: [id])
 }

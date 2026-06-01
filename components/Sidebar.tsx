@@ -7,12 +7,13 @@ import Image from "next/image"
 import {
   LogOut, Building2, Users, ArrowLeft,
   LayoutDashboard, CalendarClock, Smartphone,
-  Settings, KeyRound
+  Settings, KeyRound, MessageSquare
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const clientNav = [
   { href: "",              label: "Visao Geral",   icon: LayoutDashboard },
+  { href: "/chat",         label: "Chat",          icon: MessageSquare },
   { href: "/agendamentos", label: "Agendamentos",  icon: CalendarClock },
   { href: "/grupos",       label: "Grupos",        icon: Smartphone },
   { href: "/configuracoes",label: "Configuracoes", icon: Settings,  soon: true },

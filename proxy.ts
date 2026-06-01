@@ -3,7 +3,7 @@ import { unsealData } from "iron-session"
 import { type SessionData } from "@/lib/auth"
 
 const publicPaths = ["/login"]
-const apiPublicPaths = ["/api/auth/login"]
+const apiPublicPaths = ["/api/auth/login", "/api/webhook/evolution"]
 
 async function getSession(request: NextRequest): Promise<Partial<SessionData>> {
   const cookieValue = request.cookies.get("luqz_session")?.value
