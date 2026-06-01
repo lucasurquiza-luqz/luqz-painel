@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
@@ -59,7 +59,7 @@ export default function ClientesPage() {
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl transition-colors cursor-pointer"
+          className="flex items-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-400 text-white text-sm font-medium rounded-xl transition-colors cursor-pointer"
         >
           <Plus size={16} />
           Novo cliente
@@ -77,7 +77,7 @@ export default function ClientesPage() {
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="Ex: RH Lovers"
-                className="w-full bg-zinc-800 border border-white/8 rounded-xl px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-zinc-800 border border-white/8 rounded-xl px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
               />
             </div>
             <div>
@@ -86,7 +86,7 @@ export default function ClientesPage() {
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 placeholder="Ex: Cliente de trafego pago"
-                className="w-full bg-zinc-800 border border-white/8 rounded-xl px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-zinc-800 border border-white/8 rounded-xl px-3 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
               />
             </div>
           </div>
@@ -102,7 +102,7 @@ export default function ClientesPage() {
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-colors cursor-pointer"
+              className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-colors cursor-pointer"
             >
               {saving ? "Criando..." : "Criar"}
             </button>
@@ -125,8 +125,8 @@ export default function ClientesPage() {
               href={`/clientes/${c.id}`}
               className="flex items-center gap-4 bg-zinc-900 border border-white/8 rounded-2xl px-5 py-4 hover:border-white/15 transition-colors group"
             >
-              <div className="w-10 h-10 rounded-xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center flex-shrink-0">
-                <Building2 size={18} className="text-blue-400" />
+              <div className="w-10 h-10 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center flex-shrink-0">
+                <Building2 size={18} className="text-orange-400" />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-zinc-100">{c.name}</p>

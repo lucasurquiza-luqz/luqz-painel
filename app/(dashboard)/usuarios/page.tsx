@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState, useEffect, useCallback } from "react"
 import { Plus, UserCheck, UserX } from "lucide-react"
@@ -63,7 +63,7 @@ export default function UsuariosPage() {
 
   const roleColor: Record<string, string> = {
     ADMIN: "bg-purple-500/15 text-purple-400",
-    OPERADOR: "bg-blue-500/15 text-blue-400",
+    OPERADOR: "bg-blue-500/15 text-orange-400",
     CLIENTE: "bg-zinc-500/15 text-zinc-400",
   }
 
@@ -76,7 +76,7 @@ export default function UsuariosPage() {
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl transition-colors cursor-pointer"
+          className="flex items-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-400 text-white text-sm font-medium rounded-xl transition-colors cursor-pointer"
         >
           <Plus size={16} />
           Novo usuario
@@ -93,7 +93,7 @@ export default function UsuariosPage() {
                 required
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full bg-zinc-800 border border-white/8 rounded-xl px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-zinc-800 border border-white/8 rounded-xl px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
               />
             </div>
             <div>
@@ -103,7 +103,7 @@ export default function UsuariosPage() {
                 required
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="w-full bg-zinc-800 border border-white/8 rounded-xl px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-zinc-800 border border-white/8 rounded-xl px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
               />
             </div>
             <div>
@@ -113,7 +113,7 @@ export default function UsuariosPage() {
                 required
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="w-full bg-zinc-800 border border-white/8 rounded-xl px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-zinc-800 border border-white/8 rounded-xl px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
               />
             </div>
             <div>
@@ -121,7 +121,7 @@ export default function UsuariosPage() {
               <select
                 value={form.role}
                 onChange={(e) => setForm({ ...form, role: e.target.value })}
-                className="w-full bg-zinc-800 border border-white/8 rounded-xl px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-zinc-800 border border-white/8 rounded-xl px-3 py-2.5 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
               >
                 {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
@@ -139,7 +139,7 @@ export default function UsuariosPage() {
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-colors cursor-pointer"
+              className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-colors cursor-pointer"
             >
               {saving ? "Criando..." : "Criar"}
             </button>

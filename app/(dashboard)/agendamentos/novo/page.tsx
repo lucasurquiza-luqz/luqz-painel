@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -120,7 +120,7 @@ export default function NovoAgendamentoPage() {
           {groups.length === 0 ? (
             <p className="text-sm text-zinc-600">
               Nenhum grupo sincronizado.{" "}
-              <Link href="/grupos" className="text-blue-400 hover:underline">
+              <Link href="/grupos" className="text-orange-400 hover:underline">
                 Sincronizar grupos
               </Link>
             </p>
@@ -133,7 +133,7 @@ export default function NovoAgendamentoPage() {
                   onClick={() => toggleGroup(g.id)}
                   className={`flex items-center justify-between px-4 py-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
                     selectedGroups.includes(g.id)
-                      ? "border-blue-500/50 bg-blue-600/10 text-zinc-100"
+                      ? "border-orange-500/40 bg-orange-500/10 text-zinc-100"
                       : "border-white/8 bg-zinc-800/50 text-zinc-400 hover:text-zinc-100 hover:border-white/15"
                   }`}
                 >
@@ -156,7 +156,7 @@ export default function NovoAgendamentoPage() {
             onChange={(e) => setText(e.target.value)}
             rows={5}
             placeholder="Digite a mensagem..."
-            className="w-full bg-zinc-800 border border-white/8 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            className="w-full bg-zinc-800 border border-white/8 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-orange-500/50 resize-none"
           />
         </div>
 
@@ -201,7 +201,7 @@ export default function NovoAgendamentoPage() {
             required
             value={scheduledAt}
             onChange={(e) => setScheduledAt(e.target.value)}
-            className="w-full bg-zinc-800 border border-white/8 rounded-xl px-4 py-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]"
+            className="w-full bg-zinc-800 border border-white/8 rounded-xl px-4 py-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500/50 [color-scheme:dark]"
           />
         </div>
 
@@ -221,7 +221,7 @@ export default function NovoAgendamentoPage() {
           <button
             type="submit"
             disabled={loading}
-            className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors cursor-pointer"
+            className="flex-1 py-3 bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors cursor-pointer"
           >
             {loading ? "Agendando..." : "Agendar mensagem"}
           </button>

@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState, useEffect, useCallback } from "react"
 import { RefreshCw, Smartphone, Users } from "lucide-react"
@@ -99,7 +99,7 @@ export default function GruposPage() {
               <button
                 onClick={() => toggleActive(g.id, g.active)}
                 className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer flex-shrink-0 ${
-                  g.active ? "bg-blue-600" : "bg-zinc-700"
+                  g.active ? "bg-orange-500" : "bg-zinc-700"
                 }`}
               >
                 <span

@@ -1,4 +1,4 @@
-import Link from "next/link"
+﻿import Link from "next/link"
 import { Plus, CalendarClock, Clock, CheckCircle2, XCircle, Ban, Pencil } from "lucide-react"
 import { prisma } from "@/lib/db"
 import { formatInTimeZone } from "date-fns-tz"
@@ -9,7 +9,7 @@ const TZ = "America/Sao_Paulo"
 
 const STATUS_CONFIG = {
   PENDING:   { label: "Pendente",  color: "bg-yellow-500/15 text-yellow-400",  icon: Clock },
-  SENDING:   { label: "Enviando",  color: "bg-blue-500/15 text-blue-400",      icon: CalendarClock },
+  SENDING:   { label: "Enviando",  color: "bg-blue-500/15 text-orange-400",      icon: CalendarClock },
   SENT:      { label: "Enviado",   color: "bg-green-500/15 text-green-400",     icon: CheckCircle2 },
   FAILED:    { label: "Falhou",    color: "bg-red-500/15 text-red-400",         icon: XCircle },
   CANCELLED: { label: "Cancelado", color: "bg-zinc-500/15 text-zinc-400",       icon: Ban },
@@ -35,7 +35,7 @@ export default async function AgendamentosPage() {
         </div>
         <Link
           href="/agendamentos/novo"
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-xl transition-colors"
+          className="flex items-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-400 text-white text-sm font-medium rounded-xl transition-colors"
         >
           <Plus size={16} />
           Novo agendamento
@@ -46,7 +46,7 @@ export default async function AgendamentosPage() {
         <div className="text-center py-20 text-zinc-600">
           <CalendarClock size={40} className="mx-auto mb-3 opacity-50" />
           <p className="text-sm">Nenhum agendamento ainda.</p>
-          <Link href="/agendamentos/novo" className="text-blue-400 text-sm mt-1 inline-block hover:underline">
+          <Link href="/agendamentos/novo" className="text-orange-400 text-sm mt-1 inline-block hover:underline">
             Criar primeiro agendamento
           </Link>
         </div>
@@ -66,7 +66,7 @@ export default async function AgendamentosPage() {
                   <p className="text-sm text-zinc-100 line-clamp-2">{msg.text}</p>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">
                     {msg.client && (
-                      <Link href={`/clientes/${msg.client.id}`} className="text-xs text-blue-400 hover:underline font-medium">
+                      <Link href={`/clientes/${msg.client.id}`} className="text-xs text-orange-400 hover:underline font-medium">
                         {msg.client.name}
                       </Link>
                     )}
@@ -95,7 +95,7 @@ export default async function AgendamentosPage() {
                     <>
                       <Link
                         href={`/agendamentos/${msg.id}/editar`}
-                        className="text-xs text-zinc-500 hover:text-blue-400 transition-colors px-2 py-1 rounded-lg hover:bg-blue-900/10 flex items-center gap-1"
+                        className="text-xs text-zinc-500 hover:text-orange-400 transition-colors px-2 py-1 rounded-lg hover:bg-orange-900/10 flex items-center gap-1"
                       >
                         <Pencil size={12} />
                         Editar

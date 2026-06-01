@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState, useEffect } from "react"
+import Image from "next/image"
 import {
   LogOut, Building2, Users, ArrowLeft,
   LayoutDashboard, CalendarClock, Smartphone,
@@ -53,10 +54,8 @@ export function Sidebar({ role, name }: SidebarProps) {
       {/* Header */}
       <div className="px-5 py-5 border-b border-white/8">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
-            <span className="text-white font-bold text-sm">L</span>
-          </div>
-          <span className="font-semibold text-zinc-100 text-sm">Painel LUQZ</span>
+          <Image src="/logo.svg" alt="LUQZ" width={28} height={28} className="flex-shrink-0" />
+          <span className="font-black tracking-widest text-white text-sm">LUQZ</span>
         </div>
       </div>
 
@@ -99,7 +98,7 @@ export function Sidebar({ role, name }: SidebarProps) {
                     className={cn(
                       "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors",
                       active
-                        ? "bg-blue-600/15 text-blue-400"
+                        ? "bg-orange-500/10 text-orange-400"
                         : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5"
                     )}
                   >
@@ -119,7 +118,7 @@ export function Sidebar({ role, name }: SidebarProps) {
             className={cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors",
               pathname.startsWith("/clientes")
-                ? "bg-blue-600/15 text-blue-400"
+                ? "bg-orange-500/10 text-orange-400"
                 : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5"
             )}
           >
@@ -133,7 +132,7 @@ export function Sidebar({ role, name }: SidebarProps) {
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors",
                 pathname.startsWith("/usuarios")
-                  ? "bg-blue-600/15 text-blue-400"
+                  ? "bg-orange-500/10 text-orange-400"
                   : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5"
               )}
             >
