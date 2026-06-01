@@ -1,9 +1,11 @@
 import Link from "next/link"
-import { Plus, CalendarClock, Clock, CheckCircle2, XCircle, Ban } from "lucide-react"
+import { Plus, CalendarClock, Clock, CheckCircle2, XCircle, Ban, Pencil } from "lucide-react"
 import { prisma } from "@/lib/db"
-import { format } from "date-fns"
+import { formatInTimeZone } from "date-fns-tz"
 import { ptBR } from "date-fns/locale"
 import { cn } from "@/lib/utils"
+
+const TZ = "America/Sao_Paulo"
 
 const STATUS_CONFIG = {
   PENDING:   { label: "Pendente",  color: "bg-yellow-500/15 text-yellow-400",  icon: Clock },
@@ -66,7 +68,7 @@ export default async function AgendamentosPage() {
                       {groupNames || "Sem grupos"}
                     </span>
                     <span className="text-xs text-zinc-500">
-                      {format(new Date(msg.scheduledAt), "dd/MM/yyyy 'as' HH:mm", { locale: ptBR })}
+                      {formatInTimeZone(msg.scheduledAt, TZ, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                     </span>
                     {msg.mediaName && (
                       <span className="text-xs text-zinc-600">
@@ -84,7 +86,16 @@ export default async function AgendamentosPage() {
                   </span>
 
                   {msg.status === "PENDING" && (
-                    <CancelButton id={msg.id} />
+                    <>
+                      <Link
+                        href={`/agendamentos/${msg.id}/editar`}
+                        className="text-xs text-zinc-500 hover:text-blue-400 transition-colors px-2 py-1 rounded-lg hover:bg-blue-900/10 flex items-center gap-1"
+                      >
+                        <Pencil size={12} />
+                        Editar
+                      </Link>
+                      <CancelButton id={msg.id} />
+                    </>
                   )}
                 </div>
               </div>
