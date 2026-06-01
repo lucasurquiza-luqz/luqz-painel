@@ -1,16 +1,31 @@
-<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 400 400" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="g" x1="15" y1="15" x2="85" y2="85" gradientUnits="userSpaceOnUse">
+    <linearGradient id="grad" x1="60" y1="60" x2="340" y2="340" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#FDE68A"/>
       <stop offset="100%" stop-color="#F97316"/>
     </linearGradient>
   </defs>
-  <!-- Main ring with slash - upper arc -->
-  <path d="M50 10 A40 40 0 1 1 14 65" stroke="url(#g)" stroke-width="9" stroke-linecap="round"/>
-  <!-- Main ring - lower arc -->
-  <path d="M86 35 A40 40 0 0 1 50 90" stroke="url(#g)" stroke-width="9" stroke-linecap="round"/>
-  <!-- Orbital ring - top sweep -->
-  <path d="M5 52 Q28 12 95 42" stroke="url(#g)" stroke-width="7" stroke-linecap="round"/>
-  <!-- Orbital ring - bottom sweep -->
-  <path d="M5 60 Q28 92 95 62" stroke="url(#g)" stroke-width="7" stroke-linecap="round" opacity="0.55"/>
+
+  <!-- Back orbital arc (lower-right half, behind the main ring) -->
+  <ellipse cx="200" cy="200" rx="178" ry="66"
+    transform="rotate(-35 200 200)"
+    fill="none" stroke="url(#grad)" stroke-width="28"
+    stroke-dasharray="280 300" stroke-dashoffset="0"
+    stroke-linecap="round"/>
+
+  <!-- Main ring — two C-arcs separated by diagonal gaps -->
+  <!-- Large C (dominant arc, ~215 degrees) -->
+  <path d="M 138,78 A 124,124 0 1 0 275,308"
+    stroke="url(#grad)" stroke-width="36" stroke-linecap="round"/>
+  <!-- Small C (secondary arc, ~125 degrees) -->
+  <path d="M 275,308 A 124,124 0 0 0 138,78"
+    stroke="url(#grad)" stroke-width="36" stroke-linecap="round"
+    stroke-dasharray="138 10000"/>
+
+  <!-- Front orbital arc (upper-left half, in front of main ring) -->
+  <ellipse cx="200" cy="200" rx="178" ry="66"
+    transform="rotate(-35 200 200)"
+    fill="none" stroke="url(#grad)" stroke-width="28"
+    stroke-dasharray="300 280" stroke-dashoffset="-280"
+    stroke-linecap="round"/>
 </svg>
