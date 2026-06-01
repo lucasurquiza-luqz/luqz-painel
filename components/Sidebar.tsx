@@ -14,7 +14,6 @@ import { cn } from "@/lib/utils"
 const clientNav = [
   { href: "",              label: "Visao Geral",   icon: LayoutDashboard },
   { href: "/chat",         label: "Chat",          icon: MessageSquare },
-  { href: "/agendamentos", label: "Agendamentos",  icon: CalendarClock },
   { href: "/configuracoes",label: "Configuracoes", icon: Settings },
   { href: "/credenciais",  label: "Credenciais",   icon: KeyRound,  soon: true },
 ]

@@ -4,11 +4,15 @@ import { cookies } from "next/headers"
 import { prisma } from "@/lib/db"
 import { sessionOptions, type SessionData } from "@/lib/auth"
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const clientId = req.nextUrl.searchParams.get("clientId")
+
   const messages = await prisma.scheduledMessage.findMany({
+    where: clientId ? { clientId } : {},
     orderBy: { scheduledAt: "desc" },
     include: {
       createdBy: { select: { name: true } },
+      client: { select: { id: true, name: true } },
       groups: { include: { group: { select: { name: true } } } },
     },
     take: 100,

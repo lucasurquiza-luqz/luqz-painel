@@ -2,10 +2,30 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useParams } from "next/navigation"
-import { Send, Paperclip, X, Users, MessageSquare } from "lucide-react"
+import { Send, Paperclip, X, Users, MessageSquare, CalendarClock, Plus, Clock, CheckCircle2, XCircle, Ban } from "lucide-react"
 import { formatInTimeZone } from "date-fns-tz"
 import { ptBR } from "date-fns/locale"
 import { cn } from "@/lib/utils"
+import Link from "next/link"
+
+type Tab = "mensagens" | "agendamentos"
+
+const STATUS_CONFIG = {
+  PENDING:   { label: "Pendente",  color: "bg-yellow-500/15 text-yellow-400", icon: Clock },
+  SENDING:   { label: "Enviando",  color: "bg-orange-500/15 text-orange-400", icon: CalendarClock },
+  SENT:      { label: "Enviado",   color: "bg-green-500/15 text-green-400",   icon: CheckCircle2 },
+  FAILED:    { label: "Falhou",    color: "bg-red-500/15 text-red-400",       icon: XCircle },
+  CANCELLED: { label: "Cancelado", color: "bg-zinc-500/15 text-zinc-400",     icon: Ban },
+}
+
+interface ScheduledMsg {
+  id: string
+  text: string
+  scheduledAt: string
+  status: keyof typeof STATUS_CONFIG
+  mediaName: string | null
+  groups: { group: { name: string } }[]
+}
 
 const TZ = "America/Sao_Paulo"
 
@@ -34,6 +54,8 @@ export default function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConvId, setActiveConvId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
+  const [tab, setTab] = useState<Tab>("mensagens")
+  const [scheduledMsgs, setScheduledMsgs] = useState<ScheduledMsg[]>([])
   const [text, setText] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [sending, setSending] = useState(false)
@@ -75,6 +97,14 @@ export default function ChatPage() {
       if (pollRef.current) clearInterval(pollRef.current)
     }
   }, [activeConvId, loadMessages, loadConversations])
+
+  // Carrega agendamentos quando aba muda
+  useEffect(() => {
+    if (tab !== "agendamentos") return
+    fetch(`/api/schedules?clientId=${clientId}`)
+      .then((r) => r.json())
+      .then((d) => setScheduledMsgs(d.messages ?? []))
+  }, [tab, clientId])
 
   // Scroll para o fim ao receber novas mensagens
   useEffect(() => {
@@ -202,18 +232,86 @@ export default function ChatPage() {
         ) : (
           <>
             {/* Header do chat */}
-            <div className="px-5 py-4 border-b border-white/8 flex items-center gap-3 bg-zinc-900/50">
-              <div className="w-9 h-9 rounded-full bg-zinc-800 flex items-center justify-center">
-                <Users size={15} className="text-zinc-500" />
+            <div className="px-5 py-3 border-b border-white/8 bg-zinc-900/50">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center">
+                  <Users size={14} className="text-zinc-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-zinc-100">{activeConv?.group.name}</p>
+                  <p className="text-xs text-zinc-500">{activeConv?.group.participants} membros</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-semibold text-zinc-100">{activeConv?.group.name}</p>
-                <p className="text-xs text-zinc-500">{activeConv?.group.participants} membros</p>
+              {/* Abas */}
+              <div className="flex gap-1">
+                {(["mensagens", "agendamentos"] as Tab[]).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTab(t)}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer capitalize",
+                      tab === t
+                        ? "bg-orange-500/15 text-orange-400"
+                        : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
+                    )}
+                  >
+                    {t === "mensagens" ? <MessageSquare size={12} /> : <CalendarClock size={12} />}
+                    {t === "mensagens" ? "Mensagens" : "Agendamentos"}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Mensagens */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-1">
+            {/* Conteudo da aba */}
+            {tab === "agendamentos" ? (
+              <div className="flex-1 overflow-y-auto px-5 py-4">
+                <div className="flex items-center justify-between mb-4">
+                  <p className="text-sm font-medium text-zinc-300">Agendamentos deste cliente</p>
+                  <Link
+                    href={`/agendamentos/novo?clientId=${clientId}`}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-orange-500 hover:bg-orange-400 text-white rounded-lg transition-colors"
+                  >
+                    <Plus size={12} />
+                    Novo
+                  </Link>
+                </div>
+                {scheduledMsgs.length === 0 ? (
+                  <div className="text-center py-12 text-zinc-600">
+                    <CalendarClock size={32} className="mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">Nenhum agendamento.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {scheduledMsgs.map((msg) => {
+                      const cfg = STATUS_CONFIG[msg.status]
+                      const Icon = cfg.icon
+                      return (
+                        <div key={msg.id} className="bg-zinc-900 border border-white/8 rounded-xl px-4 py-3 flex items-start gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-zinc-200 line-clamp-2">{msg.text}</p>
+                            <div className="flex items-center gap-3 mt-1.5">
+                              <span className="text-xs text-zinc-500">
+                                {formatInTimeZone(new Date(msg.scheduledAt), TZ, "dd/MM 'às' HH:mm", { locale: ptBR })}
+                              </span>
+                              <span className="text-xs text-zinc-600">
+                                {msg.groups.map((g) => g.group.name).join(", ")}
+                              </span>
+                            </div>
+                          </div>
+                          <span className={cn("flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 mt-0.5", cfg.color)}>
+                            <Icon size={10} />
+                            {cfg.label}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {/* Mensagens — so aparece na aba mensagens */}
+            <div className={cn("flex-1 overflow-y-auto px-5 py-4 space-y-1", tab !== "mensagens" && "hidden")}>
               {messages.length === 0 ? (
                 <div className="text-center text-zinc-700 text-xs py-10">Nenhuma mensagem ainda</div>
               ) : (
@@ -279,7 +377,8 @@ export default function ChatPage() {
             </div>
 
             {/* Input de envio */}
-            <form onSubmit={handleSend} className="px-4 py-3 border-t border-white/8 bg-zinc-900/50">
+            {tab === "agendamentos" && <div className="h-px" />}
+            <form onSubmit={handleSend} className={cn("px-4 py-3 border-t border-white/8 bg-zinc-900/50", tab !== "mensagens" && "hidden")}>
               {file && (
                 <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-zinc-800 rounded-xl border border-white/8">
                   <Paperclip size={13} className="text-zinc-400" />
