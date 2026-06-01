@@ -53,7 +53,7 @@ export function Sidebar({ role, name }: SidebarProps) {
     <aside className="w-56 flex-shrink-0 flex flex-col bg-zinc-900 border-r border-white/8 h-full">
       {/* Header */}
       <div className="px-5 py-5 border-b border-white/8">
-        <Image src="/logot-clara.png" alt="LUQZ" width={100} height={30} className="opacity-80" />
+        <Image src="/logo-clara.png" alt="LUQZ" width={100} height={30} className="opacity-80" />
       </div>
 
       {inClientContext ? (
