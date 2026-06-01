@@ -154,9 +154,29 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex h-full bg-[#0D0D0D]">
-      {/* Lista de conversas */}
-      <div className="w-72 flex-shrink-0 border-r border-white/8 flex flex-col bg-zinc-900">
+    <div className="flex flex-col h-full bg-[#0D0D0D]">
+      {/* Abas no topo — sempre visiveis */}
+      <div className="flex items-center gap-1 px-5 py-3 border-b border-white/8 bg-zinc-900/60 flex-shrink-0">
+        {(["mensagens", "agendamentos"] as Tab[]).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={cn(
+              "flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer",
+              tab === t
+                ? "bg-orange-500/15 text-orange-400"
+                : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
+            )}
+          >
+            {t === "mensagens" ? <MessageSquare size={14} /> : <CalendarClock size={14} />}
+            {t === "mensagens" ? "Mensagens" : "Agendamentos"}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-1 min-h-0">
+      {/* Lista de conversas — so visivel na aba mensagens */}
+      <div className={cn("w-72 flex-shrink-0 border-r border-white/8 flex flex-col bg-zinc-900", tab !== "mensagens" && "hidden")}>
         <div className="px-4 py-4 border-b border-white/8">
           <h2 className="text-sm font-semibold text-zinc-100">Conversas</h2>
           <p className="text-xs text-zinc-500 mt-0.5">{conversations.length} grupo{conversations.length !== 1 ? "s" : ""}</p>
@@ -242,73 +262,7 @@ export default function ChatPage() {
                   <p className="text-xs text-zinc-500">{activeConv?.group.participants} membros</p>
                 </div>
               </div>
-              {/* Abas */}
-              <div className="flex gap-1">
-                {(["mensagens", "agendamentos"] as Tab[]).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setTab(t)}
-                    className={cn(
-                      "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer capitalize",
-                      tab === t
-                        ? "bg-orange-500/15 text-orange-400"
-                        : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
-                    )}
-                  >
-                    {t === "mensagens" ? <MessageSquare size={12} /> : <CalendarClock size={12} />}
-                    {t === "mensagens" ? "Mensagens" : "Agendamentos"}
-                  </button>
-                ))}
-              </div>
             </div>
-
-            {/* Conteudo da aba */}
-            {tab === "agendamentos" ? (
-              <div className="flex-1 overflow-y-auto px-5 py-4">
-                <div className="flex items-center justify-between mb-4">
-                  <p className="text-sm font-medium text-zinc-300">Agendamentos deste cliente</p>
-                  <Link
-                    href={`/agendamentos/novo?clientId=${clientId}`}
-                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-orange-500 hover:bg-orange-400 text-white rounded-lg transition-colors"
-                  >
-                    <Plus size={12} />
-                    Novo
-                  </Link>
-                </div>
-                {scheduledMsgs.length === 0 ? (
-                  <div className="text-center py-12 text-zinc-600">
-                    <CalendarClock size={32} className="mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">Nenhum agendamento.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {scheduledMsgs.map((msg) => {
-                      const cfg = STATUS_CONFIG[msg.status]
-                      const Icon = cfg.icon
-                      return (
-                        <div key={msg.id} className="bg-zinc-900 border border-white/8 rounded-xl px-4 py-3 flex items-start gap-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm text-zinc-200 line-clamp-2">{msg.text}</p>
-                            <div className="flex items-center gap-3 mt-1.5">
-                              <span className="text-xs text-zinc-500">
-                                {formatInTimeZone(new Date(msg.scheduledAt), TZ, "dd/MM 'às' HH:mm", { locale: ptBR })}
-                              </span>
-                              <span className="text-xs text-zinc-600">
-                                {msg.groups.map((g) => g.group.name).join(", ")}
-                              </span>
-                            </div>
-                          </div>
-                          <span className={cn("flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 mt-0.5", cfg.color)}>
-                            <Icon size={10} />
-                            {cfg.label}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            ) : null}
 
             {/* Mensagens — so aparece na aba mensagens */}
             <div className={cn("flex-1 overflow-y-auto px-5 py-4 space-y-1", tab !== "mensagens" && "hidden")}>
@@ -423,6 +377,55 @@ export default function ChatPage() {
             </form>
           </>
         )}
+      </div>
+
+      {/* Aba Agendamentos — ocupa o espaco todo */}
+      {tab === "agendamentos" && (
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="flex items-center justify-between mb-5">
+            <p className="text-sm font-semibold text-zinc-100">Agendamentos do cliente</p>
+            <Link
+              href={`/agendamentos/novo?clientId=${clientId}`}
+              className="flex items-center gap-1.5 text-xs px-3 py-2 bg-orange-500 hover:bg-orange-400 text-white rounded-xl transition-colors font-medium"
+            >
+              <Plus size={13} />
+              Novo agendamento
+            </Link>
+          </div>
+          {scheduledMsgs.length === 0 ? (
+            <div className="text-center py-20 text-zinc-600">
+              <CalendarClock size={36} className="mx-auto mb-3 opacity-30" />
+              <p className="text-sm">Nenhum agendamento ainda.</p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-w-3xl">
+              {scheduledMsgs.map((msg) => {
+                const cfg = STATUS_CONFIG[msg.status]
+                const Icon = cfg.icon
+                return (
+                  <div key={msg.id} className="bg-zinc-900 border border-white/8 rounded-2xl px-5 py-4 flex items-start gap-4">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-zinc-100 line-clamp-2">{msg.text}</p>
+                      <div className="flex items-center gap-4 mt-1.5">
+                        <span className="text-xs text-zinc-500">
+                          {formatInTimeZone(new Date(msg.scheduledAt), TZ, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                        </span>
+                        <span className="text-xs text-zinc-600">
+                          {msg.groups.map((g) => g.group.name).join(", ")}
+                        </span>
+                      </div>
+                    </div>
+                    <span className={cn("flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium flex-shrink-0", cfg.color)}>
+                      <Icon size={11} />
+                      {cfg.label}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
       </div>
     </div>
   )
