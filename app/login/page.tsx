@@ -43,7 +43,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="flex flex-col items-center mb-10">
           <Image src="/simbolo-degrade.png" alt="LUQZ" width={80} height={80} className="mb-5" />
-          <Image src="/logot-clara.png" alt="LUQZ" width={160} height={48} className="opacity-90" />
+          <Image src="/nome-claro.png" alt="LUQZ" width={140} height={42} className="opacity-80" />
           <p className="text-xs text-zinc-600 tracking-widest uppercase mt-3">Performance & Solucoes Digitais</p>
         </div>
 
