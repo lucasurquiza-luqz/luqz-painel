@@ -7,6 +7,10 @@ const geist = Geist({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "Painel LUQZ",
   description: "Painel interno LUQZ",
+  icons: {
+    icon: "/simbolo-degrade.png",
+    apple: "/simbolo-degrade.png",
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

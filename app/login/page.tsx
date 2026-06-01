@@ -42,12 +42,9 @@ export default function LoginPage() {
       <div className="w-full max-w-sm relative z-10">
         {/* Logo */}
         <div className="flex flex-col items-center mb-10">
-          <div className="flex items-center gap-3 mb-2">
-            <Image src="/logo.svg" alt="LUQZ" width={44} height={44} />
-            <span className="text-3xl font-black tracking-widest text-white">LUQZ</span>
-            <span className="text-zinc-600 text-sm mt-1">®</span>
-          </div>
-          <p className="text-xs text-zinc-500 tracking-widest uppercase mt-1">Performance & Solucoes Digitais</p>
+          <Image src="/simbolo-degrade.png" alt="LUQZ" width={80} height={80} className="mb-5" />
+          <Image src="/logot-clara.png" alt="LUQZ" width={160} height={48} className="opacity-90" />
+          <p className="text-xs text-zinc-600 tracking-widest uppercase mt-3">Performance & Solucoes Digitais</p>
         </div>
 
         {/* Card */}
