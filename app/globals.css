@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+}
+
+:root {
+  --bg: #f8fafc;
+  --sidebar-bg: #ffffff;
+  --card-bg: #ffffff;
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --text-muted: #64748b;
+}
+
+.dark {
+  --bg: #09090b;
+  --sidebar-bg: #111113;
+  --card-bg: #18181b;
+  --border: rgba(255,255,255,0.08);
+  --text: #f4f4f5;
+  --text-muted: #71717a;
+}
+
+@layer base {
+  * { @apply border-zinc-200 dark:border-white/8; }
+  body { @apply bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 antialiased; }
+}

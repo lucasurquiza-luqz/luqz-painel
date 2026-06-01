@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(OPERADOR)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages ScheduledMessage[]
+}
+
+enum Role {
+  ADMIN
+  OPERADOR
+  CLIENTE
+}
+
+model Group {
+  id           String   @id @default(cuid())
+  remoteJid    String   @unique
+  name         String
+  participants Int      @default(0)
+  active       Boolean  @default(true)
+  syncedAt     DateTime @default(now())
+
+  messages GroupMessage[]
+}
+
+model ScheduledMessage {
+  id          String        @id @default(cuid())
+  text        String
+  mediaPath   String?
+  mediaType   String?
+  mediaName   String?
+  scheduledAt DateTime
+  status      MessageStatus @default(PENDING)
+  createdAt   DateTime      @default(now())
+  sentAt      DateTime?
+
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id])
+
+  groups GroupMessage[]
+  logs   MessageLog[]
+}
+
+model GroupMessage {
+  groupId   String
+  messageId String
+
+  group   Group            @relation(fields: [groupId], references: [id])
+  message ScheduledMessage @relation(fields: [messageId], references: [id])
+
+  @@id([groupId, messageId])
+}
+
+enum MessageStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+model MessageLog {
+  id        String   @id @default(cuid())
+  messageId String
+  groupId   String
+  groupName String
+  status    String
+  response  String?
+  error     String?
+  createdAt DateTime @default(now())
+
+  message ScheduledMessage @relation(fields: [messageId], references: [id])
+}
