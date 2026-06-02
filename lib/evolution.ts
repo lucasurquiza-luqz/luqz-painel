@@ -1,10 +1,21 @@
 const BASE_URL = process.env.EVOLUTION_URL!
 const API_KEY = process.env.EVOLUTION_API_KEY!
 const INSTANCE = encodeURIComponent(process.env.EVOLUTION_INSTANCE!)
+const TIMEOUT_MS = 15_000
 
 const headers = {
   "apikey": API_KEY,
   "Content-Type": "application/json",
+}
+
+async function evoFetch(url: string, options: RequestInit): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  try {
+    return await fetch(url, { ...options, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export interface EvoGroup {
@@ -14,7 +25,7 @@ export interface EvoGroup {
 }
 
 export async function fetchGroups(): Promise<EvoGroup[]> {
-  const res = await fetch(
+  const res = await evoFetch(
     `${BASE_URL}/group/fetchAllGroups/${INSTANCE}?getParticipants=false`,
     { headers }
   )
@@ -24,21 +35,26 @@ export async function fetchGroups(): Promise<EvoGroup[]> {
 }
 
 export async function sendText(remoteJid: string, text: string) {
-  const url = `${BASE_URL}/message/sendText/${INSTANCE}`
-  const body = { number: remoteJid, text }
-  console.log("[evolution] sendText →", url, JSON.stringify(body))
-
-  const res = await fetch(url, {
+  const res = await evoFetch(`${BASE_URL}/message/sendText/${INSTANCE}`, {
     method: "POST",
     headers,
-    body: JSON.stringify(body),
+    body: JSON.stringify({ number: remoteJid, text }),
   })
 
-  const data = await res.text()
-  console.log("[evolution] sendText ←", res.status, data)
+  let body: string
+  try {
+    body = await res.text()
+  } catch {
+    body = ""
+  }
 
-  if (!res.ok) throw new Error(`Evolution ${res.status}: ${data}`)
-  return JSON.parse(data)
+  if (!res.ok) throw new Error(`Evolution ${res.status}: ${body}`)
+
+  try {
+    return JSON.parse(body)
+  } catch {
+    return { ok: true }
+  }
 }
 
 export async function sendMedia(
@@ -56,14 +72,24 @@ export async function sendMedia(
   }
   if (fileName) body.fileName = fileName
 
-  const res = await fetch(`${BASE_URL}/message/sendMedia/${INSTANCE}`, {
+  const res = await evoFetch(`${BASE_URL}/message/sendMedia/${INSTANCE}`, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Erro ao enviar mídia: ${err}`)
+
+  let resBody: string
+  try {
+    resBody = await res.text()
+  } catch {
+    resBody = ""
   }
-  return res.json()
+
+  if (!res.ok) throw new Error(`Evolution ${res.status}: ${resBody}`)
+
+  try {
+    return JSON.parse(resBody)
+  } catch {
+    return { ok: true }
+  }
 }

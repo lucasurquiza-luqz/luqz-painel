@@ -22,14 +22,20 @@ export default function LoginPage() {
       body: JSON.stringify({ email, password }),
     })
 
+    const data = await res.json()
+
     if (!res.ok) {
-      const data = await res.json()
       setError(data.error ?? "Erro ao entrar.")
       setLoading(false)
       return
     }
 
-    window.location.href = "/clientes"
+    // Redireciona conforme o role
+    if (data.role === "CLIENTE" && data.clientId) {
+      window.location.href = `/clientes/${data.clientId}/chat`
+    } else {
+      window.location.href = "/clientes"
+    }
   }
 
   return (
