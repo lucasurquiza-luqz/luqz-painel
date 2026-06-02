@@ -1,6 +1,6 @@
 const BASE_URL = process.env.EVOLUTION_URL!
 const API_KEY = process.env.EVOLUTION_API_KEY!
-const INSTANCE = process.env.EVOLUTION_INSTANCE!
+const INSTANCE = encodeURIComponent(process.env.EVOLUTION_INSTANCE!)
 
 const headers = {
   "apikey": API_KEY,
