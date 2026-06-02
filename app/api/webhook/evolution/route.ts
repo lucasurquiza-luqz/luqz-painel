@@ -3,11 +3,11 @@ import { prisma } from "@/lib/db"
 
 // Evolution API envia varios tipos de evento — so processamos mensagens de grupo
 export async function POST(req: NextRequest) {
-  // Valida o secret configurado na Evolution API (campo "Authorization" ou "apikey")
+  // Valida o secret via query param (ex: ?secret=xxx na URL configurada na Evolution)
   const webhookSecret = process.env.EVOLUTION_WEBHOOK_SECRET
   if (webhookSecret) {
-    const authHeader = req.headers.get("authorization") ?? req.headers.get("apikey") ?? ""
-    if (authHeader !== webhookSecret) {
+    const secret = req.nextUrl.searchParams.get("secret")
+    if (secret !== webhookSecret) {
       return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
     }
   }
