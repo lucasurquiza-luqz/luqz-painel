@@ -11,6 +11,16 @@ const ALLOWED_TYPES: Record<string, string> = {
   "image/webp": "image",
   "image/gif": "image",
   "application/pdf": "document",
+  "application/msword": "document",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "document",
+  "video/mp4": "video",
+  "video/webm": "video",
+  "video/quicktime": "video",
+  "audio/mpeg": "audio",
+  "audio/ogg": "audio",
+  "audio/webm": "audio",
+  "audio/wav": "audio",
+  "audio/mp4": "audio",
 }
 
 export async function POST(req: NextRequest) {

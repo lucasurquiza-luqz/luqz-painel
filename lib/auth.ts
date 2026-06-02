@@ -5,6 +5,7 @@ export interface SessionData {
   name: string
   email: string
   role: "ADMIN" | "OPERADOR" | "CLIENTE"
+  clientId?: string // preenchido apenas para role CLIENTE
 }
 
 export const sessionOptions: SessionOptions = {
@@ -13,6 +14,10 @@ export const sessionOptions: SessionOptions = {
   cookieOptions: {
     secure: process.env.NODE_ENV === "production",
     httpOnly: true,
-    maxAge: 60 * 60 * 24 * 7, // 7 dias
+    maxAge: 60 * 60 * 24 * 7,
   },
+}
+
+export function isEquipe(role: string) {
+  return role === "ADMIN" || role === "OPERADOR"
 }

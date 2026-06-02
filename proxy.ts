@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { unsealData } from "iron-session"
-import { type SessionData } from "@/lib/auth"
+import { type SessionData, isEquipe } from "@/lib/auth"
 
 const publicPaths = ["/login"]
 const apiPublicPaths = ["/api/auth/login", "/api/webhook/evolution"]
@@ -43,19 +43,40 @@ export async function proxy(request: NextRequest) {
     return response
   }
 
+  // Apos login: redireciona conforme o role
   if (isPublic) {
     const url = request.nextUrl.clone()
-    url.pathname = "/agendamentos"
+    if (session.role === "CLIENTE" && session.clientId) {
+      url.pathname = `/clientes/${session.clientId}/chat`
+    } else {
+      url.pathname = "/clientes"
+    }
     return NextResponse.redirect(url)
   }
 
+  // CLIENTE so acessa o proprio cliente
+  if (session.role === "CLIENTE" && session.clientId) {
+    const allowed = `/clientes/${session.clientId}`
+    if (!pathname.startsWith(allowed) && !pathname.startsWith("/api/")) {
+      const url = request.nextUrl.clone()
+      url.pathname = `${allowed}/chat`
+      return NextResponse.redirect(url)
+    }
+
+    // APIs: bloqueia acesso a outros clientes
+    if (pathname.startsWith("/api/clients/") && !pathname.startsWith(`/api/clients/${session.clientId}`)) {
+      return NextResponse.json({ error: "Acesso negado" }, { status: 403 })
+    }
+  }
+
+  // So equipe acessa pagina de usuarios
   if (pathname.startsWith("/usuarios") || pathname.startsWith("/api/users")) {
-    if (session.role !== "ADMIN") {
+    if (!isEquipe(session.role ?? "")) {
       if (pathname.startsWith("/api/")) {
         return NextResponse.json({ error: "Acesso negado" }, { status: 403 })
       }
       const url = request.nextUrl.clone()
-      url.pathname = "/agendamentos"
+      url.pathname = "/clientes"
       return NextResponse.redirect(url)
     }
   }

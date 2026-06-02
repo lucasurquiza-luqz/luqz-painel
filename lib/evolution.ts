@@ -44,7 +44,7 @@ export async function sendText(remoteJid: string, text: string) {
 export async function sendMedia(
   remoteJid: string,
   mediaUrl: string,
-  mediaType: "image" | "document" | "video",
+  mediaType: "image" | "document" | "video" | "audio",
   caption: string,
   fileName?: string
 ) {

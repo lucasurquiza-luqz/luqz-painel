@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useParams } from "next/navigation"
-import { Send, Paperclip, X, Users, MessageSquare, CalendarClock, Plus, Clock, CheckCircle2, XCircle, Ban } from "lucide-react"
+import { Send, Paperclip, X, Users, MessageSquare, CalendarClock, Plus, Clock, CheckCircle2, XCircle, Ban, Mic, MicOff } from "lucide-react"
 import { formatInTimeZone } from "date-fns-tz"
 import { ptBR } from "date-fns/locale"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
+import { EmojiPicker } from "@/components/EmojiPicker"
 
 type Tab = "mensagens" | "agendamentos"
 
@@ -59,6 +60,9 @@ export default function ChatPage() {
   const [text, setText] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [sending, setSending] = useState(false)
+  const [recording, setRecording] = useState(false)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
   const [loading, setLoading] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
   const pollRef = useRef<NodeJS.Timeout | null>(null)
@@ -143,6 +147,31 @@ export default function ChatPage() {
     } finally {
       setSending(false)
     }
+  }
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream)
+      audioChunksRef.current = []
+      mr.ondataavailable = (e) => audioChunksRef.current.push(e.data)
+      mr.onstop = async () => {
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" })
+        const audioFile = new File([blob], `audio-${Date.now()}.webm`, { type: "audio/webm" })
+        setFile(audioFile)
+        stream.getTracks().forEach((t) => t.stop())
+      }
+      mr.start()
+      mediaRecorderRef.current = mr
+      setRecording(true)
+    } catch {
+      alert("Permissao de microfone negada.")
+    }
+  }
+
+  function stopRecording() {
+    mediaRecorderRef.current?.stop()
+    setRecording(false)
   }
 
   function formatTime(ts: string) {
@@ -303,14 +332,14 @@ export default function ChatPage() {
                               {msg.mediaUrl && (
                                 <div className="mb-1.5">
                                   {msg.mediaType === "image" ? (
-                                    <img src={msg.mediaUrl} alt={msg.mediaName ?? "imagem"} className="max-w-full rounded-lg max-h-48 object-cover" />
+                                    <img src={msg.mediaUrl} alt={msg.mediaName ?? "imagem"} className="max-w-full rounded-lg max-h-48 object-cover cursor-pointer" onClick={() => window.open(msg.mediaUrl!, "_blank")} />
+                                  ) : msg.mediaType === "audio" ? (
+                                    <audio controls src={msg.mediaUrl} className="max-w-full h-10" style={{ minWidth: 200 }} />
+                                  ) : msg.mediaType === "video" ? (
+                                    <video controls src={msg.mediaUrl} className="max-w-full rounded-lg max-h-48" />
                                   ) : (
-                                    <a
-                                      href={msg.mediaUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="flex items-center gap-2 text-xs text-orange-400 hover:underline"
-                                    >
+                                    <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer"
+                                      className="flex items-center gap-2 text-xs text-orange-400 hover:underline">
                                       <Paperclip size={12} />
                                       {msg.mediaName ?? "Arquivo"}
                                     </a>
@@ -332,9 +361,9 @@ export default function ChatPage() {
 
             {/* Input de envio */}
             {tab === "agendamentos" && <div className="h-px" />}
-            <form onSubmit={handleSend} className={cn("px-4 py-3 border-t border-white/8 bg-zinc-900/50", tab !== "mensagens" && "hidden")}>
+            <form onSubmit={handleSend} className={cn("px-3 py-3 border-t border-white/8 bg-zinc-900/50", tab !== "mensagens" && "hidden")}>
               {file && (
-                <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-zinc-800 rounded-xl border border-white/8">
+                <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-zinc-800 rounded-xl border border-white/8 mx-1">
                   <Paperclip size={13} className="text-zinc-400" />
                   <span className="text-xs text-zinc-300 flex-1 truncate">{file.name}</span>
                   <button type="button" onClick={() => setFile(null)} className="text-zinc-500 hover:text-red-400 cursor-pointer">
@@ -342,35 +371,47 @@ export default function ChatPage() {
                   </button>
                 </div>
               )}
-              <div className="flex items-end gap-2">
+              {recording && (
+                <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-red-900/20 border border-red-500/20 rounded-xl mx-1">
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  <span className="text-xs text-red-400">Gravando audio...</span>
+                </div>
+              )}
+              <div className="flex items-end gap-1">
+                {/* Emoji */}
+                <EmojiPicker onSelect={(emoji) => setText((t) => t + emoji)} />
+
+                {/* Anexo */}
                 <label className="p-2.5 text-zinc-500 hover:text-zinc-300 cursor-pointer transition-colors flex-shrink-0">
                   <Paperclip size={18} />
-                  <input
-                    type="file"
-                    accept="image/*,.pdf,.doc,.docx"
-                    className="hidden"
-                    onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                  />
+                  <input type="file" accept="image/*,video/*,.pdf,.doc,.docx,audio/*" className="hidden"
+                    onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
                 </label>
+
+                {/* Audio */}
+                <button type="button"
+                  onClick={recording ? stopRecording : startRecording}
+                  className={cn("p-2.5 cursor-pointer transition-colors flex-shrink-0",
+                    recording ? "text-red-400 hover:text-red-300" : "text-zinc-500 hover:text-zinc-300")}>
+                  {recording ? <MicOff size={18} /> : <Mic size={18} />}
+                </button>
+
+                {/* Texto */}
                 <textarea
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault()
-                      handleSend(e as unknown as React.FormEvent)
-                    }
+                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(e as unknown as React.FormEvent) }
                   }}
                   placeholder="Escreva uma mensagem..."
                   rows={1}
                   className="flex-1 bg-zinc-800 border border-white/8 rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-orange-500/50 resize-none min-h-[42px] max-h-32"
                   style={{ overflowY: "auto" }}
                 />
-                <button
-                  type="submit"
-                  disabled={sending || (!text.trim() && !file)}
-                  className="p-2.5 rounded-xl bg-orange-500 hover:bg-orange-400 disabled:opacity-40 text-white transition-colors flex-shrink-0 cursor-pointer"
-                >
+
+                {/* Enviar */}
+                <button type="submit" disabled={sending || (!text.trim() && !file)}
+                  className="p-2.5 rounded-xl bg-orange-500 hover:bg-orange-400 disabled:opacity-40 text-white transition-colors flex-shrink-0 cursor-pointer">
                   <Send size={18} />
                 </button>
               </div>

@@ -4,14 +4,18 @@ import bcrypt from "bcryptjs"
 
 export async function GET() {
   const users = await prisma.user.findMany({
-    select: { id: true, name: true, email: true, role: true, active: true, createdAt: true },
+    select: {
+      id: true, name: true, email: true, role: true,
+      active: true, createdAt: true, clientId: true,
+      client: { select: { name: true } },
+    },
     orderBy: { createdAt: "asc" },
   })
   return NextResponse.json({ users })
 }
 
 export async function POST(req: NextRequest) {
-  const { name, email, password, role } = await req.json()
+  const { name, email, password, role, clientId } = await req.json()
 
   if (!name || !email || !password) {
     return NextResponse.json({ error: "Nome, e-mail e senha obrigatorios." }, { status: 400 })
@@ -22,8 +26,16 @@ export async function POST(req: NextRequest) {
 
   const hash = await bcrypt.hash(password, 12)
   const user = await prisma.user.create({
-    data: { name, email, password: hash, role: role ?? "OPERADOR" },
-    select: { id: true, name: true, email: true, role: true, active: true, createdAt: true },
+    data: {
+      name, email, password: hash,
+      role: role ?? "OPERADOR",
+      clientId: role === "CLIENTE" ? (clientId ?? null) : null,
+    },
+    select: {
+      id: true, name: true, email: true, role: true,
+      active: true, createdAt: true, clientId: true,
+      client: { select: { name: true } },
+    },
   })
 
   return NextResponse.json({ user }, { status: 201 })

@@ -23,7 +23,14 @@ export async function POST(req: NextRequest) {
   session.name = user.name
   session.email = user.email
   session.role = user.role as SessionData["role"]
+  if (user.role === "CLIENTE" && user.clientId) {
+    session.clientId = user.clientId
+  }
   await session.save()
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({
+    ok: true,
+    role: user.role,
+    clientId: user.clientId ?? null,
+  })
 }
