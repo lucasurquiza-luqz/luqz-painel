@@ -24,16 +24,21 @@ export async function fetchGroups(): Promise<EvoGroup[]> {
 }
 
 export async function sendText(remoteJid: string, text: string) {
-  const res = await fetch(`${BASE_URL}/message/sendText/${INSTANCE}`, {
+  const url = `${BASE_URL}/message/sendText/${INSTANCE}`
+  const body = { number: remoteJid, text }
+  console.log("[evolution] sendText →", url, JSON.stringify(body))
+
+  const res = await fetch(url, {
     method: "POST",
     headers,
-    body: JSON.stringify({ number: remoteJid, text }),
+    body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Erro ao enviar texto: ${err}`)
-  }
-  return res.json()
+
+  const data = await res.text()
+  console.log("[evolution] sendText ←", res.status, data)
+
+  if (!res.ok) throw new Error(`Evolution ${res.status}: ${data}`)
+  return JSON.parse(data)
 }
 
 export async function sendMedia(
