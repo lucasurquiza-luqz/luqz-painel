@@ -59,6 +59,7 @@ export default function ChatPage() {
   const [scheduledMsgs, setScheduledMsgs] = useState<ScheduledMsg[]>([])
   const [text, setText] = useState("")
   const [file, setFile] = useState<File | null>(null)
+  const [filePreview, setFilePreview] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const [recording, setRecording] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -87,15 +88,24 @@ export default function ChatPage() {
     loadConversations()
   }, [loadConversations])
 
-  // Polling a cada 5 segundos
+  // Polling a cada 5 segundos — pausa quando aba esta em segundo plano
   useEffect(() => {
     if (!activeConvId) return
     loadMessages(activeConvId)
 
-    pollRef.current = setInterval(() => {
-      loadMessages(activeConvId)
-      loadConversations()
-    }, 5000)
+    function startPoll() {
+      pollRef.current = setInterval(() => {
+        if (document.visibilityState === "visible") {
+          loadMessages(activeConvId!)
+          loadConversations()
+        }
+      }, 5000)
+    }
+
+    startPoll()
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") loadMessages(activeConvId!)
+    })
 
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
@@ -121,7 +131,7 @@ export default function ChatPage() {
     setSending(true)
 
     try {
-      let mediaPath: string | undefined
+      let mediaUrl: string | undefined
       let mediaType: string | undefined
       let mediaName: string | undefined
 
@@ -129,17 +139,19 @@ export default function ChatPage() {
         const form = new FormData()
         form.append("file", file)
         const up = await fetch("/api/uploads", { method: "POST", body: form })
+        if (!up.ok) throw new Error("Erro ao enviar arquivo.")
         const upData = await up.json()
-        mediaPath = upData.path
+        mediaUrl = upData.url   // MinIO retorna url direta
         mediaType = upData.type
         mediaName = file.name
         setFile(null)
+        setFilePreview(null)
       }
 
       await fetch(`/api/chat/${activeConvId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text.trim() || null, mediaPath, mediaType, mediaName }),
+        body: JSON.stringify({ text: text.trim() || null, mediaUrl, mediaType, mediaName }),
       })
 
       setText("")
@@ -364,9 +376,14 @@ export default function ChatPage() {
             <form onSubmit={handleSend} className={cn("px-3 py-3 border-t border-white/8 bg-zinc-900/50", tab !== "mensagens" && "hidden")}>
               {file && (
                 <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-zinc-800 rounded-xl border border-white/8 mx-1">
-                  <Paperclip size={13} className="text-zinc-400" />
+                  {filePreview ? (
+                    <img src={filePreview} alt="preview" className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
+                  ) : (
+                    <Paperclip size={13} className="text-zinc-400 flex-shrink-0" />
+                  )}
                   <span className="text-xs text-zinc-300 flex-1 truncate">{file.name}</span>
-                  <button type="button" onClick={() => setFile(null)} className="text-zinc-500 hover:text-red-400 cursor-pointer">
+                  <span className="text-xs text-zinc-600 flex-shrink-0">{(file.size / 1024).toFixed(0)}KB</span>
+                  <button type="button" onClick={() => { setFile(null); setFilePreview(null) }} className="text-zinc-500 hover:text-red-400 cursor-pointer">
                     <X size={13} />
                   </button>
                 </div>
@@ -385,7 +402,17 @@ export default function ChatPage() {
                 <label className="p-2.5 text-zinc-500 hover:text-zinc-300 cursor-pointer transition-colors flex-shrink-0">
                   <Paperclip size={18} />
                   <input type="file" accept="image/*,video/*,.pdf,.doc,.docx,audio/*" className="hidden"
-                    onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null
+                      setFile(f)
+                      if (f && f.type.startsWith("image/")) {
+                        const reader = new FileReader()
+                        reader.onload = (ev) => setFilePreview(ev.target?.result as string)
+                        reader.readAsDataURL(f)
+                      } else {
+                        setFilePreview(null)
+                      }
+                    }} />
                 </label>
 
                 {/* Audio */}

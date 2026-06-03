@@ -52,16 +52,16 @@ export async function POST(req: NextRequest, { params }: Params) {
   const conversation = await getAuthorizedConversation(conversationId, session)
   if (!conversation) return NextResponse.json({ error: "Nao encontrado" }, { status: 404 })
 
-  const { text, mediaPath, mediaType, mediaName } = await req.json()
-  if (!text?.trim() && !mediaPath) {
+  // uploads agora retornam { url, type, name } direto do MinIO
+  const { text, mediaUrl, mediaType, mediaName } = await req.json()
+  if (!text?.trim() && !mediaUrl) {
     return NextResponse.json({ error: "Mensagem vazia" }, { status: 400 })
   }
 
   const remoteJid = conversation.group.remoteJid
 
   try {
-    if (mediaPath) {
-      const mediaUrl = `${process.env.NEXT_PUBLIC_APP_URL}${mediaPath}`
+    if (mediaUrl) {
       const type = (["image", "document", "video", "audio"].includes(mediaType)
         ? mediaType
         : "document") as "image" | "document" | "video" | "audio"
@@ -82,8 +82,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       fromJid: "me",
       fromName: session.name,
       text: text?.trim() ?? null,
-      mediaUrl: mediaPath ? `${process.env.NEXT_PUBLIC_APP_URL}${mediaPath}` : null,
-      mediaType: mediaPath ? mediaType ?? null : null,
+      mediaUrl: mediaUrl ?? null,
+      mediaType: mediaUrl ? mediaType ?? null : null,
       mediaName: mediaName ?? null,
       isFromMe: true,
       timestamp: new Date(),
