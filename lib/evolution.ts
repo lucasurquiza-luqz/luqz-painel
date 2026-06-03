@@ -50,33 +50,14 @@ export async function sendText(remoteJid: string, text: string) {
   return evoJSON(res)
 }
 
-// Converte URL para base64 para enviar diretamente (evita que Evolution precise baixar)
-async function urlToBase64(url: string): Promise<{ base64: string; mime: string }> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
-  if (!res.ok) throw new Error(`Nao foi possivel baixar o arquivo: ${res.status}`)
-  const mime = res.headers.get("content-type")?.split(";")[0] ?? "application/octet-stream"
-  const buffer = await res.arrayBuffer()
-  const base64 = Buffer.from(buffer).toString("base64")
-  return { base64: `data:${mime};base64,${base64}`, mime }
-}
-
+// media pode ser URL publica ou base64 (data:mime;base64,...)
 export async function sendMedia(
   remoteJid: string,
-  mediaUrl: string,
+  media: string,
   mediaType: "image" | "document" | "video" | "audio",
   caption: string,
   fileName?: string
 ) {
-  // Tenta converter para base64 primeiro (mais confiavel que URL publica)
-  let media = mediaUrl
-  try {
-    const { base64 } = await urlToBase64(mediaUrl)
-    media = base64
-  } catch {
-    // Se nao conseguir baixar, usa a URL direta
-    media = mediaUrl
-  }
-
   const body: Record<string, string> = {
     number: remoteJid,
     mediatype: mediaType,

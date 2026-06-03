@@ -44,13 +44,16 @@ export async function POST(req: NextRequest) {
   const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
   const buffer = Buffer.from(await file.arrayBuffer())
 
+  // Sempre inclui base64 na resposta para envio direto via Evolution (sem depender de URL publica)
+  const base64 = `data:${file.type.split(";")[0]};base64,${buffer.toString("base64")}`
+
   // MinIO disponivel → usa MinIO
   if (process.env.MINIO_ENDPOINT && process.env.MINIO_ACCESS_KEY) {
     try {
       const { uploadToMinIO } = await import("@/lib/storage")
       const key = `uploads/${filename}`
       const url = await uploadToMinIO(key, buffer, file.type.split(";")[0].trim())
-      return NextResponse.json({ url, type: mediaType, name: file.name })
+      return NextResponse.json({ url, type: mediaType, name: file.name, base64 })
     } catch (err) {
       console.error("[uploads] MinIO falhou, usando local:", err)
     }
@@ -62,5 +65,5 @@ export async function POST(req: NextRequest) {
   await writeFile(path.join(uploadDir, filename), buffer)
 
   const url = `${process.env.NEXT_PUBLIC_APP_URL}/uploads/${filename}`
-  return NextResponse.json({ url, type: mediaType, name: file.name })
+  return NextResponse.json({ url, type: mediaType, name: file.name, base64 })
 }

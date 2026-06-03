@@ -52,20 +52,21 @@ export async function POST(req: NextRequest, { params }: Params) {
   const conversation = await getAuthorizedConversation(conversationId, session)
   if (!conversation) return NextResponse.json({ error: "Nao encontrado" }, { status: 404 })
 
-  // uploads agora retornam { url, type, name } direto do MinIO
-  const { text, mediaUrl, mediaType, mediaName } = await req.json()
-  if (!text?.trim() && !mediaUrl) {
+  const { text, mediaUrl, mediaBase64, mediaType, mediaName } = await req.json()
+  if (!text?.trim() && !mediaUrl && !mediaBase64) {
     return NextResponse.json({ error: "Mensagem vazia" }, { status: 400 })
   }
 
   const remoteJid = conversation.group.remoteJid
 
   try {
-    if (mediaUrl) {
+    if (mediaUrl || mediaBase64) {
+      // Prefere base64 (enviado direto, sem Evolution precisar baixar URL)
+      const media = mediaBase64 ?? mediaUrl!
       const type = (["image", "document", "video", "audio"].includes(mediaType)
         ? mediaType
         : "document") as "image" | "document" | "video" | "audio"
-      await sendMedia(remoteJid, mediaUrl, type, text ?? "", mediaName ?? undefined)
+      await sendMedia(remoteJid, media, type, text ?? "", mediaName ?? undefined)
     } else {
       await sendText(remoteJid, text)
     }

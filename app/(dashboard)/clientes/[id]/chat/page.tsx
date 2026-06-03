@@ -134,16 +134,18 @@ export default function ChatPage() {
 
     try {
       let mediaUrl: string | undefined
+      let mediaBase64: string | undefined
       let mediaType: string | undefined
       let mediaName: string | undefined
 
       if (file) {
-        const form = new FormData()
-        form.append("file", file)
-        const up = await fetch("/api/uploads", { method: "POST", body: form })
+        const fd = new FormData()
+        fd.append("file", file)
+        const up = await fetch("/api/uploads", { method: "POST", body: fd })
         const upData = await up.json()
         if (!up.ok) throw new Error(upData.error ?? "Erro ao enviar arquivo.")
         mediaUrl = upData.url
+        mediaBase64 = upData.base64
         mediaType = upData.type
         mediaName = upData.name ?? file.name
         setFile(null)
@@ -153,7 +155,7 @@ export default function ChatPage() {
       const res = await fetch(`/api/chat/${activeConvId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text.trim() || null, mediaUrl, mediaType, mediaName }),
+        body: JSON.stringify({ text: text.trim() || null, mediaUrl, mediaBase64, mediaType, mediaName }),
       })
 
       if (!res.ok) {
