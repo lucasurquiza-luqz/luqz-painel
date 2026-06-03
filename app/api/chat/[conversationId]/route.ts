@@ -77,8 +77,19 @@ export async function POST(req: NextRequest, { params }: Params) {
     )
   }
 
-  // mediaType e salvo se houver qualquer midia (url ou base64)
   const hasMedia = !!(mediaUrl || mediaBase64)
+
+  // Para imagens: salva data URI como mediaUrl para exibir no painel sem depender de URL externa
+  // Para outros tipos: salva a URL externa (MinIO/local)
+  let displayUrl = mediaUrl ?? null
+  if (mediaBase64 && mediaType === "image" && !displayUrl) {
+    // reconstroi data URI para display
+    const mime = mediaName?.toLowerCase().endsWith(".png") ? "image/png"
+      : mediaName?.toLowerCase().endsWith(".webp") ? "image/webp"
+      : mediaName?.toLowerCase().endsWith(".gif") ? "image/gif"
+      : "image/jpeg"
+    displayUrl = `data:${mime};base64,${mediaBase64}`
+  }
 
   const message = await prisma.waMessage.create({
     data: {
@@ -86,7 +97,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       fromJid: "me",
       fromName: session.name,
       text: text?.trim() ?? null,
-      mediaUrl: mediaUrl ?? null,
+      mediaUrl: displayUrl,
       mediaType: hasMedia ? (mediaType ?? null) : null,
       mediaName: mediaName ?? null,
       isFromMe: true,

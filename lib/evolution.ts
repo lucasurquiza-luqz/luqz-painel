@@ -50,7 +50,7 @@ export async function sendText(remoteJid: string, text: string) {
   return evoJSON(res)
 }
 
-// media pode ser URL publica ou base64 (data:mime;base64,...)
+// media pode ser URL publica ou base64 puro (sem prefixo data:)
 export async function sendMedia(
   remoteJid: string,
   media: string,
@@ -58,6 +58,11 @@ export async function sendMedia(
   caption: string,
   fileName?: string
 ) {
+  // Audio usa endpoint especifico do WhatsApp (envia como nota de voz)
+  if (mediaType === "audio") {
+    return sendWhatsAppAudio(remoteJid, media)
+  }
+
   const body: Record<string, string> = {
     number: remoteJid,
     mediatype: mediaType,
@@ -70,6 +75,15 @@ export async function sendMedia(
     method: "POST",
     headers,
     body: JSON.stringify(body),
+  })
+  return evoJSON(res)
+}
+
+export async function sendWhatsAppAudio(remoteJid: string, audio: string) {
+  const res = await evoFetch(`${BASE_URL}/message/sendWhatsAppAudio/${INSTANCE}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ number: remoteJid, audio, encoding: true }),
   })
   return evoJSON(res)
 }

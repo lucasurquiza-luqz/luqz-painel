@@ -63,6 +63,7 @@ export default function ChatPage() {
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState("")
   const [recording, setRecording] = useState(false)
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const [loading, setLoading] = useState(true)
@@ -150,6 +151,7 @@ export default function ChatPage() {
         mediaName = upData.name ?? file.name
         setFile(null)
         setFilePreview(null)
+        setAudioPreviewUrl(null)
       }
 
       const res = await fetch(`/api/chat/${activeConvId}`, {
@@ -183,6 +185,7 @@ export default function ChatPage() {
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" })
         const audioFile = new File([blob], `audio-${Date.now()}.webm`, { type: "audio/webm" })
         setFile(audioFile)
+        setAudioPreviewUrl(URL.createObjectURL(blob))
         stream.getTracks().forEach((t) => t.stop())
       }
       mr.start()
@@ -414,7 +417,16 @@ export default function ChatPage() {
               {recording && (
                 <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-red-900/20 border border-red-500/20 rounded-xl mx-1">
                   <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                  <span className="text-xs text-red-400">Gravando audio...</span>
+                  <span className="text-xs text-red-400">Gravando audio... (clique no microfone para parar)</span>
+                </div>
+              )}
+              {audioPreviewUrl && !recording && (
+                <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-zinc-800 border border-white/8 rounded-xl mx-1">
+                  <audio controls src={audioPreviewUrl} className="h-8 flex-1" style={{ minWidth: 160 }} />
+                  <button type="button" onClick={() => { setFile(null); setAudioPreviewUrl(null) }}
+                    className="text-zinc-500 hover:text-red-400 cursor-pointer flex-shrink-0">
+                    <X size={14} />
+                  </button>
                 </div>
               )}
               <div className="flex items-end gap-1">
