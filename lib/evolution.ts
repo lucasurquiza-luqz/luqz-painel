@@ -18,6 +18,13 @@ async function evoFetch(url: string, options: RequestInit): Promise<Response> {
   }
 }
 
+async function evoJSON(res: Response): Promise<unknown> {
+  let body = ""
+  try { body = await res.text() } catch { /* ignore */ }
+  if (!res.ok) throw new Error(`Evolution ${res.status}: ${body}`)
+  try { return JSON.parse(body) } catch { return { ok: true } }
+}
+
 export interface EvoGroup {
   id: string
   subject: string
@@ -40,21 +47,17 @@ export async function sendText(remoteJid: string, text: string) {
     headers,
     body: JSON.stringify({ number: remoteJid, text }),
   })
+  return evoJSON(res)
+}
 
-  let body: string
-  try {
-    body = await res.text()
-  } catch {
-    body = ""
-  }
-
-  if (!res.ok) throw new Error(`Evolution ${res.status}: ${body}`)
-
-  try {
-    return JSON.parse(body)
-  } catch {
-    return { ok: true }
-  }
+// Converte URL para base64 para enviar diretamente (evita que Evolution precise baixar)
+async function urlToBase64(url: string): Promise<{ base64: string; mime: string }> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
+  if (!res.ok) throw new Error(`Nao foi possivel baixar o arquivo: ${res.status}`)
+  const mime = res.headers.get("content-type")?.split(";")[0] ?? "application/octet-stream"
+  const buffer = await res.arrayBuffer()
+  const base64 = Buffer.from(buffer).toString("base64")
+  return { base64: `data:${mime};base64,${base64}`, mime }
 }
 
 export async function sendMedia(
@@ -64,10 +67,20 @@ export async function sendMedia(
   caption: string,
   fileName?: string
 ) {
+  // Tenta converter para base64 primeiro (mais confiavel que URL publica)
+  let media = mediaUrl
+  try {
+    const { base64 } = await urlToBase64(mediaUrl)
+    media = base64
+  } catch {
+    // Se nao conseguir baixar, usa a URL direta
+    media = mediaUrl
+  }
+
   const body: Record<string, string> = {
     number: remoteJid,
     mediatype: mediaType,
-    media: mediaUrl,
+    media,
     caption,
   }
   if (fileName) body.fileName = fileName
@@ -77,19 +90,5 @@ export async function sendMedia(
     headers,
     body: JSON.stringify(body),
   })
-
-  let resBody: string
-  try {
-    resBody = await res.text()
-  } catch {
-    resBody = ""
-  }
-
-  if (!res.ok) throw new Error(`Evolution ${res.status}: ${resBody}`)
-
-  try {
-    return JSON.parse(resBody)
-  } catch {
-    return { ok: true }
-  }
+  return evoJSON(res)
 }
