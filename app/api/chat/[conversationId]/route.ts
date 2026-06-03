@@ -77,6 +77,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     )
   }
 
+  // mediaType e salvo se houver qualquer midia (url ou base64)
+  const hasMedia = !!(mediaUrl || mediaBase64)
+
   const message = await prisma.waMessage.create({
     data: {
       conversationId,
@@ -84,7 +87,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       fromName: session.name,
       text: text?.trim() ?? null,
       mediaUrl: mediaUrl ?? null,
-      mediaType: mediaUrl ? mediaType ?? null : null,
+      mediaType: hasMedia ? (mediaType ?? null) : null,
       mediaName: mediaName ?? null,
       isFromMe: true,
       timestamp: new Date(),

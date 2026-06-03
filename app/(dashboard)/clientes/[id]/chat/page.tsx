@@ -353,20 +353,26 @@ export default function ChatPage() {
                                   : "bg-zinc-800 text-zinc-100 rounded-tl-sm"
                               )}
                             >
-                              {msg.mediaUrl && (
+                              {msg.mediaType && (
                                 <div className="mb-1.5">
-                                  {msg.mediaType === "image" ? (
+                                  {msg.mediaType === "image" && msg.mediaUrl ? (
                                     <img src={msg.mediaUrl} alt={msg.mediaName ?? "imagem"} className="max-w-full rounded-lg max-h-48 object-cover cursor-pointer" onClick={() => window.open(msg.mediaUrl!, "_blank")} />
-                                  ) : msg.mediaType === "audio" ? (
+                                  ) : msg.mediaType === "audio" && msg.mediaUrl ? (
                                     <audio controls src={msg.mediaUrl} className="max-w-full h-10" style={{ minWidth: 200 }} />
-                                  ) : msg.mediaType === "video" ? (
+                                  ) : msg.mediaType === "video" && msg.mediaUrl ? (
                                     <video controls src={msg.mediaUrl} className="max-w-full rounded-lg max-h-48" />
-                                  ) : (
+                                  ) : msg.mediaUrl ? (
                                     <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer"
                                       className="flex items-center gap-2 text-xs text-orange-400 hover:underline">
                                       <Paperclip size={12} />
                                       {msg.mediaName ?? "Arquivo"}
                                     </a>
+                                  ) : (
+                                    // Midia recebida sem URL (ainda nao baixada)
+                                    <span className="flex items-center gap-1.5 text-xs text-zinc-500 italic">
+                                      <Paperclip size={11} />
+                                      {msg.mediaType === "audio" ? "Audio" : msg.mediaType === "image" ? "Imagem" : msg.mediaType === "video" ? "Video" : "Arquivo"} recebido
+                                    </span>
                                   )}
                                 </div>
                               )}
