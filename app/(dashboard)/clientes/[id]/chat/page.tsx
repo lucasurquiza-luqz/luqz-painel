@@ -61,6 +61,7 @@ export default function ChatPage() {
   const [file, setFile] = useState<File | null>(null)
   const [filePreview, setFilePreview] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState("")
   const [recording, setRecording] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -129,6 +130,7 @@ export default function ChatPage() {
     e.preventDefault()
     if (!activeConvId || (!text.trim() && !file)) return
     setSending(true)
+    setSendError("")
 
     try {
       let mediaUrl: string | undefined
@@ -139,23 +141,31 @@ export default function ChatPage() {
         const form = new FormData()
         form.append("file", file)
         const up = await fetch("/api/uploads", { method: "POST", body: form })
-        if (!up.ok) throw new Error("Erro ao enviar arquivo.")
         const upData = await up.json()
-        mediaUrl = upData.url   // MinIO retorna url direta
+        if (!up.ok) throw new Error(upData.error ?? "Erro ao enviar arquivo.")
+        mediaUrl = upData.url
         mediaType = upData.type
-        mediaName = file.name
+        mediaName = upData.name ?? file.name
         setFile(null)
         setFilePreview(null)
       }
 
-      await fetch(`/api/chat/${activeConvId}`, {
+      const res = await fetch(`/api/chat/${activeConvId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: text.trim() || null, mediaUrl, mediaType, mediaName }),
       })
 
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error ?? "Erro ao enviar mensagem.")
+      }
+
       setText("")
       await loadMessages(activeConvId)
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "Erro desconhecido.")
+      setTimeout(() => setSendError(""), 5000)
     } finally {
       setSending(false)
     }
@@ -374,6 +384,11 @@ export default function ChatPage() {
             {/* Input de envio */}
             {tab === "agendamentos" && <div className="h-px" />}
             <form onSubmit={handleSend} className={cn("px-3 py-3 border-t border-white/8 bg-zinc-900/50", tab !== "mensagens" && "hidden")}>
+              {sendError && (
+                <div className="mb-2 mx-1 px-3 py-2 bg-red-900/20 border border-red-500/20 rounded-xl text-xs text-red-400">
+                  {sendError}
+                </div>
+              )}
               {file && (
                 <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-zinc-800 rounded-xl border border-white/8 mx-1">
                   {filePreview ? (
