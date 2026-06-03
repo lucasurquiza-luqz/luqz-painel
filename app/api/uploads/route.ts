@@ -44,8 +44,8 @@ export async function POST(req: NextRequest) {
   const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
   const buffer = Buffer.from(await file.arrayBuffer())
 
-  // Sempre inclui base64 na resposta para envio direto via Evolution (sem depender de URL publica)
-  const base64 = `data:${file.type.split(";")[0]};base64,${buffer.toString("base64")}`
+  // base64 puro (sem prefixo data:mime) — formato que Evolution API aceita
+  const base64 = buffer.toString("base64")
 
   // MinIO disponivel → usa MinIO
   if (process.env.MINIO_ENDPOINT && process.env.MINIO_ACCESS_KEY) {
