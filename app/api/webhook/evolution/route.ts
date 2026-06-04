@@ -72,6 +72,9 @@ export async function POST(req: NextRequest) {
 
     if (!key?.remoteJid?.endsWith("@g.us")) return NextResponse.json({ ok: true })
 
+    // Ignora mensagens enviadas por nos (fromMe) — ja foram salvas quando enviamos
+    if (key.fromMe) return NextResponse.json({ ok: true })
+
     // Texto da mensagem
     const text =
       message?.conversation ||
