@@ -49,6 +49,20 @@ Em 23/06/2026:
 
 - `d461dcf` estava publicado em produção e em `origin/main`.
 - `1a450e8` e `3427e34` estavam na branch técnica, aguardando build, validação da migration, push para `main` e deploy.
+- Após `3427e34`, existe um incremento local ainda não commitado com carteira, status e piloto do Depósito Santa Helena. O Git foi bloqueado por limite operacional da ferramenta; não descartar o worktree.
+
+Arquivos principais desse incremento local:
+
+```text
+lib/client-roster.ts
+lib/pilots/deposito-santa-helena.ts
+app/api/clients/import/route.ts
+app/api/clients/[id]/status/route.ts
+app/api/clients/[id]/context/import-pilot/route.ts
+app/(dashboard)/clientes/page.tsx
+app/(dashboard)/clientes/[id]/status/page.tsx
+prisma/migrations/20260623233000_add_client_status/migration.sql
+```
 
 Sempre confirmar novamente com:
 

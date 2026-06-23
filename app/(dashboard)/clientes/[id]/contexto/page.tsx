@@ -18,7 +18,12 @@ type Snapshot = {
   id: string; version: number; checksum: string; compiledAt: string
   compiledBy: { name: string }; _count: { items: number }
 }
-type ContextResponse = { client: { id: string; name: string }; items: ContextItem[]; snapshots: Snapshot[] }
+type ContextResponse = {
+  client: { id: string; name: string; clickupFolderId: string | null }
+  items: ContextItem[]
+  snapshots: Snapshot[]
+  currentUser: { role: string }
+}
 
 const DOMAINS = [
   ["DIRETRIZES", "Diretrizes"], ["OFERTA", "Oferta"], ["PERSONA", "Persona"],
@@ -56,6 +61,7 @@ export default function ContextoClientePage() {
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
   const [snapshotting, setSnapshotting] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [filter, setFilter] = useState<"ALL" | ContextStatus>("ALL")
   const [form, setForm] = useState(EMPTY_FORM)
 
@@ -143,6 +149,20 @@ export default function ContextoClientePage() {
     await loadContext()
   }
 
+  async function importPilot() {
+    setImporting(true)
+    setError("")
+    const response = await fetch(`/api/clients/${clientId}/context/import-pilot`, { method: "POST" })
+    const payload = await response.json()
+    if (!response.ok) {
+      setError(payload.error ?? "Não foi possível importar o contexto piloto.")
+      setImporting(false)
+      return
+    }
+    setImporting(false)
+    await loadContext()
+  }
+
   return (
     <main className="mx-auto max-w-7xl space-y-6 p-6 lg:p-8">
       <PageHeader
@@ -150,6 +170,11 @@ export default function ContextoClientePage() {
         title={`Contexto${data?.client.name ? ` · ${data.client.name}` : ""}`}
         description="Conhecimento rastreável, versionado e aprovado antes de alimentar resumos, saúde e IA."
         actions={<>
+          {data?.currentUser.role === "ADMIN" && data.client.clickupFolderId === "901317617481" && (
+            <Button variant="secondary" onClick={importPilot} disabled={importing}>
+              {importing ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />} Importar piloto
+            </Button>
+          )}
           <Button variant="secondary" onClick={createSnapshot} disabled={snapshotting || counts.active === 0}>
             {snapshotting ? <Loader2 size={16} className="animate-spin" /> : <Database size={16} />} Gerar snapshot
           </Button>

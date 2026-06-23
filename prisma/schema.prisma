@@ -8,12 +8,15 @@ datasource db {
 }
 
 model Client {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String    @id @default(cuid())
+  name            String
+  description     String?
+  active          Boolean   @default(true)
+  clickupFolderId String?   @unique
+  statusReason    String?
+  statusChangedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   groups           Group[]
   messages         ScheduledMessage[]
@@ -22,6 +25,7 @@ model Client {
   contextSources   ContextSource[]
   contextItems     ContextItem[]
   contextSnapshots ContextSnapshot[]
+  statusHistory    ClientStatusHistory[]
 }
 
 model User {
@@ -38,15 +42,36 @@ model User {
   client   Client? @relation(fields: [clientId], references: [id])
 
   messages             ScheduledMessage[]
-  contextItemsCreated  ContextItem[]      @relation("ContextItemCreatedBy")
-  contextItemsReviewed ContextItem[]      @relation("ContextItemReviewedBy")
-  contextSnapshots     ContextSnapshot[]  @relation("ContextSnapshotCompiledBy")
+  contextItemsCreated  ContextItem[]         @relation("ContextItemCreatedBy")
+  contextItemsReviewed ContextItem[]         @relation("ContextItemReviewedBy")
+  contextSnapshots     ContextSnapshot[]     @relation("ContextSnapshotCompiledBy")
+  clientStatusChanges  ClientStatusHistory[] @relation("ClientStatusChangedBy")
 }
 
 enum Role {
   ADMIN
   OPERADOR
   CLIENTE
+}
+
+enum ClientStatusSource {
+  MANUAL
+  ROSTER_IMPORT
+}
+
+model ClientStatusHistory {
+  id          String             @id @default(cuid())
+  clientId    String
+  active      Boolean
+  reason      String?
+  source      ClientStatusSource @default(MANUAL)
+  changedById String
+  changedAt   DateTime           @default(now())
+
+  client    Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  changedBy User   @relation("ClientStatusChangedBy", fields: [changedById], references: [id], onDelete: Restrict)
+
+  @@index([clientId, changedAt])
 }
 
 model Group {

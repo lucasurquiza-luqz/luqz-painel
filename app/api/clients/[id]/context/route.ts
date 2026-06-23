@@ -21,7 +21,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const { id: clientId } = await params
   const client = await prisma.client.findUnique({
     where: { id: clientId },
-    select: { id: true, name: true },
+    select: { id: true, name: true, clickupFolderId: true },
   })
 
   if (!client) {
@@ -53,7 +53,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
     }),
   ])
 
-  return NextResponse.json({ client, items, snapshots })
+  return NextResponse.json({ client, items, snapshots, currentUser: { role: auth.user.role } })
 }
 
 export async function POST(req: NextRequest, { params }: Params) {

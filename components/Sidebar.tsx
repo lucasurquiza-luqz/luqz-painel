@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 import {
   ArrowLeft,
+  Activity,
   BrainCircuit,
   Building2,
   KeyRound,
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils"
 
 const clientNav = [
   { href: "", label: "Visão geral", icon: LayoutDashboard },
+  { href: "/status", label: "Status", icon: Activity, internalOnly: true },
   { href: "/contexto", label: "Contexto", icon: BrainCircuit, internalOnly: true },
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/configuracoes", label: "Configurações", icon: Settings },
