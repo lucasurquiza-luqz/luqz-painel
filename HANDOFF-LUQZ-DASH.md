@@ -196,6 +196,8 @@ git fetch origin
 git push origin HEAD:main
 ```
 
+O container executa `prisma migrate deploy` antes de iniciar o Next.js usando a `DATABASE_URL` já configurada no EasyPanel. Não solicitar nem compartilhar a connection string. Procedimento completo: `DEPLOY.md`.
+
 O EasyPanel pode não realizar deploy automático. Se o domínio continuar na versão anterior, abrir o produto do Dash no EasyPanel e executar `Deploy`, `Redeploy` ou `Rebuild`.
 
 Depois validar:

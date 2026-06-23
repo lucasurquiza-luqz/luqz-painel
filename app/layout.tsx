@@ -1,16 +1,20 @@
 import type { Metadata } from "next"
-import { Roboto_Flex, Sulphur_Point } from "next/font/google"
+import localFont from "next/font/local"
 import "./globals.css"
 
-const bodyFont = Roboto_Flex({
-  subsets: ["latin"],
+const bodyFont = localFont({
+  src: "./fonts/roboto-flex-latin.woff2",
   variable: "--font-luqz-body",
   display: "swap",
+  weight: "100 1000",
 })
 
-const displayFont = Sulphur_Point({
-  subsets: ["latin"],
-  weight: ["300", "400", "700"],
+const displayFont = localFont({
+  src: [
+    { path: "./fonts/sulphur-point-300-latin.woff2", weight: "300", style: "normal" },
+    { path: "./fonts/sulphur-point-400-latin.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/sulphur-point-700-latin.woff2", weight: "700", style: "normal" },
+  ],
   variable: "--font-luqz-display",
   display: "swap",
 })
