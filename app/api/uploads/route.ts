@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { writeFile, mkdir } from "fs/promises"
 import path from "path"
-import { requireApiUser } from "@/lib/api-auth"
 
 const MAX_SIZE = 20 * 1024 * 1024
 
@@ -32,9 +31,6 @@ function detectType(mimeType: string): string | undefined {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireApiUser()
-  if (!auth.ok) return auth.response
-
   const form = await req.formData()
   const file = form.get("file") as File | null
 

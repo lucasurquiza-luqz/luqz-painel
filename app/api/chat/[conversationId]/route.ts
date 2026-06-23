@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
-import { canAccessClient, requireApiUser, type ApiUser } from "@/lib/api-auth"
+import { getIronSession } from "iron-session"
+import { cookies } from "next/headers"
+import { sessionOptions, type SessionData, isEquipe } from "@/lib/auth"
 import { sendText, sendMedia } from "@/lib/evolution"
 
 type Params = { params: Promise<{ conversationId: string }> }
 
-async function getAuthorizedConversation(conversationId: string, user: ApiUser) {
+async function getAuthorizedConversation(conversationId: string, session: Partial<SessionData>) {
   const conversation = await prisma.waConversation.findUnique({
     where: { id: conversationId },
     include: { group: true },
@@ -13,7 +15,7 @@ async function getAuthorizedConversation(conversationId: string, user: ApiUser) 
   if (!conversation) return null
 
   // CLIENTE so pode ver a propria conversa
-  if (!canAccessClient(user, conversation.clientId)) {
+  if (!isEquipe(session.role ?? "") && session.clientId !== conversation.clientId) {
     return null
   }
 
@@ -22,10 +24,10 @@ async function getAuthorizedConversation(conversationId: string, user: ApiUser) 
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const { conversationId } = await params
-  const auth = await requireApiUser()
-  if (!auth.ok) return auth.response
+  const session = await getIronSession<SessionData>(await cookies(), sessionOptions)
+  if (!session.userId) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
 
-  const conversation = await getAuthorizedConversation(conversationId, auth.user)
+  const conversation = await getAuthorizedConversation(conversationId, session)
   if (!conversation) return NextResponse.json({ error: "Nao encontrado" }, { status: 404 })
 
   const messages = await prisma.waMessage.findMany({
@@ -44,10 +46,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
 export async function POST(req: NextRequest, { params }: Params) {
   const { conversationId } = await params
-  const auth = await requireApiUser()
-  if (!auth.ok) return auth.response
+  const session = await getIronSession<SessionData>(await cookies(), sessionOptions)
+  if (!session.userId) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
 
-  const conversation = await getAuthorizedConversation(conversationId, auth.user)
+  const conversation = await getAuthorizedConversation(conversationId, session)
   if (!conversation) return NextResponse.json({ error: "Nao encontrado" }, { status: 404 })
 
   const { text, mediaUrl, mediaBase64, mediaType, mediaName } = await req.json()
@@ -93,7 +95,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     data: {
       conversationId,
       fromJid: "me",
-      fromName: auth.user.name,
+      fromName: session.name,
       text: text?.trim() ?? null,
       mediaUrl: displayUrl,
       mediaType: hasMedia ? (mediaType ?? null) : null,

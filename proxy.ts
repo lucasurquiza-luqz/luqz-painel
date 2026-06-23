@@ -43,17 +43,6 @@ export async function proxy(request: NextRequest) {
     return response
   }
 
-  if (session.role === "CLIENTE" && !session.clientId) {
-    if (pathname.startsWith("/api/")) {
-      return NextResponse.json({ error: "Usuario sem cliente vinculado." }, { status: 403 })
-    }
-    const url = request.nextUrl.clone()
-    url.pathname = "/login"
-    const redirect = NextResponse.redirect(url)
-    redirect.cookies.delete("luqz_session")
-    return redirect
-  }
-
   // Apos login: redireciona conforme o role
   if (isPublic) {
     const url = request.nextUrl.clone()
@@ -68,12 +57,6 @@ export async function proxy(request: NextRequest) {
   // CLIENTE so acessa o proprio cliente
   if (session.role === "CLIENTE" && session.clientId) {
     const allowed = `/clientes/${session.clientId}`
-    if (pathname.startsWith(`${allowed}/contexto`) || pathname.startsWith(`${allowed}/status`)) {
-      const url = request.nextUrl.clone()
-      url.pathname = `${allowed}/chat`
-      return NextResponse.redirect(url)
-    }
-
     if (!pathname.startsWith(allowed) && !pathname.startsWith("/api/")) {
       const url = request.nextUrl.clone()
       url.pathname = `${allowed}/chat`
@@ -86,9 +69,9 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Somente ADMIN gerencia usuarios
+  // So equipe acessa pagina de usuarios
   if (pathname.startsWith("/usuarios") || pathname.startsWith("/api/users")) {
-    if (session.role !== "ADMIN") {
+    if (!isEquipe(session.role ?? "")) {
       if (pathname.startsWith("/api/")) {
         return NextResponse.json({ error: "Acesso negado" }, { status: 403 })
       }

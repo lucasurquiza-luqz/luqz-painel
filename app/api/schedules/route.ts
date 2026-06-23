@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
+import { getIronSession } from "iron-session"
+import { cookies } from "next/headers"
 import { prisma } from "@/lib/db"
-import { canAccessClient, requireApiUser } from "@/lib/api-auth"
+import { sessionOptions, type SessionData } from "@/lib/auth"
 
 export async function GET(req: NextRequest) {
-  const auth = await requireApiUser()
-  if (!auth.ok) return auth.response
-
-  let clientId = req.nextUrl.searchParams.get("clientId")
-  if (auth.user.role === "CLIENTE") clientId = auth.user.clientId
-  if (clientId && !canAccessClient(auth.user, clientId)) {
-    return NextResponse.json({ error: "Acesso negado." }, { status: 403 })
-  }
+  const clientId = req.nextUrl.searchParams.get("clientId")
 
   const messages = await prisma.scheduledMessage.findMany({
     where: clientId ? { clientId } : {},
@@ -26,8 +21,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireApiUser(["ADMIN", "OPERADOR"])
-  if (!auth.ok) return auth.response
+  const session = await getIronSession<SessionData>(await cookies(), sessionOptions)
+  if (!session.userId) return NextResponse.json({ error: "Nao autorizado." }, { status: 401 })
 
   const { text, scheduledAt, groupIds, clientId, mediaPath, mediaType, mediaName } = await req.json()
 
@@ -48,7 +43,7 @@ export async function POST(req: NextRequest) {
       mediaType: mediaType ?? null,
       mediaName: mediaName ?? null,
       clientId: clientId ?? null,
-      createdById: auth.user.userId,
+      createdById: session.userId,
       groups: {
         create: (groupIds as string[]).map((groupId) => ({ groupId })),
       },

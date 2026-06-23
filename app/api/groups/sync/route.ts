@@ -1,12 +1,8 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { fetchGroups } from "@/lib/evolution"
-import { requireApiUser } from "@/lib/api-auth"
 
 export async function POST() {
-  const auth = await requireApiUser(["ADMIN", "OPERADOR"])
-  if (!auth.ok) return auth.response
-
   try {
     const evoGroups = await fetchGroups()
 

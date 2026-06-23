@@ -18,10 +18,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "E-mail ou senha invalidos." }, { status: 401 })
   }
 
-  if (user.role === "CLIENTE" && !user.clientId) {
-    return NextResponse.json({ error: "Usuario sem cliente vinculado." }, { status: 403 })
-  }
-
   const session = await getIronSession<SessionData>(await cookies(), sessionOptions)
   session.userId = user.id
   session.name = user.name

@@ -5,8 +5,6 @@ import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 import {
   ArrowLeft,
-  Activity,
-  BrainCircuit,
   Building2,
   KeyRound,
   LayoutDashboard,
@@ -20,8 +18,6 @@ import { cn } from "@/lib/utils"
 
 const clientNav = [
   { href: "", label: "Visão geral", icon: LayoutDashboard },
-  { href: "/status", label: "Status", icon: Activity, internalOnly: true },
-  { href: "/contexto", label: "Contexto", icon: BrainCircuit, internalOnly: true },
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/configuracoes", label: "Configurações", icon: Settings },
   { href: "/credenciais", label: "Credenciais", icon: KeyRound, soon: true },
@@ -84,7 +80,7 @@ export function Sidebar({ role, name }: SidebarProps) {
       <nav className="dash-scrollbar flex-1 overflow-y-auto p-3">
         {clientId ? (
           <NavSection label="Workspace do cliente">
-            {clientNav.filter((item) => !item.internalOnly || role !== "CLIENTE").map((item) => {
+            {clientNav.map((item) => {
               const fullHref = `/clientes/${clientId}${item.href}`
               const active = item.href === ""
                 ? pathname === fullHref
