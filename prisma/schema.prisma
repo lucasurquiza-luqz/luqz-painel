@@ -15,10 +15,13 @@ model Client {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  groups        Group[]
-  messages      ScheduledMessage[]
-  users         User[]
-  conversations WaConversation[]
+  groups           Group[]
+  messages         ScheduledMessage[]
+  users            User[]
+  conversations    WaConversation[]
+  contextSources   ContextSource[]
+  contextItems     ContextItem[]
+  contextSnapshots ContextSnapshot[]
 }
 
 model User {
@@ -34,7 +37,10 @@ model User {
   clientId String?
   client   Client? @relation(fields: [clientId], references: [id])
 
-  messages ScheduledMessage[]
+  messages             ScheduledMessage[]
+  contextItemsCreated  ContextItem[]      @relation("ContextItemCreatedBy")
+  contextItemsReviewed ContextItem[]      @relation("ContextItemReviewedBy")
+  contextSnapshots     ContextSnapshot[]  @relation("ContextSnapshotCompiledBy")
 }
 
 enum Role {
@@ -54,8 +60,8 @@ model Group {
   clientId String?
   client   Client? @relation(fields: [clientId], references: [id])
 
-  messages      GroupMessage[]
-  conversation  WaConversation?
+  messages     GroupMessage[]
+  conversation WaConversation?
 }
 
 model ScheduledMessage {
@@ -120,8 +126,8 @@ model WaConversation {
   lastMessageAt DateTime?
   createdAt     DateTime  @default(now())
 
-  group    Group      @relation(fields: [groupId], references: [id])
-  client   Client     @relation(fields: [clientId], references: [id])
+  group    Group       @relation(fields: [groupId], references: [id])
+  client   Client      @relation(fields: [clientId], references: [id])
   messages WaMessage[]
 }
 
@@ -140,4 +146,121 @@ model WaMessage {
   createdAt      DateTime @default(now())
 
   conversation WaConversation @relation(fields: [conversationId], references: [id])
+}
+
+enum ContextDomain {
+  DIRETRIZES
+  OFERTA
+  PERSONA
+  TOM_DE_VOZ
+  CLIENTE
+  MEMORIA
+  OPERACIONAL
+}
+
+enum ContextKind {
+  RULE
+  FACT
+  DECISION
+  GOAL
+  HYPOTHESIS
+  PERCEPTION
+}
+
+enum ContextStatus {
+  PROPOSED
+  ACTIVE
+  SUPERSEDED
+  REJECTED
+}
+
+enum ContextVisibility {
+  INTERNAL
+  CLIENT
+}
+
+enum ContextSourceType {
+  FILE
+  MANUAL
+  GROUP
+  MEETING
+  INTEGRATION
+}
+
+model ContextSource {
+  id         String            @id @default(cuid())
+  clientId   String
+  type       ContextSourceType
+  label      String
+  reference  String?
+  checksum   String?
+  capturedAt DateTime          @default(now())
+  createdAt  DateTime          @default(now())
+
+  client Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  items  ContextItem[]
+
+  @@index([clientId, type])
+}
+
+model ContextItem {
+  id           String            @id @default(cuid())
+  clientId     String
+  sourceId     String
+  domain       ContextDomain
+  kind         ContextKind
+  status       ContextStatus     @default(PROPOSED)
+  visibility   ContextVisibility @default(INTERNAL)
+  title        String
+  content      String
+  validFrom    DateTime?
+  validUntil   DateTime?
+  supersedesId String?
+  createdById  String
+  reviewedById String?
+  reviewedAt   DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  client     Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  source     ContextSource         @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  createdBy  User                  @relation("ContextItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  reviewedBy User?                 @relation("ContextItemReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  supersedes ContextItem?          @relation("ContextItemHistory", fields: [supersedesId], references: [id], onDelete: SetNull)
+  revisions  ContextItem[]         @relation("ContextItemHistory")
+  snapshots  ContextSnapshotItem[]
+
+  @@index([clientId, status, domain])
+  @@index([sourceId])
+  @@index([supersedesId])
+}
+
+model ContextSnapshot {
+  id           String   @id @default(cuid())
+  clientId     String
+  version      Int
+  content      Json
+  checksum     String
+  compiledById String
+  compiledAt   DateTime @default(now())
+
+  client     Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  compiledBy User                  @relation("ContextSnapshotCompiledBy", fields: [compiledById], references: [id], onDelete: Restrict)
+  items      ContextSnapshotItem[]
+
+  @@unique([clientId, version])
+  @@index([clientId, compiledAt])
+}
+
+model ContextSnapshotItem {
+  snapshotId String
+  itemId     String
+  position   Int
+
+  snapshot ContextSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  item     ContextItem     @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@id([snapshotId, itemId])
+  @@unique([snapshotId, position])
+  @@index([itemId])
 }

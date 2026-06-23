@@ -68,6 +68,12 @@ export async function proxy(request: NextRequest) {
   // CLIENTE so acessa o proprio cliente
   if (session.role === "CLIENTE" && session.clientId) {
     const allowed = `/clientes/${session.clientId}`
+    if (pathname.startsWith(`${allowed}/contexto`)) {
+      const url = request.nextUrl.clone()
+      url.pathname = `${allowed}/chat`
+      return NextResponse.redirect(url)
+    }
+
     if (!pathname.startsWith(allowed) && !pathname.startsWith("/api/")) {
       const url = request.nextUrl.clone()
       url.pathname = `${allowed}/chat`
