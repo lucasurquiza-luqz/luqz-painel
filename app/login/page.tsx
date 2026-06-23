@@ -2,122 +2,118 @@
 
 import { useState } from "react"
 import { Eye, EyeOff } from "lucide-react"
-import Image from "next/image"
+import { DashBrandMark } from "@/components/DashBrandMark"
+import { Button, Input, Panel } from "@/components/ui/primitives"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [showPwd, setShowPwd] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
     setLoading(true)
     setError("")
 
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    })
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      })
 
-    const data = await res.json()
+      const data = await response.json()
 
-    if (!res.ok) {
-      setError(data.error ?? "Erro ao entrar.")
+      if (!response.ok) {
+        setError(data.error ?? "Não foi possível entrar.")
+        return
+      }
+
+      window.location.href = data.role === "CLIENTE" && data.clientId
+        ? `/clientes/${data.clientId}/chat`
+        : "/clientes"
+    } catch {
+      setError("Não foi possível conectar ao LUQZ Dash.")
+    } finally {
       setLoading(false)
-      return
-    }
-
-    // Redireciona conforme o role
-    if (data.role === "CLIENTE" && data.clientId) {
-      window.location.href = `/clientes/${data.clientId}/chat`
-    } else {
-      window.location.href = "/clientes"
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0D0D0D] px-4 relative overflow-hidden">
-      {/* Glow de fundo */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-orange-500/8 rounded-full blur-[120px]" />
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#080808] px-4 py-10">
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <div className="absolute left-1/2 top-1/2 h-[520px] w-[760px] -translate-x-1/2 -translate-y-1/2 opacity-70 [background:var(--app-glow)]" />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#FF8F50]/30 to-transparent" />
       </div>
 
-      <div className="w-full max-w-sm relative z-10">
-        {/* Logo */}
-        <div className="flex flex-col items-center mb-10">
-          <Image src="/logo-clara.png" alt="LUQZ" width={200} height={60} className="opacity-90 mb-2" />
-          <p className="text-xs text-zinc-600 tracking-widest uppercase mt-2">Performance & Solucoes Digitais</p>
+      <div className="relative z-10 w-full max-w-md">
+        <div className="mb-8 flex flex-col items-center text-center">
+          <DashBrandMark />
+          <p className="mt-4 max-w-xs text-sm leading-relaxed text-zinc-500">
+            Inteligência, operação e saúde da carteira em um só lugar.
+          </p>
         </div>
 
-        {/* Card */}
-        <div className="bg-[#161616] rounded-2xl border border-white/8 px-8 py-8">
-          <h2 className="text-base font-semibold text-zinc-100 mb-6">Acessar painel</h2>
+        <Panel className="rounded-2xl p-6 sm:p-8">
+          <div className="mb-6">
+            <p className="dash-eyebrow mb-2">Acesso seguro</p>
+            <h1 className="dash-display text-2xl text-white">Entrar no Dash</h1>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                E-mail
-              </label>
-              <input
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium text-zinc-300">E-mail</span>
+              <Input
                 type="email"
                 required
+                autoComplete="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="seu@email.com"
-                className="w-full px-4 py-3 rounded-xl border border-white/8 bg-[#0D0D0D] text-zinc-100 placeholder-zinc-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50 focus:border-orange-500/50 text-sm transition-all"
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="voce@empresa.com"
               />
-            </div>
+            </label>
 
-            <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider">
-                Senha
-              </label>
+            <label className="block space-y-1.5">
+              <span className="text-sm font-medium text-zinc-300">Senha</span>
               <div className="relative">
-                <input
-                  type={showPwd ? "text" : "password"}
+                <Input
+                  type={showPassword ? "text" : "password"}
                   required
+                  autoComplete="current-password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full px-4 py-3 pr-11 rounded-xl border border-white/8 bg-[#0D0D0D] text-zinc-100 placeholder-zinc-700 focus:outline-none focus:ring-1 focus:ring-orange-500/50 focus:border-orange-500/50 text-sm transition-all"
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Sua senha"
+                  className="pr-11"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPwd((v) => !v)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition-colors"
+                  onClick={() => setShowPassword((current) => !current)}
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                  className="absolute right-3 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-zinc-600 hover:bg-white/5 hover:text-zinc-300"
                 >
-                  {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-            </div>
+            </label>
 
             {error && (
-              <p className="text-xs text-red-400 bg-red-900/15 px-4 py-2.5 rounded-xl border border-red-800/30">
+              <p role="alert" className="rounded-lg border border-red-400/20 bg-red-500/10 px-3 py-2.5 text-sm text-red-300">
                 {error}
               </p>
             )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 mt-2 rounded-xl text-sm font-semibold text-white transition-all cursor-pointer disabled:opacity-50"
-              style={{
-                background: "linear-gradient(135deg, #FCD34D 0%, #F97316 100%)",
-                boxShadow: loading ? "none" : "0 0 24px rgba(249,115,22,0.3)",
-              }}
-            >
+            <Button type="submit" disabled={loading} className="mt-2 w-full">
               {loading ? "Entrando..." : "Entrar"}
-            </button>
+            </Button>
           </form>
-        </div>
+        </Panel>
 
-        <p className="text-center text-xs text-zinc-700 mt-8 tracking-wider uppercase">
+        <p className="mt-6 text-center text-xs uppercase tracking-[0.16em] text-zinc-700">
           dash.luqz.com.br
         </p>
       </div>
-    </div>
+    </main>
   )
 }

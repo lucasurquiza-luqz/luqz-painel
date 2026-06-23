@@ -3,14 +3,160 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --color-luqz-orange:  #F97316;
-  --color-luqz-amber:   #FCD34D;
-  --color-luqz-dark:    #0D0D0D;
-  --color-luqz-surface: #161616;
-  --color-luqz-card:    #1C1C1C;
+  --color-brand: #FF8F50;
+  --color-brand-soft: #FFB185;
+  --color-brand-gold: #FFD482;
+  --color-brand-cream: #FFF7AD;
+  --color-app-bg: #080808;
+  --color-app-surface: #111111;
+  --color-app-surface-muted: #151515;
+  --color-app-card: #232323;
+  --color-app-hover: #2E2E2E;
+  --font-sans: var(--font-luqz-body);
+  --font-display: var(--font-luqz-display);
+}
+
+:root {
+  --app-bg: #080808;
+  --app-surface: #111111;
+  --app-surface-muted: #151515;
+  --app-surface-raised: #232323;
+  --app-surface-hover: #2E2E2E;
+  --app-input: #111111;
+  --app-text: #FFFFFF;
+  --app-text-soft: #D5D5D5;
+  --app-text-muted: #6F6F6F;
+  --app-text-subtle: #52525B;
+  --app-border: rgba(255, 255, 255, .10);
+  --app-border-strong: rgba(255, 255, 255, .18);
+  --app-soft-fill: rgba(255, 255, 255, .05);
+  --app-softer-fill: rgba(255, 255, 255, .03);
+  --app-accent: #FF8F50;
+  --app-accent-soft: #FFB185;
+  --app-success: #6FCF8E;
+  --app-warning: #FFD482;
+  --app-danger: #FF6B5C;
+  --app-info: #9EC6FF;
+  --app-panel-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 18px 50px rgba(0,0,0,.26);
+  --app-gradient: linear-gradient(135deg, #FF8F50 0%, #FFD482 55%, #FFF7AD 100%);
+  --app-glow: radial-gradient(ellipse at 50% 50%, rgba(255,143,80,.24) 0%, rgba(8,8,8,0) 64%);
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-panel: 20px;
+  --ease-standard: cubic-bezier(.2,.7,.2,1);
+  --duration-fast: 140ms;
+  --duration-base: 220ms;
 }
 
 @layer base {
-  * { @apply border-white/8; }
-  body { @apply bg-[#0D0D0D] text-zinc-100 antialiased; }
+  * {
+    border-color: var(--app-border);
+  }
+
+  html {
+    background: var(--app-bg);
+  }
+
+  body {
+    background: var(--app-bg);
+    color: var(--app-text);
+    font-family: var(--font-luqz-body), "Roboto Flex", system-ui, sans-serif;
+    font-feature-settings: "ss01" on, "cv01" on;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: rgba(255, 143, 80, .35);
+    color: var(--app-text);
+  }
+
+  :focus-visible {
+    outline: 2px solid rgba(255, 143, 80, .72);
+    outline-offset: 2px;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    transition-duration: var(--duration-fast);
+    transition-timing-function: var(--ease-standard);
+  }
+}
+
+@layer utilities {
+  .dash-display {
+    font-family: var(--font-luqz-display), "Sulphur Point", sans-serif;
+    font-weight: 700;
+    letter-spacing: -.02em;
+  }
+
+  .dash-eyebrow {
+    color: var(--app-accent);
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: .12em;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  .dash-gradient-text {
+    background: var(--app-gradient);
+    background-clip: text;
+    color: transparent;
+    -webkit-background-clip: text;
+  }
+
+  .dash-panel {
+    background: linear-gradient(180deg, rgba(35,35,35,.94), rgba(17,17,17,.96));
+    border: 1px solid var(--app-border);
+    box-shadow: var(--app-panel-shadow);
+  }
+
+  .dash-input {
+    background: var(--app-input);
+    border: 1px solid var(--app-border-strong);
+    color: var(--app-text);
+  }
+
+  .dash-input::placeholder {
+    color: var(--app-text-subtle);
+  }
+
+  .dash-input:focus {
+    border-color: rgba(255, 143, 80, .60);
+    box-shadow: 0 0 0 1px rgba(255, 143, 80, .32);
+    outline: none;
+  }
+
+  .dash-button-primary {
+    background: linear-gradient(135deg, #FF8F50 0%, #FFD482 100%);
+    box-shadow: 0 10px 26px rgba(255, 143, 80, .20);
+    color: #080808;
+  }
+
+  .dash-button-primary:hover {
+    filter: brightness(1.04);
+    transform: translateY(-1px);
+  }
+
+  .dash-button-primary:active {
+    transform: translateY(0);
+  }
+
+  .dash-scrollbar {
+    scrollbar-color: var(--app-surface-hover) transparent;
+    scrollbar-width: thin;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }

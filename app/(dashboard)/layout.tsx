@@ -10,9 +10,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!session.userId) redirect("/login")
 
   return (
-    <div className="flex h-screen overflow-hidden bg-zinc-950">
+    <div className="flex h-screen overflow-hidden bg-[var(--app-bg)]">
       <Sidebar role={session.role} name={session.name} />
-      <main className="flex-1 overflow-y-auto">
+      <main className="dash-scrollbar flex-1 overflow-y-auto bg-[var(--app-bg)]">
         {children}
       </main>
     </div>
