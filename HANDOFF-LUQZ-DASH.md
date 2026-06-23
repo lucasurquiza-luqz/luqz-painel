@@ -196,7 +196,13 @@ git fetch origin
 git push origin HEAD:main
 ```
 
-O container executa `prisma migrate deploy` antes de iniciar o Next.js usando a `DATABASE_URL` já configurada no EasyPanel. Não solicitar nem compartilhar a connection string. Procedimento completo: `DEPLOY.md`.
+O container executa `docker-entrypoint.sh`, aplica `prisma migrate deploy` e só então
+inicia o Next.js usando a `DATABASE_URL` já configurada no EasyPanel. O runtime inclui
+Prisma CLI, OpenSSL e health check em `/api/health`. Não solicitar nem compartilhar a
+connection string. Procedimento completo: `DEPLOY.md`.
+
+Antes de promover uma branch para `main`, validar a mesma imagem em homologação e
+confirmar health check HTTP `200`. Produção não é ambiente de aprovação.
 
 O EasyPanel pode não realizar deploy automático. Se o domínio continuar na versão anterior, abrir o produto do Dash no EasyPanel e executar `Deploy`, `Redeploy` ou `Rebuild`.
 
