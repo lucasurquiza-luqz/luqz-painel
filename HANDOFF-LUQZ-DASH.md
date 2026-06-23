@@ -40,6 +40,7 @@ codex/luqz-dash-visual-foundation
 Commits relevantes:
 
 ```text
+3427e34 feat: cria fundacao do contexto vivo do cliente
 1a450e8 security: reforca RBAC e isolamento por cliente
 d461dcf feat: aplica fundacao visual do LUQZ Dash
 ```
@@ -47,7 +48,7 @@ d461dcf feat: aplica fundacao visual do LUQZ Dash
 Em 23/06/2026:
 
 - `d461dcf` estava publicado em produção e em `origin/main`.
-- `1a450e8` estava commitado localmente, aguardando build, push e deploy.
+- `1a450e8` e `3427e34` estavam na branch técnica, aguardando build, validação da migration, push para `main` e deploy.
 
 Sempre confirmar novamente com:
 
@@ -194,17 +195,14 @@ Depois validar:
 
 ## Próximo incremento
 
-Não começar pelo radar de saúde. Implementar primeiro o Contexto Vivo de um cliente piloto:
+O Contexto Vivo base foi implementado. Não começar pelo radar de saúde. Validar primeiro um cliente piloto:
 
-1. modelos Prisma aditivos;
-2. migrations seguras;
-3. APIs internas protegidas;
-4. página `/clientes/[id]/contexto`;
-5. itens com tipo, fonte, status e vigência;
-6. aprovação humana;
-7. snapshot reproduzível;
-8. diff entre versões;
-9. auditoria.
+1. aplicar a migration em homologação;
+2. testar propostas, aprovação, rejeição e correção;
+3. importar as fontes canônicas;
+4. gerar snapshot v1;
+5. corrigir um item e gerar snapshot v2;
+6. confirmar isolamento entre clientes e bloqueio do papel Cliente.
 
 Somente depois conectar resumos de grupos, reuniões, resultado, NPS e cálculo de saúde.
 
