@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
+import { requireApiUser } from "@/lib/api-auth"
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id: clientId } = await params
+  const auth = await requireApiUser(["ADMIN", "OPERADOR"])
+  if (!auth.ok) return auth.response
+
   const { groupId, linked } = await req.json()
 
   const group = await prisma.group.update({

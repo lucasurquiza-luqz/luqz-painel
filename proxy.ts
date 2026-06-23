@@ -43,6 +43,17 @@ export async function proxy(request: NextRequest) {
     return response
   }
 
+  if (session.role === "CLIENTE" && !session.clientId) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Usuario sem cliente vinculado." }, { status: 403 })
+    }
+    const url = request.nextUrl.clone()
+    url.pathname = "/login"
+    const redirect = NextResponse.redirect(url)
+    redirect.cookies.delete("luqz_session")
+    return redirect
+  }
+
   // Apos login: redireciona conforme o role
   if (isPublic) {
     const url = request.nextUrl.clone()
@@ -69,9 +80,9 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // So equipe acessa pagina de usuarios
+  // Somente ADMIN gerencia usuarios
   if (pathname.startsWith("/usuarios") || pathname.startsWith("/api/users")) {
-    if (!isEquipe(session.role ?? "")) {
+    if (session.role !== "ADMIN") {
       if (pathname.startsWith("/api/")) {
         return NextResponse.json({ error: "Acesso negado" }, { status: 403 })
       }
