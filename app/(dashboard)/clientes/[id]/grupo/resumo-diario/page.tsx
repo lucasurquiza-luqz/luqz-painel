@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { formatInTimeZone } from "date-fns-tz"
-import { Check, Loader2, MessagesSquare, Sparkles, Trash2, X } from "lucide-react"
+import { Check, DownloadCloud, Loader2, MessagesSquare, Sparkles, Trash2, X } from "lucide-react"
 import { Button, Input, PageHeader, Panel, StatusBadge } from "@/components/ui/primitives"
 
 const TZ = "America/Sao_Paulo"
@@ -71,6 +71,8 @@ export default function ResumoDiarioGrupoPage() {
   const [generating, setGenerating] = useState(false)
   const [date, setDate] = useState(todayInTz())
   const [error, setError] = useState("")
+  const [notice, setNotice] = useState("")
+  const [syncing, setSyncing] = useState(false)
   const [reviewingId, setReviewingId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -108,6 +110,25 @@ export default function ResumoDiarioGrupoPage() {
       return
     }
     setGenerating(false)
+    await load()
+  }
+
+  async function syncMessages() {
+    setSyncing(true)
+    setError("")
+    setNotice("")
+    const response = await fetch(`/api/clients/${clientId}/groups/sync-messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ days: 7, conversationId: conversationId || undefined }),
+    })
+    const payload = await response.json()
+    setSyncing(false)
+    if (!response.ok) {
+      setError(payload.error ?? "Não foi possível sincronizar as mensagens.")
+      return
+    }
+    setNotice(`Sincronização concluída: ${payload.totalStored} mensagem(ns) nova(s) importada(s) dos últimos ${payload.days} dias.`)
     await load()
   }
 
@@ -156,6 +177,9 @@ export default function ResumoDiarioGrupoPage() {
               ))}
             </select>
             <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="min-h-11" />
+            <Button variant="secondary" onClick={syncMessages} disabled={syncing} title="Importa o histórico recente dos grupos direto da Evolution">
+              {syncing ? <Loader2 size={16} className="animate-spin" /> : <DownloadCloud size={16} />} Sincronizar mensagens
+            </Button>
             <Button onClick={generate} disabled={generating || !conversationId}>
               {generating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />} Gerar resumo do dia
             </Button>
@@ -164,6 +188,7 @@ export default function ResumoDiarioGrupoPage() {
       />
 
       {error && <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}
+      {notice && <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{notice}</div>}
       <div className="rounded-xl border border-sky-400/15 bg-sky-500/[0.06] px-4 py-3 text-sm leading-6 text-sky-100/80">
         Ao gerar o resumo, o texto das mensagens do grupo selecionado é enviado ao provedor de IA configurado pela agência. Anexos e credenciais não são enviados.
       </div>

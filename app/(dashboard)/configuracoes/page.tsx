@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Bot, KeyRound, Loader2, Save, Trash2 } from "lucide-react"
+import { Bot, KeyRound, Loader2, MessageCircle, Plug, RefreshCw, Save, Trash2 } from "lucide-react"
 import { Button, Input, PageHeader, Panel } from "@/components/ui/primitives"
 
 type Credential = {
@@ -14,6 +14,19 @@ type Credential = {
 
 const PROVIDER_LABEL: Record<Credential["provider"], string> = {
   OPENAI: "OpenAI (GPT)",
+}
+
+type WhatsAppDiagnostics = {
+  connectionState: string | null
+  runtime: { lastWebhookAt: string | null; lastMessageAt: string | null; connectionState: string | null } | null
+  webhook: { enabled: unknown; url: unknown; events: unknown } | null
+  totals: { messages: number; groups: number; groupsLinkedToClient: number }
+  conversations: { id: string; group: string; client: string; lastMessageAt: string | null; messageCount: number }[]
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "—"
+  return new Date(value).toLocaleString("pt-BR")
 }
 
 export default function ConfiguracoesAgenciaPage() {
@@ -134,6 +147,111 @@ export default function ConfiguracoesAgenciaPage() {
           </div>
         </form>
       </Panel>
+
+      <WhatsAppPanel onError={setError} onNotice={setNotice} />
     </main>
+  )
+}
+
+function WhatsAppPanel({ onError, onNotice }: { onError: (value: string) => void; onNotice: (value: string) => void }) {
+  const [diagnostics, setDiagnostics] = useState<WhatsAppDiagnostics | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [working, setWorking] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const response = await fetch("/api/diagnostics/whatsapp")
+    const payload = await response.json()
+    if (response.ok) setDiagnostics(payload)
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { void load() }, [load])
+
+  async function reconfigureWebhook() {
+    setWorking(true)
+    onError("")
+    onNotice("")
+    const response = await fetch("/api/settings/whatsapp/webhook", { method: "POST" })
+    const payload = await response.json()
+    setWorking(false)
+    if (!response.ok) {
+      onError(payload.error ?? "Não foi possível reconfigurar o webhook.")
+      return
+    }
+    onNotice(payload.message ?? "Webhook reconfigurado.")
+    await load()
+  }
+
+  const connectionState = diagnostics?.connectionState ?? diagnostics?.runtime?.connectionState ?? null
+  const isConnected = connectionState === "open"
+
+  return (
+    <Panel className="p-5 lg:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <MessageCircle size={18} className="text-[#FF8F50]" />
+          <h2 className="text-base font-semibold text-white">WhatsApp · ingestão de grupos</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" className="min-h-8 px-3 py-1 text-xs" onClick={() => void load()} disabled={loading}>
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Atualizar
+          </Button>
+          <Button className="min-h-8 px-3 py-1 text-xs" onClick={() => void reconfigureWebhook()} disabled={working}>
+            {working ? <Loader2 size={13} className="animate-spin" /> : <Plug size={13} />} Reconfigurar webhook
+          </Button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="mt-5 flex min-h-20 items-center justify-center"><Loader2 className="animate-spin text-[#FF8F50]" /></div>
+      ) : !diagnostics ? (
+        <p className="mt-5 text-sm text-zinc-600">Não foi possível carregar o diagnóstico.</p>
+      ) : (
+        <div className="mt-5 space-y-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Metric label="Conexão" value={connectionState ?? "desconhecida"} tone={isConnected ? "good" : "warn"} />
+            <Metric label="Último webhook" value={formatDateTime(diagnostics.runtime?.lastWebhookAt)} />
+            <Metric label="Grupos vinculados" value={`${diagnostics.totals.groupsLinkedToClient}/${diagnostics.totals.groups}`} />
+            <Metric label="Mensagens armazenadas" value={String(diagnostics.totals.messages)} />
+          </div>
+
+          {!isConnected && (
+            <p className="rounded-lg border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              A instância não está conectada (estado: {connectionState ?? "desconhecido"}). Sem conexão, nenhuma mensagem é recebida.
+            </p>
+          )}
+
+          <div>
+            <p className="mb-2 text-xs font-medium text-zinc-400">Mensagens por grupo</p>
+            {diagnostics.conversations.length === 0 ? (
+              <p className="text-sm text-zinc-600">Nenhuma conversa de grupo registrada ainda.</p>
+            ) : (
+              <div className="space-y-2">
+                {diagnostics.conversations.map((conversation) => (
+                  <div key={conversation.id} className="flex items-center justify-between gap-3 rounded-lg border border-white/8 bg-black/20 p-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-zinc-200">{conversation.group}</p>
+                      <p className="text-xs text-zinc-600">{conversation.client} · última: {formatDateTime(conversation.lastMessageAt)}</p>
+                    </div>
+                    <span className="shrink-0 rounded-md bg-white/5 px-2 py-1 text-xs text-zinc-300">{conversation.messageCount} msgs</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </Panel>
+  )
+}
+
+function Metric({ label, value, tone }: { label: string; value: string; tone?: "good" | "warn" }) {
+  const valueColor = tone === "good" ? "text-emerald-300" : tone === "warn" ? "text-amber-300" : "text-zinc-100"
+  return (
+    <div className="rounded-lg border border-white/8 bg-black/20 p-3">
+      <p className="text-xs text-zinc-600">{label}</p>
+      <p className={`mt-1 truncate text-sm font-semibold ${valueColor}`}>{value}</p>
+    </div>
   )
 }
