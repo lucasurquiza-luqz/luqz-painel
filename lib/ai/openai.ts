@@ -1,15 +1,17 @@
+import { getProviderApiKey } from "@/lib/ai/credentials"
+
 const API_URL = "https://api.openai.com/v1/chat/completions"
 const MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini"
 const TIMEOUT_MS = 60_000
 
 export class AiProviderNotConfiguredError extends Error {
   constructor() {
-    super("OPENAI_API_KEY nao configurada. Defina a variavel no ambiente do EasyPanel.")
+    super("Nenhuma chave da OpenAI configurada. Cadastre em Configurações > IA ou defina OPENAI_API_KEY no ambiente.")
   }
 }
 
 export async function completeJSON(systemPrompt: string, userPrompt: string): Promise<unknown> {
-  const apiKey = process.env.OPENAI_API_KEY
+  const apiKey = await getProviderApiKey("OPENAI", process.env.OPENAI_API_KEY)
   if (!apiKey) throw new AiProviderNotConfiguredError()
 
   const controller = new AbortController()

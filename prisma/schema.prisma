@@ -49,6 +49,7 @@ model User {
   clientStatusChanges       ClientStatusHistory[]   @relation("ClientStatusChangedBy")
   groupSummariesGenerated   GroupDailySummary[]     @relation("GroupDailySummaryGeneratedBy")
   groupSummaryItemsReviewed GroupDailySummaryItem[] @relation("GroupDailySummaryItemReviewedBy")
+  aiCredentialsUpdated      AiCredential[]          @relation("AiCredentialUpdatedBy")
 }
 
 enum Role {
@@ -353,4 +354,21 @@ model GroupDailySummaryItem {
   contextItem ContextItem?      @relation(fields: [contextItemId], references: [id], onDelete: SetNull)
 
   @@index([summaryId, status])
+}
+
+enum AiProvider {
+  OPENAI
+}
+
+model AiCredential {
+  id             String     @id @default(cuid())
+  provider       AiProvider @unique
+  label          String
+  encryptedValue String
+  lastFour       String
+  updatedById    String
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  updatedBy User @relation("AiCredentialUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
 }

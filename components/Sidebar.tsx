@@ -121,6 +121,7 @@ export function Sidebar({ role, name }: SidebarProps) {
             {role === "ADMIN" && (
               <NavSection label="Administração">
                 <NavItem href="/usuarios" label="Usuários" icon={Users} active={pathname.startsWith("/usuarios")} />
+                <NavItem href="/configuracoes" label="Configurações" icon={Settings} active={pathname.startsWith("/configuracoes")} />
               </NavSection>
             )}
           </>
