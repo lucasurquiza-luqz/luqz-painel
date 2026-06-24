@@ -27,6 +27,9 @@ model Client {
   contextSnapshots    ContextSnapshot[]
   statusHistory       ClientStatusHistory[]
   groupDailySummaries GroupDailySummary[]
+  meetings            Meeting[]
+  meetingSummaries    MeetingSummary[]
+  teamCheckins        TeamCheckin[]
 }
 
 model User {
@@ -49,7 +52,11 @@ model User {
   clientStatusChanges       ClientStatusHistory[]   @relation("ClientStatusChangedBy")
   groupSummariesGenerated   GroupDailySummary[]     @relation("GroupDailySummaryGeneratedBy")
   groupSummaryItemsReviewed GroupDailySummaryItem[] @relation("GroupDailySummaryItemReviewedBy")
-  aiCredentialsUpdated      AiCredential[]          @relation("AiCredentialUpdatedBy")
+  aiCredentialsUpdated          AiCredential[]          @relation("AiCredentialUpdatedBy")
+  meetingsCreated               Meeting[]               @relation("MeetingCreatedBy")
+  meetingSummariesGenerated     MeetingSummary[]        @relation("MeetingSummaryGeneratedBy")
+  meetingSummaryItemsReviewed   MeetingSummaryItem[]    @relation("MeetingSummaryItemReviewedBy")
+  teamCheckins                  TeamCheckin[]           @relation("TeamCheckinAuthor")
 }
 
 enum Role {
@@ -178,6 +185,16 @@ model WaMessage {
   conversation WaConversation @relation(fields: [conversationId], references: [id])
 }
 
+// Estado de runtime da integracao WhatsApp (singleton). Usado para diagnostico:
+// ultimo estado de conexao e quando o ultimo webhook foi efetivamente recebido.
+model WhatsAppRuntime {
+  id              String    @id @default("singleton")
+  connectionState String?
+  lastWebhookAt   DateTime?
+  lastMessageAt   DateTime?
+  updatedAt       DateTime  @updatedAt
+}
+
 enum ContextDomain {
   DIRETRIZES
   OFERTA
@@ -259,7 +276,8 @@ model ContextItem {
   supersedes       ContextItem?           @relation("ContextItemHistory", fields: [supersedesId], references: [id], onDelete: SetNull)
   revisions        ContextItem[]          @relation("ContextItemHistory")
   snapshots        ContextSnapshotItem[]
-  groupSummaryItem GroupDailySummaryItem?
+  groupSummaryItem    GroupDailySummaryItem?
+  meetingSummaryItem  MeetingSummaryItem?
 
   @@index([clientId, status, domain])
   @@index([sourceId])
@@ -371,4 +389,114 @@ model AiCredential {
   updatedAt      DateTime   @updatedAt
 
   updatedBy User @relation("AiCredentialUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+}
+
+
+// === Meetings ===
+
+enum MeetingKind {
+  CALL
+  IN_PERSON
+  ASYNC
+}
+
+enum MeetingSummaryStatus {
+  DRAFT
+  REVIEWED
+}
+
+enum MeetingItemKind {
+  DECISION
+  COMMITMENT
+  OBJECTION
+  RISK
+  NEXT_STEP
+}
+
+enum MeetingItemStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+  DISCARDED
+}
+
+model Meeting {
+  id           String      @id @default(cuid())
+  clientId     String
+  title        String
+  kind         MeetingKind
+  date         DateTime
+  participants String[]
+  rawContent   String
+  createdById  String
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  client    Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy User           @relation("MeetingCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  summary   MeetingSummary?
+
+  @@index([clientId, date])
+}
+
+model MeetingSummary {
+  id            String               @id @default(cuid())
+  meetingId     String               @unique
+  clientId      String
+  status        MeetingSummaryStatus @default(DRAFT)
+  rawSummary    String
+  generatedById String
+  generatedAt   DateTime             @default(now())
+
+  meeting     Meeting              @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  client      Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  generatedBy User                 @relation("MeetingSummaryGeneratedBy", fields: [generatedById], references: [id], onDelete: Restrict)
+  items       MeetingSummaryItem[]
+
+  @@index([clientId])
+}
+
+model MeetingSummaryItem {
+  id            String            @id @default(cuid())
+  summaryId     String
+  kind          MeetingItemKind
+  text          String
+  responsible   String?
+  deadline      String?
+  status        MeetingItemStatus @default(PROPOSED)
+  reviewedById  String?
+  reviewedAt    DateTime?
+  contextItemId String?           @unique
+  createdAt     DateTime          @default(now())
+
+  summary     MeetingSummary @relation(fields: [summaryId], references: [id], onDelete: Cascade)
+  reviewedBy  User?          @relation("MeetingSummaryItemReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  contextItem ContextItem?   @relation(fields: [contextItemId], references: [id], onDelete: SetNull)
+
+  @@index([summaryId, status])
+}
+
+// === Team Check-in ===
+
+enum TeamPerception {
+  GREAT
+  GOOD
+  NEUTRAL
+  CONCERN
+  CRITICAL
+}
+
+model TeamCheckin {
+  id            String         @id @default(cuid())
+  clientId      String
+  authorId      String
+  perception    TeamPerception
+  justification String
+  validUntil    DateTime?
+  createdAt     DateTime       @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  author User   @relation("TeamCheckinAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([clientId, createdAt])
 }

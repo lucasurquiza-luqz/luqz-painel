@@ -15,6 +15,8 @@ import {
   MessagesSquare,
   Settings,
   Users,
+  Video,
+  HeartPulse,
 } from "lucide-react"
 import { DashBrandMark } from "@/components/DashBrandMark"
 import { cn } from "@/lib/utils"
@@ -24,6 +26,10 @@ const clientNav = [
   { href: "/status", label: "Status", icon: Activity, internalOnly: true },
   { href: "/contexto", label: "Contexto", icon: BrainCircuit, internalOnly: true },
   { href: "/grupo/resumo-diario", label: "Resumo do grupo", icon: MessagesSquare, internalOnly: true },
+  { href: "/reunioes", label: "Reunioes", icon: Video, internalOnly: true },
+  { href: "/checkin", label: "Check-in", icon: HeartPulse, internalOnly: true },
+  { href: "/reunioes", label: "Reunioes", icon: Video, internalOnly: true },
+  { href: "/checkin", label: "Check-in", icon: HeartPulse, internalOnly: true },
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/configuracoes", label: "Configurações", icon: Settings },
   { href: "/credenciais", label: "Credenciais", icon: KeyRound, soon: true },
