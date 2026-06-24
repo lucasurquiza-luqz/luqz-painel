@@ -62,6 +62,7 @@ export default function ContextoClientePage() {
   const [saving, setSaving] = useState(false)
   const [snapshotting, setSnapshotting] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [notice, setNotice] = useState("")
   const [filter, setFilter] = useState<"ALL" | ContextStatus>("ALL")
   const [form, setForm] = useState(EMPTY_FORM)
 
@@ -152,6 +153,7 @@ export default function ContextoClientePage() {
   async function importPilot() {
     setImporting(true)
     setError("")
+    setNotice("")
     const response = await fetch(`/api/clients/${clientId}/context/import-pilot`, { method: "POST" })
     const payload = await response.json()
     if (!response.ok) {
@@ -159,6 +161,7 @@ export default function ContextoClientePage() {
       setImporting(false)
       return
     }
+    setNotice(`Piloto sincronizado: ${payload.created} proposta(s) criada(s) e ${payload.skipped} já existente(s), de ${payload.total} no total.`)
     setImporting(false)
     await loadContext()
   }
@@ -183,6 +186,13 @@ export default function ContextoClientePage() {
       />
 
       {error && <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}
+      {notice && <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{notice}</div>}
+
+      {data?.client.clickupFolderId === "901317617481" && (
+        <div className="rounded-xl border border-[#FFD482]/20 bg-[#FFD482]/[0.06] px-4 py-3 text-sm leading-6 text-[#FFD482]">
+          <strong>Piloto com fontes provisórias.</strong> As propostas abaixo foram extraídas do resumo operacional, do escopo confirmado e da memória do cliente. Diretrizes, oferta, persona, tom de voz e contexto geral ainda precisam ser formalizados antes de alimentar saúde ou IA.
+        </div>
+      )}
 
       {showForm && (
         <Panel className="border-[#FF8F50]/20 p-5 lg:p-6">

@@ -29,6 +29,11 @@ export const DEPOSITO_SANTA_HELENA_PROPOSALS: PilotContextProposal[] = [
     sourceLabel: summarySource, sourceReference: summaryReference, capturedAt: "2026-05-12T12:00:00.000Z",
   },
   {
+    domain: "CLIENTE", kind: "FACT", title: "Canal comercial principal",
+    content: "O WhatsApp é o principal canal de atendimento comercial da operação local.",
+    sourceLabel: memorySource, sourceReference: memoryReference, capturedAt: "2026-05-12T12:00:00.000Z",
+  },
+  {
     domain: "DIRETRIZES", kind: "RULE", title: "Não tratar como e-commerce tradicional",
     content: "A estratégia deve priorizar demanda local, loja física e WhatsApp. O site está desatualizado e não deve ser tratado como principal ativo de venda.",
     sourceLabel: memorySource, sourceReference: memoryReference, capturedAt: "2026-05-12T12:00:00.000Z",
