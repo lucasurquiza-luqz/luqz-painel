@@ -87,3 +87,82 @@ export async function sendWhatsAppAudio(remoteJid: string, audio: string) {
   })
   return evoJSON(res)
 }
+
+// Normaliza respostas da Evolution que ora vem como array, ora embrulhadas.
+function toArrayPayload(data: unknown): unknown[] {
+  if (Array.isArray(data)) return data
+  if (!data || typeof data !== "object") return []
+
+  const obj = data as Record<string, unknown>
+  for (const key of ["messages", "records", "chats", "data", "response", "result", "rows"]) {
+    if (Array.isArray(obj[key])) return obj[key] as unknown[]
+  }
+  for (const value of Object.values(obj)) {
+    if (Array.isArray(value)) return value
+  }
+  return []
+}
+
+// Busca o historico de mensagens de um chat/grupo a partir de `since`.
+// Usado pelo backfill para preencher dias anteriores ao webhook ficar ativo.
+export async function fetchMessages(remoteJid: string, since?: Date): Promise<unknown[]> {
+  const where: Record<string, unknown> = { key: { remoteJid } }
+  if (since) where.messageTimestamp = { gte: Math.floor(since.getTime() / 1000) }
+
+  const res = await evoFetch(`${BASE_URL}/chat/findMessages/${INSTANCE}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ where }),
+  })
+  return toArrayPayload(await evoJSON(res))
+}
+
+// Estado de conexao da instancia ("open", "connecting", "close"...).
+export async function getConnectionState(): Promise<string | null> {
+  try {
+    const res = await evoFetch(`${BASE_URL}/instance/connectionState/${INSTANCE}`, { headers })
+    if (!res.ok) return null
+    const data = (await res.json()) as Record<string, unknown>
+    const instance = (data?.instance as Record<string, unknown> | undefined) ?? data
+    const state = instance?.state ?? instance?.status
+    return typeof state === "string" ? state : null
+  } catch {
+    return null
+  }
+}
+
+// (Re)registra o webhook na Evolution apontando para o Dash, com os eventos
+// necessarios para ler grupos. Provavel correcao quando "nao le os grupos".
+export async function setWebhook(url: string): Promise<unknown> {
+  const res = await evoFetch(`${BASE_URL}/webhook/set/${INSTANCE}`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      enabled: true,
+      url,
+      webhook_by_events: false,
+      webhookByEvents: false,
+      webhook_base64: true,
+      webhookBase64: true,
+      events: [
+        "MESSAGES_UPSERT",
+        "MESSAGES_UPDATE",
+        "CONNECTION_UPDATE",
+        "GROUPS_UPSERT",
+        "GROUPS_UPDATE",
+      ],
+    }),
+  })
+  return evoJSON(res)
+}
+
+// Le a configuracao atual do webhook (para diagnostico).
+export async function getWebhook(): Promise<unknown> {
+  try {
+    const res = await evoFetch(`${BASE_URL}/webhook/find/${INSTANCE}`, { headers })
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
