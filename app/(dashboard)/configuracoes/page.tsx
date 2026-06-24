@@ -1,7 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
-import { Bot, KeyRound, Loader2, MessageCircle, Plug, RefreshCw, Save, Trash2 } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Bot, KeyRound, Loader2, MessageCircle, Plug, Power, QrCode, RefreshCw, Save, Smartphone, Trash2 } from "lucide-react"
 import { Button, Input, PageHeader, Panel } from "@/components/ui/primitives"
 
 type Credential = {
@@ -203,6 +203,8 @@ function WhatsAppPanel({ onError, onNotice }: { onError: (value: string) => void
         </div>
       </div>
 
+      <WhatsAppConnection onStateChange={() => void load()} />
+
       {loading ? (
         <div className="mt-5 flex min-h-20 items-center justify-center"><Loader2 className="animate-spin text-[#FF8F50]" /></div>
       ) : !diagnostics ? (
@@ -243,6 +245,94 @@ function WhatsAppPanel({ onError, onNotice }: { onError: (value: string) => void
         </div>
       )}
     </Panel>
+  )
+}
+
+type ConnectionInfo = { state: string | null; qr: string | null; pairingCode: string | null; error?: string }
+
+function WhatsAppConnection({ onStateChange }: { onStateChange: () => void }) {
+  const [info, setInfo] = useState<ConnectionInfo | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [disconnecting, setDisconnecting] = useState(false)
+  const wasOpen = useRef<boolean | null>(null)
+
+  const load = useCallback(async () => {
+    const response = await fetch("/api/settings/whatsapp/connection")
+    const payload = await response.json()
+    setInfo(payload)
+    setLoading(false)
+    const open = payload.state === "open"
+    if (wasOpen.current !== null && wasOpen.current !== open) onStateChange()
+    wasOpen.current = open
+  }, [onStateChange])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  // Enquanto nao conectado, atualiza o QR/estado periodicamente.
+  useEffect(() => {
+    if (info?.state === "open") return
+    const timer = setInterval(() => { void load() }, 5000)
+    return () => clearInterval(timer)
+  }, [info?.state, load])
+
+  async function disconnect() {
+    if (!window.confirm("Desconectar o WhatsApp? Será necessário parear novamente com o QR.")) return
+    setDisconnecting(true)
+    await fetch("/api/settings/whatsapp/connection", { method: "DELETE" })
+    setDisconnecting(false)
+    await load()
+  }
+
+  const isOpen = info?.state === "open"
+
+  return (
+    <div className="mt-5 rounded-xl border border-white/8 bg-black/20 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Smartphone size={15} className={isOpen ? "text-emerald-400" : "text-amber-400"} />
+          <span className="text-sm font-medium text-zinc-200">Conexão da instância</span>
+          <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${isOpen ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"}`}>
+            {loading ? "verificando…" : isOpen ? "conectado" : (info?.state ?? "desconectado")}
+          </span>
+        </div>
+        {isOpen && (
+          <Button variant="danger" className="min-h-8 px-3 py-1 text-xs" onClick={() => void disconnect()} disabled={disconnecting}>
+            {disconnecting ? <Loader2 size={13} className="animate-spin" /> : <Power size={13} />} Desconectar
+          </Button>
+        )}
+      </div>
+
+      {!isOpen && !loading && (
+        <div className="mt-4 flex flex-col items-center gap-3 sm:flex-row sm:items-start">
+          {info?.qr ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={info.qr} alt="QR Code de conexão do WhatsApp" className="h-48 w-48 shrink-0 rounded-lg bg-white p-2" />
+          ) : (
+            <div className="flex h-48 w-48 shrink-0 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-white/10 text-zinc-600">
+              <QrCode size={28} />
+              <span className="text-xs">Gerando QR…</span>
+            </div>
+          )}
+          <div className="space-y-2 text-sm text-zinc-400">
+            <p className="font-medium text-zinc-200">Parear o WhatsApp</p>
+            <ol className="list-decimal space-y-1 pl-4 text-xs leading-5 text-zinc-500">
+              <li>Abra o WhatsApp no celular da operação.</li>
+              <li>Toque em Configurações → Aparelhos conectados.</li>
+              <li>Toque em Conectar um aparelho e escaneie o QR ao lado.</li>
+            </ol>
+            {info?.pairingCode && (
+              <p className="text-xs text-zinc-400">
+                Ou use o código de pareamento: <span className="font-mono text-[#FFD482]">{info.pairingCode}</span>
+              </p>
+            )}
+            {info?.error && <p className="text-xs text-red-300">{info.error}</p>}
+            <p className="text-[11px] text-zinc-600">O QR expira em poucos segundos e é atualizado automaticamente.</p>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 

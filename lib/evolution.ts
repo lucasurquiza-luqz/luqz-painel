@@ -166,3 +166,19 @@ export async function getWebhook(): Promise<unknown> {
     return null
   }
 }
+
+// Inicia o pareamento da instancia e retorna o QR code (base64) e/ou codigo.
+// Usado pela tela de conexao para o usuario escanear com o WhatsApp.
+export async function connectInstance(): Promise<unknown> {
+  const res = await evoFetch(`${BASE_URL}/instance/connect/${INSTANCE}`, { headers })
+  return evoJSON(res)
+}
+
+// Desconecta a instancia (logout). Forca novo pareamento na proxima conexao.
+export async function logoutInstance(): Promise<unknown> {
+  const res = await evoFetch(`${BASE_URL}/instance/logout/${INSTANCE}`, {
+    method: "DELETE",
+    headers,
+  })
+  return evoJSON(res)
+}

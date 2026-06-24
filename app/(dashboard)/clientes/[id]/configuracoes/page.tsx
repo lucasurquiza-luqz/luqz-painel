@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
-import { RefreshCw, Users, Smartphone, DownloadCloud, MessageCircle } from "lucide-react"
+import Link from "next/link"
+import { RefreshCw, Users, Smartphone, DownloadCloud, MessageCircle, QrCode } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface Group {
@@ -119,9 +120,17 @@ export default function ClienteConfiguracoesPage() {
             <StatusCell label="Ultima mensagem" value={formatDateTime(waStatus.runtime?.lastMessageAt)} />
           </div>
           {!isConnected && (
-            <p className="text-xs text-amber-300/90 mb-3">
-              A instancia nao esta conectada. Enquanto isso, nenhuma mensagem nova chega pelo webhook.
-            </p>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <p className="text-xs text-amber-300/90">
+                A instancia nao esta conectada. Enquanto isso, nenhuma mensagem nova chega pelo webhook.
+              </p>
+              <Link
+                href="/configuracoes"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500/15 px-2.5 py-1 text-xs font-medium text-orange-300 hover:bg-orange-500/25"
+              >
+                <QrCode size={12} /> Conectar WhatsApp
+              </Link>
+            </div>
           )}
           <div className="flex items-center gap-2 flex-wrap">
             <button
