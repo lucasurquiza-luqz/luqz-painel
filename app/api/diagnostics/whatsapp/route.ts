@@ -6,7 +6,7 @@ import { getConnectionState, getWebhook } from "@/lib/evolution"
 // Diagnostico da integracao WhatsApp: estado da conexao, ultimo webhook recebido,
 // configuracao do webhook na Evolution e volume de mensagens por grupo.
 export async function GET() {
-  const auth = await requireApiUser(["ADMIN"])
+  const auth = await requireApiUser(["ADMIN", "OPERADOR"])
   if (!auth.ok) return auth.response
 
   const [runtime, connectionState, webhook, conversations, totalMessages, groupsTotal, groupsLinked] =

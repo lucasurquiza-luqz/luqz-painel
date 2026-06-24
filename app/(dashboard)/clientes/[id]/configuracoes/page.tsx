@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
-import { RefreshCw, Users, Smartphone } from "lucide-react"
+import { RefreshCw, Users, Smartphone, DownloadCloud, MessageCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface Group {
@@ -10,6 +10,16 @@ interface Group {
   name: string
   participants: number
   clientId: string | null
+}
+
+interface WaStatus {
+  connectionState: string | null
+  runtime: { lastWebhookAt: string | null; lastMessageAt: string | null } | null
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "—"
+  return new Date(value).toLocaleString("pt-BR")
 }
 
 export default function ClienteConfiguracoesPage() {
@@ -20,6 +30,9 @@ export default function ClienteConfiguracoesPage() {
   const [syncing, setSyncing] = useState(false)
   const [linking, setLinking] = useState<string | null>(null)
   const [syncMsg, setSyncMsg] = useState("")
+  const [waStatus, setWaStatus] = useState<WaStatus | null>(null)
+  const [backfilling, setBackfilling] = useState(false)
+  const [backfillMsg, setBackfillMsg] = useState("")
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -34,7 +47,17 @@ export default function ClienteConfiguracoesPage() {
     setLoading(false)
   }, [clientId])
 
-  useEffect(() => { load() }, [load])
+  const loadStatus = useCallback(async () => {
+    // Diagnostico e restrito a Admin; degrada em silencio para Operador.
+    try {
+      const res = await fetch("/api/diagnostics/whatsapp")
+      if (res.ok) setWaStatus(await res.json())
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  useEffect(() => { load(); loadStatus() }, [load, loadStatus])
 
   async function handleSync() {
     setSyncing(true)
@@ -51,16 +74,30 @@ export default function ClienteConfiguracoesPage() {
     setTimeout(() => setSyncMsg(""), 4000)
   }
 
-  async function toggleGroup(groupId: string, isLinked: boolean) {
-    setLinking(groupId)
-    await fetch(`/api/clients/${clientId}/groups`, {
-      method: "PATCH",
+  async function handleBackfill() {
+    setBackfilling(true)
+    setBackfillMsg("")
+    const res = await fetch(`/api/clients/${clientId}/groups/sync-messages`, {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ groupId, linked: !isLinked }),
+      body: JSON.stringify({ days: 7 }),
     })
-    await load()
-    setLinking(null)
+    const data = await res.json()
+    if (res.ok) {
+      setBackfillMsg(
+        data.totalStored > 0
+          ? `${data.totalStored} mensagem(ns) importada(s) dos ultimos ${data.days} dias.`
+          : `Nenhuma mensagem nova encontrada na Evolution nos ultimos ${data.days} dias.`
+      )
+      await loadStatus()
+    } else {
+      setBackfillMsg(data.error ?? "Erro ao sincronizar mensagens.")
+    }
+    setBackfilling(false)
   }
+
+  const connectionState = waStatus?.connectionState ?? null
+  const isConnected = connectionState === "open"
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
@@ -68,6 +105,40 @@ export default function ClienteConfiguracoesPage() {
         <h1 className="text-xl font-semibold text-zinc-100">Configuracoes</h1>
         <p className="text-sm text-zinc-500 mt-0.5">Grupos e configuracoes do cliente</p>
       </div>
+
+      {/* Saude da integracao WhatsApp */}
+      {waStatus && (
+        <div className="bg-zinc-900 border border-white/8 rounded-2xl p-5 mb-4">
+          <div className="flex items-center gap-2.5 mb-4">
+            <MessageCircle size={16} className="text-orange-400" />
+            <h2 className="text-sm font-semibold text-zinc-100">Integracao WhatsApp</h2>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+            <StatusCell label="Conexao" value={connectionState ?? "desconhecida"} tone={isConnected ? "good" : "warn"} />
+            <StatusCell label="Ultimo webhook" value={formatDateTime(waStatus.runtime?.lastWebhookAt)} />
+            <StatusCell label="Ultima mensagem" value={formatDateTime(waStatus.runtime?.lastMessageAt)} />
+          </div>
+          {!isConnected && (
+            <p className="text-xs text-amber-300/90 mb-3">
+              A instancia nao esta conectada. Enquanto isso, nenhuma mensagem nova chega pelo webhook.
+            </p>
+          )}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleBackfill}
+              disabled={backfilling}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/25 text-orange-300 text-xs rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <DownloadCloud size={13} className={backfilling ? "animate-pulse" : ""} />
+              {backfilling ? "Sincronizando mensagens..." : "Sincronizar mensagens (7 dias)"}
+            </button>
+            {backfillMsg && <span className="text-xs text-zinc-400">{backfillMsg}</span>}
+          </div>
+          <p className="text-[11px] text-zinc-600 mt-2">
+            Puxa o historico recente dos grupos vinculados direto da Evolution. Diagnostico completo em Configuracoes da agencia.
+          </p>
+        </div>
+      )}
 
       {/* Secao de Grupos */}
       <div className="bg-zinc-900 border border-white/8 rounded-2xl p-5">
@@ -147,6 +218,27 @@ export default function ClienteConfiguracoesPage() {
           </div>
         )}
       </div>
+    </div>
+  )
+
+  async function toggleGroup(groupId: string, isLinked: boolean) {
+    setLinking(groupId)
+    await fetch(`/api/clients/${clientId}/groups`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groupId, linked: !isLinked }),
+    })
+    await load()
+    setLinking(null)
+  }
+}
+
+function StatusCell({ label, value, tone }: { label: string; value: string; tone?: "good" | "warn" }) {
+  const valueColor = tone === "good" ? "text-emerald-300" : tone === "warn" ? "text-amber-300" : "text-zinc-200"
+  return (
+    <div className="rounded-xl border border-white/8 bg-zinc-800/40 px-3 py-2">
+      <p className="text-[11px] text-zinc-600">{label}</p>
+      <p className={cn("mt-0.5 text-xs font-semibold truncate", valueColor)}>{value}</p>
     </div>
   )
 }
