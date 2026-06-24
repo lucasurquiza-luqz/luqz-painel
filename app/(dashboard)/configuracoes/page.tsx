@@ -191,7 +191,7 @@ function WhatsAppPanel({ onError, onNotice }: { onError: (value: string) => void
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <MessageCircle size={18} className="text-[#FF8F50]" />
-          <h2 className="text-base font-semibold text-white">WhatsApp · ingestão de grupos</h2>
+          <h2 className="text-base font-semibold text-white">Integração WhatsApp</h2>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" className="min-h-8 px-3 py-1 text-xs" onClick={() => void load()} disabled={loading}>
