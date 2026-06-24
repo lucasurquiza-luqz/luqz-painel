@@ -157,6 +157,7 @@ function WhatsAppPanel({ onError, onNotice }: { onError: (value: string) => void
   const [diagnostics, setDiagnostics] = useState<WhatsAppDiagnostics | null>(null)
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
+  const [baseUrl, setBaseUrl] = useState("")
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -172,14 +173,18 @@ function WhatsAppPanel({ onError, onNotice }: { onError: (value: string) => void
     setWorking(true)
     onError("")
     onNotice("")
-    const response = await fetch("/api/settings/whatsapp/webhook", { method: "POST" })
+    const response = await fetch("/api/settings/whatsapp/webhook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(baseUrl.trim() ? { baseUrl: baseUrl.trim() } : {}),
+    })
     const payload = await response.json()
     setWorking(false)
     if (!response.ok) {
       onError(payload.error ?? "Não foi possível reconfigurar o webhook.")
       return
     }
-    onNotice(payload.message ?? "Webhook reconfigurado.")
+    onNotice(`${payload.message ?? "Webhook reconfigurado."}${payload.registeredUrl ? ` (${payload.registeredUrl})` : ""}`)
     await load()
   }
 
@@ -223,6 +228,47 @@ function WhatsAppPanel({ onError, onNotice }: { onError: (value: string) => void
               A instância não está conectada (estado: {connectionState ?? "desconhecido"}). Sem conexão, nenhuma mensagem é recebida.
             </p>
           )}
+
+          {isConnected && !diagnostics.runtime?.lastWebhookAt && (
+            <p className="rounded-lg border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              Conectado, mas nenhum webhook chegou ao Dash ainda. Clique em “Reconfigurar webhook”. Se mesmo assim
+              “Último webhook” não mudar ao receber uma mensagem, a Evolution não está alcançando esta URL —
+              informe a URL interna do container abaixo e reconfigure.
+            </p>
+          )}
+
+          <div className="rounded-lg border border-white/8 bg-black/20 p-3">
+            <p className="mb-2 text-xs font-medium text-zinc-400">Webhook registrado na Evolution</p>
+            <dl className="space-y-1 text-xs">
+              <div className="flex gap-2">
+                <dt className="w-16 shrink-0 text-zinc-600">Estado</dt>
+                <dd className={diagnostics.webhook?.enabled ? "text-emerald-300" : "text-amber-300"}>
+                  {diagnostics.webhook ? (diagnostics.webhook.enabled ? "ativo" : "inativo") : "não configurado"}
+                </dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="w-16 shrink-0 text-zinc-600">URL</dt>
+                <dd className="min-w-0 break-all font-mono text-zinc-400">{String(diagnostics.webhook?.url ?? "—")}</dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="w-16 shrink-0 text-zinc-600">Eventos</dt>
+                <dd className="min-w-0 break-all text-zinc-400">
+                  {Array.isArray(diagnostics.webhook?.events) ? (diagnostics.webhook!.events as string[]).join(", ") : "—"}
+                </dd>
+              </div>
+            </dl>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <Input
+                value={baseUrl}
+                onChange={(event) => setBaseUrl(event.target.value)}
+                placeholder="URL alternativa do webhook (ex: http://painel:3000) — opcional"
+                className="min-h-9 text-xs"
+              />
+              <Button className="min-h-9 shrink-0 px-3 text-xs" onClick={() => void reconfigureWebhook()} disabled={working}>
+                {working ? <Loader2 size={13} className="animate-spin" /> : <Plug size={13} />} Reconfigurar
+              </Button>
+            </div>
+          </div>
 
           <div>
             <p className="mb-2 text-xs font-medium text-zinc-400">Mensagens por grupo</p>

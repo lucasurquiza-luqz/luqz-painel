@@ -79,11 +79,17 @@ async function touchRuntime(patch: { connectionState?: string; messageAt?: Date 
 }
 
 export async function POST(req: NextRequest) {
-  // Valida secret via query param
+  // Registra que ALGUM POST chegou a este endpoint, antes de qualquer validacao.
+  // Torna "Ultimo webhook" um teste confiavel de conectividade Evolution -> Dash:
+  // se atualizar, a Evolution alcanca o Dash; se ficar em branco, nao alcanca.
+  await touchRuntime()
+
+  // Valida secret via query param OU header (a Evolution pode descartar a query).
   const webhookSecret = process.env.EVOLUTION_WEBHOOK_SECRET
   if (webhookSecret) {
-    const secret = req.nextUrl.searchParams.get("secret")
-    if (secret !== webhookSecret) {
+    const fromQuery = req.nextUrl.searchParams.get("secret")
+    const fromHeader = req.headers.get("x-webhook-secret")
+    if (fromQuery !== webhookSecret && fromHeader !== webhookSecret) {
       return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
     }
   }

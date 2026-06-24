@@ -133,27 +133,51 @@ export async function getConnectionState(): Promise<string | null> {
 
 // (Re)registra o webhook na Evolution apontando para o Dash, com os eventos
 // necessarios para ler grupos. Provavel correcao quando "nao le os grupos".
-export async function setWebhook(url: string): Promise<unknown> {
-  const res = await evoFetch(`${BASE_URL}/webhook/set/${INSTANCE}`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
+// Envia o corpo nos dois formatos (v2 aninhado em `webhook` + v1 flat) para
+// funcionar em qualquer versao da Evolution. Timeout maior porque o set e lento.
+export async function setWebhook(url: string, secret?: string): Promise<unknown> {
+  const events = [
+    "MESSAGES_UPSERT",
+    "MESSAGES_UPDATE",
+    "CONNECTION_UPDATE",
+    "GROUPS_UPSERT",
+    "GROUPS_UPDATE",
+  ]
+  const webhookHeaders = secret ? { "x-webhook-secret": secret } : undefined
+  const body = {
+    // v2 (aninhado)
+    webhook: {
       enabled: true,
       url,
-      webhook_by_events: false,
       webhookByEvents: false,
-      webhook_base64: true,
       webhookBase64: true,
-      events: [
-        "MESSAGES_UPSERT",
-        "MESSAGES_UPDATE",
-        "CONNECTION_UPDATE",
-        "GROUPS_UPSERT",
-        "GROUPS_UPDATE",
-      ],
-    }),
-  })
-  return evoJSON(res)
+      events,
+      ...(webhookHeaders ? { headers: webhookHeaders } : {}),
+    },
+    // v1 (flat) — ignorado por versoes que so leem `webhook`
+    enabled: true,
+    url,
+    webhook_by_events: false,
+    webhookByEvents: false,
+    webhook_base64: true,
+    webhookBase64: true,
+    events,
+    ...(webhookHeaders ? { headers: webhookHeaders } : {}),
+  }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 30_000)
+  try {
+    const res = await fetch(`${BASE_URL}/webhook/set/${INSTANCE}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+    return await evoJSON(res)
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 // Le a configuracao atual do webhook (para diagnostico).

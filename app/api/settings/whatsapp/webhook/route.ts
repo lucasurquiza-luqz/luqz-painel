@@ -1,13 +1,28 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { requireApiUser } from "@/lib/api-auth"
 import { getWebhook, setWebhook } from "@/lib/evolution"
 
-function buildWebhookUrl(): string | null {
-  const base = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "")
-  if (!base) return null
+const WEBHOOK_PATH = "/api/webhook/evolution"
+
+// Resolve a base do webhook: override explicito > env dedicada > app url publica.
+// A env dedicada permite apontar para a URL INTERNA do container quando a
+// Evolution nao alcanca o dominio publico.
+function resolveBase(override?: string | null): string | null {
+  const candidate =
+    (override && override.trim()) ||
+    process.env.EVOLUTION_WEBHOOK_TARGET_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim()
+  if (!candidate) return null
+  return candidate.replace(/\/$/, "")
+}
+
+function buildWebhookUrl(base: string): string {
   const secret = process.env.EVOLUTION_WEBHOOK_SECRET
-  const path = "/api/webhook/evolution"
-  return secret ? `${base}${path}?secret=${encodeURIComponent(secret)}` : `${base}${path}`
+  return secret ? `${base}${WEBHOOK_PATH}?secret=${encodeURIComponent(secret)}` : `${base}${WEBHOOK_PATH}`
+}
+
+function maskSecret(url: string): string {
+  return url.replace(/secret=[^&]+/, "secret=***")
 }
 
 export async function GET() {
@@ -15,24 +30,34 @@ export async function GET() {
   if (!auth.ok) return auth.response
 
   const config = await getWebhook()
-  return NextResponse.json({ webhook: config, expectedUrl: buildWebhookUrl() })
+  const base = resolveBase()
+  return NextResponse.json({
+    webhook: config,
+    expectedUrl: base ? maskSecret(buildWebhookUrl(base)) : null,
+  })
 }
 
 // Reconfigura o webhook da Evolution para apontar ao Dash com os eventos de grupo.
-export async function POST() {
+// Aceita { baseUrl } opcional para apontar a uma URL alternativa (ex: interna).
+export async function POST(req: NextRequest) {
   const auth = await requireApiUser(["ADMIN"])
   if (!auth.ok) return auth.response
 
-  const url = buildWebhookUrl()
-  if (!url) {
+  const body = await req.json().catch(() => ({}))
+  const override = typeof body.baseUrl === "string" ? body.baseUrl : null
+  const base = resolveBase(override)
+  if (!base) {
     return NextResponse.json(
-      { error: "NEXT_PUBLIC_APP_URL nao configurada no ambiente." },
+      { error: "Nenhuma URL de destino. Informe uma URL ou configure NEXT_PUBLIC_APP_URL." },
       { status: 400 }
     )
   }
 
+  const url = buildWebhookUrl(base)
+  const secret = process.env.EVOLUTION_WEBHOOK_SECRET
+
   try {
-    await setWebhook(url)
+    await setWebhook(url, secret)
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Falha ao configurar webhook na Evolution." },
@@ -40,6 +65,9 @@ export async function POST() {
     )
   }
 
-  // Nao devolve a URL com secret para a interface.
-  return NextResponse.json({ ok: true, message: "Webhook reconfigurado com eventos de grupo." })
+  return NextResponse.json({
+    ok: true,
+    message: "Webhook reconfigurado com eventos de grupo.",
+    registeredUrl: maskSecret(url),
+  })
 }

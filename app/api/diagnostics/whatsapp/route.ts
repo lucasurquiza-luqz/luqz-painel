@@ -31,6 +31,7 @@ export async function GET() {
     ])
 
   const webhookConfig = webhook && typeof webhook === "object" ? (webhook as Record<string, unknown>) : null
+  const rawUrl = typeof webhookConfig?.url === "string" ? webhookConfig.url : null
 
   return NextResponse.json({
     connectionState,
@@ -38,7 +39,7 @@ export async function GET() {
     webhook: webhookConfig
       ? {
           enabled: webhookConfig.enabled ?? null,
-          url: webhookConfig.url ?? null,
+          url: rawUrl ? rawUrl.replace(/secret=[^&]+/, "secret=***") : null,
           events: webhookConfig.events ?? null,
         }
       : null,
