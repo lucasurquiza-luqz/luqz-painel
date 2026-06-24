@@ -18,14 +18,15 @@ model Client {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  groups           Group[]
-  messages         ScheduledMessage[]
-  users            User[]
-  conversations    WaConversation[]
-  contextSources   ContextSource[]
-  contextItems     ContextItem[]
-  contextSnapshots ContextSnapshot[]
-  statusHistory    ClientStatusHistory[]
+  groups              Group[]
+  messages            ScheduledMessage[]
+  users               User[]
+  conversations       WaConversation[]
+  contextSources      ContextSource[]
+  contextItems        ContextItem[]
+  contextSnapshots    ContextSnapshot[]
+  statusHistory       ClientStatusHistory[]
+  groupDailySummaries GroupDailySummary[]
 }
 
 model User {
@@ -41,11 +42,13 @@ model User {
   clientId String?
   client   Client? @relation(fields: [clientId], references: [id])
 
-  messages             ScheduledMessage[]
-  contextItemsCreated  ContextItem[]         @relation("ContextItemCreatedBy")
-  contextItemsReviewed ContextItem[]         @relation("ContextItemReviewedBy")
-  contextSnapshots     ContextSnapshot[]     @relation("ContextSnapshotCompiledBy")
-  clientStatusChanges  ClientStatusHistory[] @relation("ClientStatusChangedBy")
+  messages                  ScheduledMessage[]
+  contextItemsCreated       ContextItem[]           @relation("ContextItemCreatedBy")
+  contextItemsReviewed      ContextItem[]           @relation("ContextItemReviewedBy")
+  contextSnapshots          ContextSnapshot[]       @relation("ContextSnapshotCompiledBy")
+  clientStatusChanges       ClientStatusHistory[]   @relation("ClientStatusChangedBy")
+  groupSummariesGenerated   GroupDailySummary[]     @relation("GroupDailySummaryGeneratedBy")
+  groupSummaryItemsReviewed GroupDailySummaryItem[] @relation("GroupDailySummaryItemReviewedBy")
 }
 
 enum Role {
@@ -151,9 +154,10 @@ model WaConversation {
   lastMessageAt DateTime?
   createdAt     DateTime  @default(now())
 
-  group    Group       @relation(fields: [groupId], references: [id])
-  client   Client      @relation(fields: [clientId], references: [id])
-  messages WaMessage[]
+  group          Group               @relation(fields: [groupId], references: [id])
+  client         Client              @relation(fields: [clientId], references: [id])
+  messages       WaMessage[]
+  dailySummaries GroupDailySummary[]
 }
 
 model WaMessage {
@@ -247,13 +251,14 @@ model ContextItem {
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
 
-  client     Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  source     ContextSource         @relation(fields: [sourceId], references: [id], onDelete: Restrict)
-  createdBy  User                  @relation("ContextItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  reviewedBy User?                 @relation("ContextItemReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
-  supersedes ContextItem?          @relation("ContextItemHistory", fields: [supersedesId], references: [id], onDelete: SetNull)
-  revisions  ContextItem[]         @relation("ContextItemHistory")
-  snapshots  ContextSnapshotItem[]
+  client           Client                 @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  source           ContextSource          @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  createdBy        User                   @relation("ContextItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  reviewedBy       User?                  @relation("ContextItemReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  supersedes       ContextItem?           @relation("ContextItemHistory", fields: [supersedesId], references: [id], onDelete: SetNull)
+  revisions        ContextItem[]          @relation("ContextItemHistory")
+  snapshots        ContextSnapshotItem[]
+  groupSummaryItem GroupDailySummaryItem?
 
   @@index([clientId, status, domain])
   @@index([sourceId])
@@ -288,4 +293,64 @@ model ContextSnapshotItem {
   @@id([snapshotId, itemId])
   @@unique([snapshotId, position])
   @@index([itemId])
+}
+
+enum GroupSummaryStatus {
+  DRAFT
+  REVIEWED
+}
+
+enum GroupSummaryItemKind {
+  DECISION
+  COMMITMENT
+  RISK
+  PRAISE
+  PENDING
+}
+
+enum GroupSummaryItemStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+  DISCARDED
+}
+
+model GroupDailySummary {
+  id             String             @id @default(cuid())
+  clientId       String
+  conversationId String
+  date           DateTime
+  status         GroupSummaryStatus @default(DRAFT)
+  messageCount   Int
+  rawSummary     String
+  generatedById  String
+  generatedAt    DateTime           @default(now())
+
+  client       Client                  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  conversation WaConversation          @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  generatedBy  User                    @relation("GroupDailySummaryGeneratedBy", fields: [generatedById], references: [id], onDelete: Restrict)
+  items        GroupDailySummaryItem[]
+
+  @@unique([clientId, date])
+  @@index([clientId, date])
+}
+
+model GroupDailySummaryItem {
+  id               String                 @id @default(cuid())
+  summaryId        String
+  kind             GroupSummaryItemKind
+  text             String
+  responsible      String?
+  sourceMessageIds String[]
+  status           GroupSummaryItemStatus @default(PROPOSED)
+  reviewedById     String?
+  reviewedAt       DateTime?
+  contextItemId    String?                @unique
+  createdAt        DateTime               @default(now())
+
+  summary     GroupDailySummary @relation(fields: [summaryId], references: [id], onDelete: Cascade)
+  reviewedBy  User?             @relation("GroupDailySummaryItemReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  contextItem ContextItem?      @relation(fields: [contextItemId], references: [id], onDelete: SetNull)
+
+  @@index([summaryId, status])
 }

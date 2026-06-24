@@ -1,0 +1,48 @@
+const API_URL = "https://api.openai.com/v1/chat/completions"
+const MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini"
+const TIMEOUT_MS = 60_000
+
+export class AiProviderNotConfiguredError extends Error {
+  constructor() {
+    super("OPENAI_API_KEY nao configurada. Defina a variavel no ambiente do EasyPanel.")
+  }
+}
+
+export async function completeJSON(systemPrompt: string, userPrompt: string): Promise<unknown> {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) throw new AiProviderNotConfiguredError()
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        temperature: 0.2,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+    })
+
+    const body = await res.text()
+    if (!res.ok) throw new Error(`OpenAI ${res.status}: ${body}`)
+
+    const parsed = JSON.parse(body)
+    const content = parsed.choices?.[0]?.message?.content
+    if (!content) throw new Error("Resposta da OpenAI sem conteudo.")
+
+    return JSON.parse(content)
+  } finally {
+    clearTimeout(timer)
+  }
+}

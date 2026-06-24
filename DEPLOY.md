@@ -17,7 +17,7 @@ estão disponíveis; responde `503` sem expor o erro interno quando o banco falh
 
 ## Pré-deploy
 
-1. Confirmar `DATABASE_URL` e `SESSION_SECRET` no serviço do EasyPanel.
+1. Confirmar `DATABASE_URL`, `SESSION_SECRET` e `OPENAI_API_KEY` (resumo diário do grupo) no serviço do EasyPanel.
 2. Nunca copiar os valores para chats, documentos ou commits.
 3. Criar snapshot/backup do PostgreSQL.
 4. Confirmar repositório `lucasurquiza-luqz/luqz-painel` e branch correta.

@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   LogOut,
   MessageSquare,
+  MessagesSquare,
   Settings,
   Users,
 } from "lucide-react"
@@ -22,6 +23,7 @@ const clientNav = [
   { href: "", label: "Visão geral", icon: LayoutDashboard },
   { href: "/status", label: "Status", icon: Activity, internalOnly: true },
   { href: "/contexto", label: "Contexto", icon: BrainCircuit, internalOnly: true },
+  { href: "/grupo/resumo-diario", label: "Resumo do grupo", icon: MessagesSquare, internalOnly: true },
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/configuracoes", label: "Configurações", icon: Settings },
   { href: "/credenciais", label: "Credenciais", icon: KeyRound, soon: true },
