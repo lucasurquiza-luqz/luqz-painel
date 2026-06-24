@@ -15,10 +15,15 @@ export function encryptSecret(plainText: string): string {
 }
 
 export function decryptSecret(payload: string): string {
-  const [ivB64, authTagB64, encryptedB64] = payload.split(".")
+  const parts = payload.split(".")
+  if (parts.length !== 3) throw new Error("Credencial criptografada invalida.")
+  const [ivB64, authTagB64, encryptedB64] = parts
   const iv = Buffer.from(ivB64, "base64")
   const authTag = Buffer.from(authTagB64, "base64")
   const encrypted = Buffer.from(encryptedB64, "base64")
+  if (iv.length !== 12 || authTag.length !== 16 || encrypted.length === 0) {
+    throw new Error("Credencial criptografada invalida.")
+  }
   const decipher = createDecipheriv("aes-256-gcm", getKey(), iv)
   decipher.setAuthTag(authTag)
   return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8")

@@ -37,7 +37,11 @@ export async function completeJSON(systemPrompt: string, userPrompt: string): Pr
     })
 
     const body = await res.text()
-    if (!res.ok) throw new Error(`OpenAI ${res.status}: ${body}`)
+    if (!res.ok) {
+      const requestId = res.headers.get("x-request-id")
+      console.error(`[luqz-dash] OpenAI falhou: status=${res.status}${requestId ? ` requestId=${requestId}` : ""}`)
+      throw new Error(`O provedor de IA recusou a solicitação (status ${res.status}).`)
+    }
 
     const parsed = JSON.parse(body)
     const content = parsed.choices?.[0]?.message?.content

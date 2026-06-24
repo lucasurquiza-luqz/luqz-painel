@@ -4,6 +4,20 @@
 > Repositório: `luqz-painel`  
 > Produção: `https://dash.luqz.com.br`
 
+## Estado atual — 24/06/2026
+
+Esta seção substitui o estado Git histórico descrito mais abaixo.
+
+- Produção e `origin/main`: `cb466fa` antes da revisão atual.
+- Contexto Vivo e piloto Depósito Santa Helena validados em produção.
+- Resumo diário dos grupos implementado com revisão humana.
+- Configuração administrativa da chave OpenAI implementada com AES-256-GCM.
+- Migrations novas: `20260624120000_add_group_daily_summary` e `20260624130000_add_ai_credentials`.
+- Revisão posterior identificou e corrigiu: escopo por grupo/conversa, evidências visíveis e obrigatórias, concorrência na revisão e sanitização de erros do provedor.
+- A política operacional atual, por decisão do responsável do produto, é publicar na `main` para teste controlado em produção; backup, build, migrations aditivas e rollback continuam obrigatórios.
+
+Próximo gate: gerar um resumo de dia real para um grupo do Depósito Santa Helena, revisar todas as evidências e confirmar a criação de propostas `GROUP` no Contexto Vivo.
+
 ## Leitura obrigatória
 
 Este repositório contém a aplicação em produção do LUQZ Dash. O documento canônico de produto e continuidade está no repositório principal LUQZ:

@@ -56,6 +56,7 @@ export default function ConfiguracoesAgenciaPage() {
   }
 
   async function remove(provider: string) {
+    if (!window.confirm("Remover esta chave? Os recursos que dependem dela deixarão de funcionar.")) return
     setError("")
     const response = await fetch(`/api/settings/ai-credentials/${provider}`, { method: "DELETE" })
     if (!response.ok) {

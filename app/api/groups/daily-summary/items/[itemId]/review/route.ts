@@ -32,22 +32,50 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Apenas itens propostos podem ser revisados." }, { status: 409 })
   }
 
+  if (action === "APPROVE") {
+    const evidenceIds = [...new Set(current.sourceMessageIds)]
+    if (evidenceIds.length === 0) {
+      return NextResponse.json({ error: "Este item não possui evidência e não pode ser aprovado." }, { status: 422 })
+    }
+    const evidenceCount = await prisma.waMessage.count({
+      where: { id: { in: evidenceIds }, conversationId: current.summary.conversationId },
+    })
+    if (evidenceCount !== evidenceIds.length) {
+      return NextResponse.json({ error: "Uma ou mais evidências não pertencem a este grupo." }, { status: 422 })
+    }
+  }
+
   if (action !== "APPROVE") {
-    const item = await prisma.groupDailySummaryItem.update({
-      where: { id: itemId },
+    const result = await prisma.groupDailySummaryItem.updateMany({
+      where: { id: itemId, status: "PROPOSED" },
       data: {
         status: action === "REJECT" ? "REJECTED" : "DISCARDED",
         reviewedById: auth.user.userId,
         reviewedAt: new Date(),
       },
     })
+    if (result.count !== 1) {
+      return NextResponse.json({ error: "Este item já foi revisado por outra pessoa." }, { status: 409 })
+    }
     await markSummaryReviewedIfDone(current.summaryId)
-    return NextResponse.json({ item })
+    return NextResponse.json({ ok: true })
   }
 
   const dateLabel = current.summary.date.toISOString().slice(0, 10)
 
-  const item = await prisma.$transaction(async (tx) => {
+  let item
+  try {
+    item = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.groupDailySummaryItem.updateMany({
+        where: { id: itemId, status: "PROPOSED" },
+        data: {
+          status: "APPROVED",
+          reviewedById: auth.user.userId,
+          reviewedAt: new Date(),
+        },
+      })
+      if (claimed.count !== 1) throw new Error("SUMMARY_ITEM_ALREADY_REVIEWED")
+
     const source = await tx.contextSource.create({
       data: {
         clientId: current.summary.clientId,
@@ -72,16 +100,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       },
     })
 
-    return tx.groupDailySummaryItem.update({
+      return tx.groupDailySummaryItem.update({
       where: { id: itemId },
       data: {
-        status: "APPROVED",
-        reviewedById: auth.user.userId,
-        reviewedAt: new Date(),
         contextItemId: contextItem.id,
       },
     })
-  })
+    })
+  } catch (error) {
+    if (error instanceof Error && error.message === "SUMMARY_ITEM_ALREADY_REVIEWED") {
+      return NextResponse.json({ error: "Este item já foi revisado por outra pessoa." }, { status: 409 })
+    }
+    throw error
+  }
 
   await markSummaryReviewedIfDone(current.summaryId)
   return NextResponse.json({ item })

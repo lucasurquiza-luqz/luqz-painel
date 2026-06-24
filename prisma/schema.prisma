@@ -332,7 +332,7 @@ model GroupDailySummary {
   generatedBy  User                    @relation("GroupDailySummaryGeneratedBy", fields: [generatedById], references: [id], onDelete: Restrict)
   items        GroupDailySummaryItem[]
 
-  @@unique([clientId, date])
+  @@unique([conversationId, date])
   @@index([clientId, date])
 }
 

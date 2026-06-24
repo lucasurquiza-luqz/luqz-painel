@@ -17,11 +17,11 @@ estão disponíveis; responde `503` sem expor o erro interno quando o banco falh
 
 ## Pré-deploy
 
-1. Confirmar `DATABASE_URL`, `SESSION_SECRET` e `OPENAI_API_KEY` (resumo diário do grupo) no serviço do EasyPanel.
+1. Confirmar `DATABASE_URL` e `SESSION_SECRET` no serviço do EasyPanel. `OPENAI_API_KEY` é fallback opcional; Admin também pode cadastrar a chave em `/configuracoes`.
 2. Nunca copiar os valores para chats, documentos ou commits.
 3. Criar snapshot/backup do PostgreSQL.
 4. Confirmar repositório `lucasurquiza-luqz/luqz-painel` e branch correta.
-5. Validar primeiro em homologação, usando banco próprio ou cópia anonimizada.
+5. Quando houver homologação disponível, validar primeiro nela. Na política atual de teste direto em produção, exigir autorização explícita, backup e rollback preparado.
 6. Configurar health check HTTP no EasyPanel: caminho `/api/health`, porta `3000`.
 7. Executar localmente:
 
@@ -32,7 +32,7 @@ git diff --check
 git status --short --branch
 ```
 
-## Homologação obrigatória
+## Homologação recomendada
 
 1. Criar um serviço separado, por exemplo `luqz-dash-staging`.
 2. Apontar para a branch técnica que será promovida.
@@ -45,7 +45,8 @@ git status --short --branch
 
 ```text
 [luqz-dash] iniciando release
-[luqz-dash] validando migrations do Prisma
+[luqz-dash] verificando baseline do banco
+[luqz-dash] aplicando migrations do Prisma
 Prisma schema loaded from prisma/schema.prisma
 Applying migration ...
 All migrations have been successfully applied
@@ -58,7 +59,7 @@ validação é a causa a investigar; não usar `db push` para contornar migratio
 
 ## Publicação
 
-Após a aprovação em homologação:
+Após as validações e a autorização explícita de publicação:
 
 ```powershell
 git fetch origin
@@ -99,7 +100,7 @@ Confirmar que o runner copia `/app/node_modules` e que `docker-entrypoint.sh` é
 
 ### Container reinicia ou fica `unhealthy`
 
-Ler a primeira falha após `[luqz-dash] validando migrations do Prisma`. Se as migrations
+Ler a primeira falha após `[luqz-dash] verificando baseline do banco` ou `[luqz-dash] aplicando migrations do Prisma`. Se as migrations
 passarem, consultar `/api/health`: `503` aponta indisponibilidade do banco ou configuração
 incorreta da conexão no runtime.
 
