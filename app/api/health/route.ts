@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic"
 
 // Marcador de build: bumpado a cada release para confirmar, sem login, qual
 // versao esta efetivamente no ar (o middleware bloqueia as demais rotas /api).
-const BUILD_MARKER = "wa-ingestion-2026-06-24"
+const BUILD_MARKER = "wa-ingestion-migfix-2026-06-24"
 
 export async function GET() {
   try {

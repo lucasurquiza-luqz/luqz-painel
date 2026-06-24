@@ -1,5 +1,5 @@
 -- Estado de runtime da integracao WhatsApp (singleton) para diagnostico.
-CREATE TABLE "WhatsAppRuntime" (
+CREATE TABLE IF NOT EXISTS "WhatsAppRuntime" (
     "id" TEXT NOT NULL DEFAULT 'singleton',
     "connectionState" TEXT,
     "lastWebhookAt" TIMESTAMP(3),

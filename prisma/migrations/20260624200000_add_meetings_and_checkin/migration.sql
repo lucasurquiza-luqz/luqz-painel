@@ -1,20 +1,16 @@
-﻿-- CreateEnum
-CREATE TYPE "MeetingKind" AS ENUM ('CALL', 'IN_PERSON', 'ASYNC');
+-- Idempotente: esta migration ficou em estado falho (P3009) em producao e e
+-- reaplicada via `migrate resolve --rolled-back` no entrypoint. Os guards abaixo
+-- garantem que a reaplicacao funcione em qualquer estado intermediario.
 
 -- CreateEnum
-CREATE TYPE "MeetingSummaryStatus" AS ENUM ('DRAFT', 'REVIEWED');
-
--- CreateEnum
-CREATE TYPE "MeetingItemKind" AS ENUM ('DECISION', 'COMMITMENT', 'OBJECTION', 'RISK', 'NEXT_STEP');
-
--- CreateEnum
-CREATE TYPE "MeetingItemStatus" AS ENUM ('PROPOSED', 'APPROVED', 'REJECTED', 'DISCARDED');
-
--- CreateEnum
-CREATE TYPE "TeamPerception" AS ENUM ('GREAT', 'GOOD', 'NEUTRAL', 'CONCERN', 'CRITICAL');
+DO $$ BEGIN CREATE TYPE "MeetingKind" AS ENUM ('CALL', 'IN_PERSON', 'ASYNC'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN CREATE TYPE "MeetingSummaryStatus" AS ENUM ('DRAFT', 'REVIEWED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN CREATE TYPE "MeetingItemKind" AS ENUM ('DECISION', 'COMMITMENT', 'OBJECTION', 'RISK', 'NEXT_STEP'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN CREATE TYPE "MeetingItemStatus" AS ENUM ('PROPOSED', 'APPROVED', 'REJECTED', 'DISCARDED'); EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN CREATE TYPE "TeamPerception" AS ENUM ('GREAT', 'GOOD', 'NEUTRAL', 'CONCERN', 'CRITICAL'); EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 -- CreateTable
-CREATE TABLE "Meeting" (
+CREATE TABLE IF NOT EXISTS "Meeting" (
     "id" TEXT NOT NULL,
     "clientId" TEXT NOT NULL,
     "title" TEXT NOT NULL,
@@ -30,7 +26,7 @@ CREATE TABLE "Meeting" (
 );
 
 -- CreateTable
-CREATE TABLE "MeetingSummary" (
+CREATE TABLE IF NOT EXISTS "MeetingSummary" (
     "id" TEXT NOT NULL,
     "meetingId" TEXT NOT NULL,
     "clientId" TEXT NOT NULL,
@@ -43,7 +39,7 @@ CREATE TABLE "MeetingSummary" (
 );
 
 -- CreateTable
-CREATE TABLE "MeetingSummaryItem" (
+CREATE TABLE IF NOT EXISTS "MeetingSummaryItem" (
     "id" TEXT NOT NULL,
     "summaryId" TEXT NOT NULL,
     "kind" "MeetingItemKind" NOT NULL,
@@ -60,7 +56,7 @@ CREATE TABLE "MeetingSummaryItem" (
 );
 
 -- CreateTable
-CREATE TABLE "TeamCheckin" (
+CREATE TABLE IF NOT EXISTS "TeamCheckin" (
     "id" TEXT NOT NULL,
     "clientId" TEXT NOT NULL,
     "authorId" TEXT NOT NULL,
@@ -73,49 +69,21 @@ CREATE TABLE "TeamCheckin" (
 );
 
 -- CreateIndex
-CREATE INDEX "Meeting_clientId_date_idx" ON "Meeting"("clientId", "date");
-
--- CreateIndex
-CREATE UNIQUE INDEX "MeetingSummary_meetingId_key" ON "MeetingSummary"("meetingId");
-
--- CreateIndex
-CREATE INDEX "MeetingSummary_clientId_idx" ON "MeetingSummary"("clientId");
-
--- CreateIndex
-CREATE UNIQUE INDEX "MeetingSummaryItem_contextItemId_key" ON "MeetingSummaryItem"("contextItemId");
-
--- CreateIndex
-CREATE INDEX "MeetingSummaryItem_summaryId_status_idx" ON "MeetingSummaryItem"("summaryId", "status");
-
--- CreateIndex
-CREATE INDEX "TeamCheckin_clientId_createdAt_idx" ON "TeamCheckin"("clientId", "createdAt");
+CREATE INDEX IF NOT EXISTS "Meeting_clientId_date_idx" ON "Meeting"("clientId", "date");
+CREATE UNIQUE INDEX IF NOT EXISTS "MeetingSummary_meetingId_key" ON "MeetingSummary"("meetingId");
+CREATE INDEX IF NOT EXISTS "MeetingSummary_clientId_idx" ON "MeetingSummary"("clientId");
+CREATE UNIQUE INDEX IF NOT EXISTS "MeetingSummaryItem_contextItemId_key" ON "MeetingSummaryItem"("contextItemId");
+CREATE INDEX IF NOT EXISTS "MeetingSummaryItem_summaryId_status_idx" ON "MeetingSummaryItem"("summaryId", "status");
+CREATE INDEX IF NOT EXISTS "TeamCheckin_clientId_createdAt_idx" ON "TeamCheckin"("clientId", "createdAt");
 
 -- AddForeignKey
-ALTER TABLE "Meeting" ADD CONSTRAINT "Meeting_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Meeting" ADD CONSTRAINT "Meeting_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "MeetingSummary" ADD CONSTRAINT "MeetingSummary_meetingId_fkey" FOREIGN KEY ("meetingId") REFERENCES "Meeting"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "MeetingSummary" ADD CONSTRAINT "MeetingSummary_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "MeetingSummary" ADD CONSTRAINT "MeetingSummary_generatedById_fkey" FOREIGN KEY ("generatedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "MeetingSummaryItem" ADD CONSTRAINT "MeetingSummaryItem_summaryId_fkey" FOREIGN KEY ("summaryId") REFERENCES "MeetingSummary"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "MeetingSummaryItem" ADD CONSTRAINT "MeetingSummaryItem_reviewedById_fkey" FOREIGN KEY ("reviewedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "MeetingSummaryItem" ADD CONSTRAINT "MeetingSummaryItem_contextItemId_fkey" FOREIGN KEY ("contextItemId") REFERENCES "ContextItem"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TeamCheckin" ADD CONSTRAINT "TeamCheckin_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "TeamCheckin" ADD CONSTRAINT "TeamCheckin_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN ALTER TABLE "Meeting" ADD CONSTRAINT "Meeting_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "Meeting" ADD CONSTRAINT "Meeting_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "MeetingSummary" ADD CONSTRAINT "MeetingSummary_meetingId_fkey" FOREIGN KEY ("meetingId") REFERENCES "Meeting"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "MeetingSummary" ADD CONSTRAINT "MeetingSummary_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "MeetingSummary" ADD CONSTRAINT "MeetingSummary_generatedById_fkey" FOREIGN KEY ("generatedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "MeetingSummaryItem" ADD CONSTRAINT "MeetingSummaryItem_summaryId_fkey" FOREIGN KEY ("summaryId") REFERENCES "MeetingSummary"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "MeetingSummaryItem" ADD CONSTRAINT "MeetingSummaryItem_reviewedById_fkey" FOREIGN KEY ("reviewedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "MeetingSummaryItem" ADD CONSTRAINT "MeetingSummaryItem_contextItemId_fkey" FOREIGN KEY ("contextItemId") REFERENCES "ContextItem"("id") ON DELETE SET NULL ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "TeamCheckin" ADD CONSTRAINT "TeamCheckin_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "TeamCheckin" ADD CONSTRAINT "TeamCheckin_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
