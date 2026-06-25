@@ -7,6 +7,7 @@ import { ptBR } from "date-fns/locale"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { EmojiPicker } from "@/components/EmojiPicker"
+import { dateSuggestions } from "@/lib/date-suggestions"
 
 type Tab = "mensagens" | "agendamentos"
 
@@ -595,7 +596,15 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
               )}
               {scheduleOpen && (
                 <div className="mb-2 mx-1 flex flex-wrap items-center gap-2 rounded-xl border border-orange-500/20 bg-orange-500/[0.05] p-3">
-                  <span className="text-xs text-orange-300">Agendar esta mensagem para:</span>
+                  <span className="w-full text-xs text-orange-300">Agendar esta mensagem para:</span>
+                  <div className="flex w-full flex-wrap gap-1.5">
+                    {dateSuggestions().map((s) => (
+                      <button key={s.label} type="button" onClick={() => setScheduleAt(s.value)}
+                        className={cn("rounded-lg border px-2 py-1 text-[11px] transition-colors", scheduleAt === s.value ? "border-orange-500/40 bg-orange-500/20 text-orange-200" : "border-white/10 text-zinc-400 hover:text-zinc-200")}>
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
                   <input
                     type="datetime-local"
                     value={scheduleAt}

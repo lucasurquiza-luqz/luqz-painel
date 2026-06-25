@@ -25,7 +25,7 @@ type SummaryItem = {
     timestamp: string
   }>
 }
-type Conversation = { id: string; group: { id: string; name: string; active: boolean } }
+type Conversation = { id: string; name: string }
 type Summary = {
   id: string
   date: string
@@ -34,7 +34,7 @@ type Summary = {
   rawSummary: string
   generatedBy: { name: string }
   generatedAt: string
-  conversation: { id: string; group: { id: string; name: string } }
+  conversation: { id: string; name: string }
   items: SummaryItem[]
 }
 
@@ -172,7 +172,7 @@ export default function ResumoDiarioGrupoPage() {
               {conversations.length === 0 && <option value="">Nenhum grupo vinculado</option>}
               {conversations.map((conversation) => (
                 <option key={conversation.id} value={conversation.id}>
-                  {conversation.group.name}{conversation.group.active ? "" : " · inativo"}
+                  {conversation.name}
                 </option>
               ))}
             </select>
@@ -212,7 +212,7 @@ export default function ResumoDiarioGrupoPage() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="dash-eyebrow">{formatInTimeZone(new Date(summary.date), TZ, "dd/MM/yyyy")}</p>
-                <p className="mt-1 text-xs text-zinc-600">{summary.conversation.group.name} · {summary.messageCount} mensagens · gerado por {summary.generatedBy.name}</p>
+                <p className="mt-1 text-xs text-zinc-600">{summary.conversation.name} · {summary.messageCount} mensagens · gerado por {summary.generatedBy.name}</p>
               </div>
               <StatusBadge status={summary.status === "REVIEWED" ? "healthy" : "attention"}>
                 {summary.status === "REVIEWED" ? "Revisado" : "Em revisão"}

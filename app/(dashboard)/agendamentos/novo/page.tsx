@@ -4,6 +4,8 @@ import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft, Paperclip, X } from "lucide-react"
 import Link from "next/link"
+import { cn } from "@/lib/utils"
+import { dateSuggestions } from "@/lib/date-suggestions"
 
 interface Group {
   id: string
@@ -196,6 +198,14 @@ export default function NovoAgendamentoPage() {
           <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wide mb-3">
             Data e hora de envio
           </label>
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {dateSuggestions().map((s) => (
+              <button key={s.label} type="button" onClick={() => setScheduledAt(s.value)}
+                className={cn("rounded-lg border px-2.5 py-1 text-xs transition-colors", scheduledAt === s.value ? "border-orange-500/40 bg-orange-500/20 text-orange-200" : "border-white/10 text-zinc-400 hover:text-zinc-200")}>
+                {s.label}
+              </button>
+            ))}
+          </div>
           <input
             type="datetime-local"
             required
