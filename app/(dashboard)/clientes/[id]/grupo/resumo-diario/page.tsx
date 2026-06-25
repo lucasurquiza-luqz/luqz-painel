@@ -74,6 +74,7 @@ export default function ResumoDiarioGrupoPage() {
   const [notice, setNotice] = useState("")
   const [syncing, setSyncing] = useState(false)
   const [reviewingId, setReviewingId] = useState<string | null>(null)
+  const [dayMessageCount, setDayMessageCount] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -94,6 +95,17 @@ export default function ResumoDiarioGrupoPage() {
   }, [clientId])
 
   useEffect(() => { void load() }, [load])
+
+  // Quantas mensagens já existem no dia/grupo selecionado (capturadas pelo webhook).
+  useEffect(() => {
+    if (!conversationId || !date) { setDayMessageCount(null); return }
+    let cancelled = false
+    fetch(`/api/clients/${clientId}/groups/daily-summary?conversationId=${conversationId}&date=${date}`)
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled) setDayMessageCount(d.dayMessageCount ?? null) })
+      .catch(() => { if (!cancelled) setDayMessageCount(null) })
+    return () => { cancelled = true }
+  }, [clientId, conversationId, date])
 
   async function generate() {
     setGenerating(true)
@@ -128,7 +140,11 @@ export default function ResumoDiarioGrupoPage() {
       setError(payload.error ?? "Não foi possível sincronizar as mensagens.")
       return
     }
-    setNotice(`Sincronização concluída: ${payload.totalStored} mensagem(ns) nova(s) importada(s) dos últimos ${payload.days} dias.`)
+    setNotice(
+      payload.totalStored > 0
+        ? `Sincronização: ${payload.totalStored} mensagem(ns) nova(s) importada(s) dos últimos ${payload.days} dias.`
+        : `Nada novo a importar — as mensagens recentes já são capturadas ao vivo. Selecione um dia com mensagens e gere o resumo.`
+    )
     await load()
   }
 
@@ -189,6 +205,13 @@ export default function ResumoDiarioGrupoPage() {
 
       {error && <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}
       {notice && <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{notice}</div>}
+      {conversationId && dayMessageCount !== null && (
+        <div className={`rounded-xl border px-4 py-3 text-sm ${dayMessageCount > 0 ? "border-emerald-400/20 bg-emerald-500/[0.06] text-emerald-200" : "border-white/8 bg-white/[0.02] text-zinc-500"}`}>
+          {dayMessageCount > 0
+            ? `${dayMessageCount} mensagem(ns) registrada(s) neste dia neste grupo — pode gerar o resumo.`
+            : "Nenhuma mensagem registrada neste dia neste grupo. Escolha uma data com conversa (as mensagens chegam ao vivo conforme o grupo conversa)."}
+        </div>
+      )}
       <div className="rounded-xl border border-sky-400/15 bg-sky-500/[0.06] px-4 py-3 text-sm leading-6 text-sky-100/80">
         Ao gerar o resumo, o texto das mensagens do grupo selecionado é enviado ao provedor de IA configurado pela agência. Anexos e credenciais não são enviados.
       </div>

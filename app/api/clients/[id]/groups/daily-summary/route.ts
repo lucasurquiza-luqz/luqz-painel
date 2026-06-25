@@ -62,8 +62,22 @@ export async function GET(req: NextRequest, { params }: Params) {
     : []
   const evidenceById = new Map(evidenceMessages.map((message) => [message.id, message]))
 
+  // Contagem de mensagens já capturadas (pelo webhook) no dia selecionado —
+  // mostra que os dados estão lá, independente do backfill.
+  const reqConvId = req.nextUrl.searchParams.get("conversationId")
+  const reqDate = req.nextUrl.searchParams.get("date")
+  let dayMessageCount: number | null = null
+  if (reqConvId && reqDate && /^\d{4}-\d{2}-\d{2}$/.test(reqDate)) {
+    const dayStart = parseDateParam(reqDate)
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
+    dayMessageCount = await prisma.waMessage.count({
+      where: { conversationId: reqConvId, timestamp: { gte: dayStart, lt: dayEnd } },
+    })
+  }
+
   return NextResponse.json({
     availableConversations,
+    dayMessageCount,
     summaries: summaries.map((summary) => ({
       ...summary,
       items: summary.items.map((item) => ({
