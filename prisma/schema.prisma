@@ -18,6 +18,21 @@ model Client {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  // === Perfil do negócio (Bloco 0.1 — cadastro completo) ===
+  segment    String?
+  website    String?
+  instagram  String?
+  region     String?
+  logoUrl    String?
+
+  // === Plano / contrato ===
+  product       String? // produto contratado (ex: AP360)
+  contractValue Decimal?  @db.Decimal(12, 2)
+  billingCycle  String? // mensal, trimestral, projeto fechado...
+  contractStart DateTime?
+  renewalDate   DateTime?
+  projectPhase  String? // fase do projeto (ex: Onboarding, Execução T3)
+
   groups              Group[]
   messages            ScheduledMessage[]
   users               User[]
@@ -31,6 +46,50 @@ model Client {
   meetingSummaries    MeetingSummary[]
   teamCheckins        TeamCheckin[]
   nextActions         ClientNextAction[]
+  contacts            ClientContact[]
+  teamMembers         ClientTeamMember[]
+}
+
+// Contatos do lado do cliente (quem fala com a gente).
+model ClientContact {
+  id        String   @id @default(cuid())
+  clientId  String
+  name      String
+  role      String? // cargo / papel
+  email     String?
+  phone     String?
+  isPrimary Boolean  @default(false)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+}
+
+enum LuqzTeamRole {
+  GESTOR_PROJETO
+  TRAFEGO
+  CONTEUDO
+  COMERCIAL
+  DESIGN
+  OUTRO
+}
+
+// Responsáveis LUQZ pela conta. userId opcional: nem todo membro tem login.
+model ClientTeamMember {
+  id        String       @id @default(cuid())
+  clientId  String
+  userId    String?
+  name      String
+  role      LuqzTeamRole @default(OUTRO)
+  createdAt DateTime     @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user   User?  @relation("ClientTeamMemberUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
 }
 
 model User {
@@ -64,6 +123,7 @@ model User {
   waTransfersFrom               WaConversationTransfer[] @relation("WaTransferFrom")
   waTransfersTo                 WaConversationTransfer[] @relation("WaTransferTo")
   waTransfersBy                 WaConversationTransfer[] @relation("WaTransferBy")
+  clientTeamMemberships         ClientTeamMember[]       @relation("ClientTeamMemberUser")
 }
 
 enum Role {
