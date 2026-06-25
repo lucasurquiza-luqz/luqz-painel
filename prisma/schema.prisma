@@ -49,6 +49,32 @@ model Client {
   contacts            ClientContact[]
   teamMembers         ClientTeamMember[]
   documents           ClientDocument[]
+  resources           ClientResource[]
+}
+
+enum ResourceCategory {
+  DRIVE
+  ANALYTICS
+  ADS
+  SITE
+  SOCIAL
+  CREDENTIALS
+  OTHER
+}
+
+// Links e recursos do cliente (Drive, GA4, Meta, Google Ads, site, social…).
+model ClientResource {
+  id        String           @id @default(cuid())
+  clientId  String
+  label     String
+  url       String
+  category  ResourceCategory @default(OTHER)
+  notes     String?
+  createdAt DateTime         @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, category])
 }
 
 enum DocumentCategory {

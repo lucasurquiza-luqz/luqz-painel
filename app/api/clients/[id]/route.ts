@@ -22,6 +22,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       },
       contacts: { orderBy: [{ isPrimary: "desc" }, { name: "asc" }] },
       teamMembers: { orderBy: { role: "asc" }, include: { user: { select: { id: true, name: true } } } },
+      resources: { orderBy: [{ category: "asc" }, { label: "asc" }] },
     },
   })
   if (!client) return NextResponse.json({ error: "Cliente nao encontrado." }, { status: 404 })

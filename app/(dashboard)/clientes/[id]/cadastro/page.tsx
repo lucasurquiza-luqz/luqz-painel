@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Loader2, Plus, Save, Star, Trash2, UserPlus } from "lucide-react"
+import { ArrowLeft, ExternalLink, Link2, Loader2, Plus, Save, Star, Trash2, UserPlus } from "lucide-react"
 import { Button, Input, PageHeader, Panel } from "@/components/ui/primitives"
 
 type Contact = {
@@ -21,6 +21,13 @@ type TeamMember = {
   role: string
   user: { id: string; name: string } | null
 }
+type Resource = {
+  id: string
+  label: string
+  url: string
+  category: string
+  notes: string | null
+}
 type Client = {
   id: string
   name: string
@@ -37,6 +44,17 @@ type Client = {
   projectPhase: string | null
   contacts: Contact[]
   teamMembers: TeamMember[]
+  resources: Resource[]
+}
+
+const RESOURCE_CATEGORY: Record<string, string> = {
+  DRIVE: "Drive",
+  ANALYTICS: "Analytics / GA4",
+  ADS: "Ads (Meta/Google)",
+  SITE: "Site",
+  SOCIAL: "Redes sociais",
+  CREDENTIALS: "Credenciais",
+  OTHER: "Outro",
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -90,6 +108,7 @@ export default function CadastroClientePage() {
       <ContractSection client={client} onSaved={load} onError={setError} />
       <ContactsSection clientId={clientId} contacts={client.contacts} onChanged={load} onError={setError} />
       <TeamSection clientId={clientId} members={client.teamMembers} onChanged={load} onError={setError} />
+      <ResourcesSection clientId={clientId} resources={client.resources} onChanged={load} onError={setError} />
     </main>
   )
 }
@@ -306,6 +325,76 @@ function TeamSection({ clientId, members, onChanged, onError }: { clientId: stri
                 <p className="mt-0.5 text-xs text-zinc-500">{ROLE_LABEL[m.role] ?? m.role}</p>
               </div>
               <button onClick={() => remove(m.id)} className="shrink-0 text-zinc-600 hover:text-red-400" aria-label="Remover"><Trash2 size={15} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </SectionPanel>
+  )
+}
+
+// === Links / recursos ===
+function ResourcesSection({ clientId, resources, onChanged, onError }: { clientId: string; resources: Resource[]; onChanged: () => void; onError: (m: string) => void }) {
+  const [adding, setAdding] = useState(false)
+  const [form, setForm] = useState({ label: "", url: "", category: "DRIVE", notes: "" })
+  const [busy, setBusy] = useState(false)
+
+  async function add() {
+    if (!form.label.trim() || !form.url.trim()) { onError("Informe nome e URL do link."); return }
+    setBusy(true)
+    onError("")
+    const res = await fetch(`/api/clients/${clientId}/resources`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
+    })
+    setBusy(false)
+    if (!res.ok) { onError((await res.json()).error ?? "Erro ao adicionar link."); return }
+    setForm({ label: "", url: "", category: "DRIVE", notes: "" })
+    setAdding(false)
+    onChanged()
+  }
+
+  async function remove(resourceId: string) {
+    onError("")
+    const res = await fetch(`/api/clients/${clientId}/resources/${resourceId}`, { method: "DELETE" })
+    if (!res.ok) { onError((await res.json()).error ?? "Erro ao remover link."); return }
+    onChanged()
+  }
+
+  return (
+    <SectionPanel title="Links e recursos" action={<Button variant="secondary" className="min-h-9 px-3 py-1.5 text-xs" onClick={() => setAdding((v) => !v)}><Plus size={14} /> Adicionar</Button>}>
+      {adding && (
+        <div className="rounded-xl border border-[#FF8F50]/20 bg-black/20 p-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            <Input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="Nome do link *" />
+            <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="dash-input min-h-11 rounded-lg px-3.5 py-2.5 text-sm">
+              {Object.entries(RESOURCE_CATEGORY).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </div>
+          <div className="mt-3"><Input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="URL * (https://)" /></div>
+          <div className="mt-3 flex justify-end gap-2">
+            <Button variant="secondary" className="min-h-9 px-3 py-1.5 text-xs" onClick={() => setAdding(false)}>Cancelar</Button>
+            <Button className="min-h-9 px-3 py-1.5 text-xs" onClick={add} disabled={busy}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Salvar link</Button>
+          </div>
+        </div>
+      )}
+      {resources.length === 0 && !adding ? (
+        <p className="text-sm text-zinc-600">Nenhum link cadastrado. Adicione Drive, GA4, contas de anúncio, site, redes...</p>
+      ) : (
+        <div className="space-y-2">
+          {resources.map((r) => (
+            <div key={r.id} className="flex items-center justify-between gap-3 rounded-lg border border-white/8 bg-black/20 px-4 py-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <Link2 size={15} className="shrink-0 text-sky-300" />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <a href={r.url} target="_blank" rel="noopener noreferrer" className="truncate text-sm font-medium text-zinc-200 hover:text-[#FFB185]">{r.label}</a>
+                    <ExternalLink size={12} className="shrink-0 text-zinc-600" />
+                    <span className="rounded-md bg-white/5 px-1.5 py-0.5 text-[11px] text-zinc-400">{RESOURCE_CATEGORY[r.category] ?? r.category}</span>
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-zinc-600">{r.url}</p>
+                </div>
+              </div>
+              <button onClick={() => remove(r.id)} className="shrink-0 text-zinc-600 hover:text-red-400" aria-label="Remover"><Trash2 size={15} /></button>
             </div>
           ))}
         </div>
