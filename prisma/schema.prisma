@@ -50,6 +50,37 @@ model Client {
   teamMembers         ClientTeamMember[]
   documents           ClientDocument[]
   resources           ClientResource[]
+  mediaPlans          MediaPlan[]
+}
+
+enum AdPlatform {
+  META
+  GOOGLE
+  TOTAL
+}
+
+// Plano de mídia / metas por cliente e período (mês). Guarda os ALVOS;
+// o realizado virá da integração de Ads (Bloco 2 — etapa seguinte).
+model MediaPlan {
+  id           String     @id @default(cuid())
+  clientId     String
+  month        String // período mensal "AAAA-MM"
+  platform     AdPlatform @default(TOTAL)
+  budget       Decimal?   @db.Decimal(12, 2)
+  targetLeads  Int?
+  targetCpa    Decimal?   @db.Decimal(12, 2)
+  targetRoas   Decimal?   @db.Decimal(6, 2)
+  targetTicket Decimal?   @db.Decimal(12, 2)
+  notes        String?
+  createdById  String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  client    Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("MediaPlanCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([clientId, month, platform])
+  @@index([clientId, month])
 }
 
 enum ResourceCategory {
@@ -200,6 +231,7 @@ model User {
   clientTeamMemberships         ClientTeamMember[]       @relation("ClientTeamMemberUser")
   documentsUploaded             ClientDocument[]         @relation("DocumentUploadedBy")
   documentsApproved             ClientDocument[]         @relation("DocumentApprovedBy")
+  mediaPlansCreated             MediaPlan[]              @relation("MediaPlanCreatedBy")
 }
 
 enum Role {
