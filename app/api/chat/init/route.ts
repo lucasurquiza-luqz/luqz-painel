@@ -13,9 +13,18 @@ export async function POST() {
 
   let created = 0
   for (const g of groups) {
-    const exists = await prisma.waConversation.findUnique({ where: { groupId: g.id } })
-    if (!exists && g.clientId) {
-      await prisma.waConversation.create({ data: { groupId: g.id, clientId: g.clientId } })
+    if (!g.clientId) continue
+    const exists = await prisma.waConversation.findUnique({ where: { remoteJid: g.remoteJid } })
+    if (!exists) {
+      await prisma.waConversation.create({
+        data: {
+          remoteJid: g.remoteJid,
+          isGroup: true,
+          name: g.name,
+          groupId: g.id,
+          clientId: g.clientId,
+        },
+      })
       created++
     }
   }

@@ -31,6 +31,22 @@ export function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : null
 }
 
+// JIDs validos para conversa (grupo, individual, ou @lid).
+export function isValidJid(jid: string | null | undefined): jid is string {
+  if (!jid) return false
+  return jid.endsWith("@g.us") || jid.endsWith("@s.whatsapp.net") || jid.endsWith("@lid")
+}
+
+export function isGroupJid(jid: string): boolean {
+  return jid.endsWith("@g.us")
+}
+
+// Telefone a partir de um JID individual (quando aplicavel).
+export function jidToPhone(jid: string): string | null {
+  if (jid.endsWith("@s.whatsapp.net")) return jid.replace("@s.whatsapp.net", "")
+  return null
+}
+
 // Remove um nivel de envelope. Reaplicado recursivamente por extractMessageContent.
 function unwrapMessage(msg: Record<string, unknown>): Record<string, unknown> {
   return (

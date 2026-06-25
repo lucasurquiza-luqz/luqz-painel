@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { Send, Paperclip, X, Users, MessageSquare, CalendarClock, Plus, Clock, CheckCircle2, XCircle, Ban, Mic, MicOff, ArrowLeftRight, History, UserRound, Loader2 } from "lucide-react"
+import { Send, Paperclip, X, Users, MessageSquare, CalendarClock, Plus, Clock, CheckCircle2, XCircle, Ban, Mic, MicOff, ArrowLeftRight, History, UserRound, Loader2, Building2 } from "lucide-react"
 import { formatInTimeZone } from "date-fns-tz"
 import { ptBR } from "date-fns/locale"
 import { cn } from "@/lib/utils"
@@ -45,7 +45,10 @@ interface Conversation {
   id: string
   unreadCount: number
   lastMessageAt: string | null
-  group: { id: string; name: string; participants: number }
+  name: string
+  isGroup: boolean
+  groupId: string | null
+  group: { participants: number } | null
   client: { id: string; name: string } | null
   assignedTo: { id: string; name: string } | null
   messages: Message[]
@@ -101,18 +104,28 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
   const [scheduleAt, setScheduleAt] = useState("")
   const [scheduling, setScheduling] = useState(false)
 
+  // Vincular conversa a cliente
+  const [linkOpen, setLinkOpen] = useState(false)
+  const [clients, setClients] = useState<{ id: string; name: string }[]>([])
+  const [linkTo, setLinkTo] = useState("")
+  const [linking, setLinking] = useState(false)
+
+  // Triagem: só conversas sem cliente (chat global)
+  const [unlinkedOnly, setUnlinkedOnly] = useState(false)
+
   const activeConv = conversations.find((c) => c.id === activeConvId)
 
   const loadConversations = useCallback(async () => {
     const params = new URLSearchParams()
     if (clientId) params.set("clientId", clientId)
     if (assigneeFilter !== "all") params.set("assignee", assigneeFilter)
+    if (!clientId && unlinkedOnly) params.set("unlinked", "1")
     const qs = params.toString()
     const res = await fetch(`/api/chat${qs ? `?${qs}` : ""}`)
     const data = await res.json()
     setConversations(data.conversations ?? [])
     setLoading(false)
-  }, [clientId, assigneeFilter])
+  }, [clientId, assigneeFilter, unlinkedOnly])
 
   const loadMessages = useCallback(async (convId: string) => {
     const res = await fetch(`/api/chat/${convId}`)
@@ -262,8 +275,39 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
     }
   }
 
+  async function openLink() {
+    if (!activeConvId) return
+    setLinkOpen(true)
+    setLinkTo(activeConv?.client?.id ?? "")
+    const res = await fetch(`/api/chat/${activeConvId}/link`)
+    if (res.ok) {
+      const data = await res.json()
+      setClients(data.clients ?? [])
+    }
+  }
+
+  async function submitLink() {
+    if (!activeConvId) return
+    setLinking(true)
+    const res = await fetch(`/api/chat/${activeConvId}/link`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: linkTo || null }),
+    })
+    setLinking(false)
+    if (res.ok) {
+      setLinkOpen(false)
+      await loadConversations()
+    }
+  }
+
   async function submitSchedule() {
     if (!activeConv || !text.trim() || !scheduleAt) return
+    if (!activeConv.isGroup || !activeConv.groupId) {
+      setSendError("Agendamento disponível apenas para grupos.")
+      setTimeout(() => setSendError(""), 5000)
+      return
+    }
     setScheduling(true)
     setSendError("")
     const res = await fetch("/api/schedules", {
@@ -272,7 +316,7 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
       body: JSON.stringify({
         text: text.trim(),
         scheduledAt: new Date(scheduleAt).toISOString(),
-        groupIds: [activeConv.group.id],
+        groupIds: [activeConv.groupId],
         clientId: activeConv.client?.id ?? clientId,
       }),
     })
@@ -337,6 +381,17 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
               </button>
             ))}
           </div>
+          {isGlobal && (
+            <button
+              onClick={() => setUnlinkedOnly((v) => !v)}
+              className={cn(
+                "mt-2 w-full rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors",
+                unlinkedOnly ? "border-orange-500/30 bg-orange-500/10 text-orange-300" : "border-white/8 text-zinc-500 hover:text-zinc-300"
+              )}
+            >
+              {unlinkedOnly ? "Mostrando só sem cliente" : "Triar: só sem cliente"}
+            </button>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -361,11 +416,11 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
                   )}
                 >
                   <div className="w-9 h-9 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Users size={15} className="text-zinc-500" />
+                    {conv.isGroup ? <Users size={15} className="text-zinc-500" /> : <UserRound size={15} className="text-zinc-500" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium text-zinc-100 truncate">{conv.group.name}</span>
+                      <span className="text-sm font-medium text-zinc-100 truncate">{conv.name}</span>
                       {lastMsg && <span className="text-xs text-zinc-600 flex-shrink-0">{formatTime(lastMsg.timestamp)}</span>}
                     </div>
                     {isGlobal && conv.client && (
@@ -411,21 +466,23 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
             <div className="px-5 py-3 border-b border-white/8 bg-zinc-900/50 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0">
-                  <Users size={14} className="text-zinc-500" />
+                  {activeConv?.isGroup ? <Users size={14} className="text-zinc-500" /> : <UserRound size={14} className="text-zinc-500" />}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-zinc-100 truncate">{activeConv?.group.name}</p>
+                  <p className="text-sm font-semibold text-zinc-100 truncate">{activeConv?.name}</p>
                   <p className="text-xs text-zinc-500 truncate">
-                    {isGlobal && activeConv?.client ? `${activeConv.client.name} · ` : ""}
-                    {activeConv?.group.participants} membros
+                    {activeConv?.client ? activeConv.client.name : "Sem cliente"}
+                    {activeConv?.isGroup ? ` · ${activeConv.group?.participants ?? 0} membros` : " · individual"}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                <span className="hidden sm:flex items-center gap-1 text-xs text-zinc-500">
-                  <UserRound size={13} />
-                  {activeConv?.assignedTo?.name ?? "Sem responsável"}
-                </span>
+                <button
+                  onClick={openLink}
+                  className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-white/20 hover:text-white"
+                >
+                  <Building2 size={13} /> {activeConv?.client ? "Cliente" : "Vincular"}
+                </button>
                 <button
                   onClick={openTransfer}
                   className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-white/20 hover:text-white"
@@ -576,10 +633,12 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
                   className={cn("p-2.5 cursor-pointer transition-colors flex-shrink-0", recording ? "text-red-400 hover:text-red-300" : "text-zinc-500 hover:text-zinc-300")}>
                   {recording ? <MicOff size={18} /> : <Mic size={18} />}
                 </button>
-                <button type="button" onClick={() => setScheduleOpen((o) => !o)} title="Agendar mensagem"
-                  className={cn("p-2.5 cursor-pointer transition-colors flex-shrink-0", scheduleOpen ? "text-orange-400" : "text-zinc-500 hover:text-zinc-300")}>
-                  <CalendarClock size={18} />
-                </button>
+                {activeConv?.isGroup && (
+                  <button type="button" onClick={() => setScheduleOpen((o) => !o)} title="Agendar mensagem (grupos)"
+                    className={cn("p-2.5 cursor-pointer transition-colors flex-shrink-0", scheduleOpen ? "text-orange-400" : "text-zinc-500 hover:text-zinc-300")}>
+                    <CalendarClock size={18} />
+                  </button>
+                )}
                 <textarea
                   value={text}
                   onChange={(e) => setText(e.target.value)}
@@ -649,7 +708,7 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
               <h3 className="flex items-center gap-2 text-sm font-semibold text-white"><ArrowLeftRight size={15} /> Transferir conversa</h3>
               <button onClick={() => setTransferOpen(false)} className="text-zinc-600 hover:text-white"><X size={16} /></button>
             </div>
-            <p className="mt-1 text-xs text-zinc-600 truncate">{activeConv?.group.name}{activeConv?.client ? ` · ${activeConv.client.name}` : ""}</p>
+            <p className="mt-1 text-xs text-zinc-600 truncate">{activeConv?.name}{activeConv?.client ? ` · ${activeConv.client.name}` : ""}</p>
 
             <label className="mt-4 block">
               <span className="mb-1.5 block text-xs font-medium text-zinc-400">Responsável</span>
@@ -687,6 +746,35 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de vínculo a cliente */}
+      {linkOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onClick={() => setLinkOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#161616] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-white"><Building2 size={15} /> Vincular a cliente</h3>
+              <button onClick={() => setLinkOpen(false)} className="text-zinc-600 hover:text-white"><X size={16} /></button>
+            </div>
+            <p className="mt-1 text-xs text-zinc-600 truncate">{activeConv?.name}</p>
+
+            <label className="mt-4 block">
+              <span className="mb-1.5 block text-xs font-medium text-zinc-400">Cliente</span>
+              <select value={linkTo} onChange={(e) => setLinkTo(e.target.value)} className="dash-input w-full rounded-lg px-3 py-2.5 text-sm">
+                <option value="">Sem cliente</option>
+                {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </label>
+            <p className="mt-2 text-[11px] text-zinc-600">Vincular faz esta conversa aparecer na visão do cliente e contar como atividade dele.</p>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setLinkOpen(false)} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-zinc-300 hover:border-white/20">Cancelar</button>
+              <button onClick={submitLink} disabled={linking} className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-xs font-medium text-white hover:bg-orange-400 disabled:opacity-40">
+                {linking ? <Loader2 size={13} className="animate-spin" /> : <Building2 size={13} />} Salvar
+              </button>
+            </div>
           </div>
         </div>
       )}

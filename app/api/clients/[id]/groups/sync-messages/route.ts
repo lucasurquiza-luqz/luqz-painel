@@ -30,8 +30,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       clientId,
       ...(requestedConversationId ? { id: requestedConversationId } : {}),
     },
-    select: { id: true, group: { select: { name: true, remoteJid: true } } },
-    orderBy: { group: { name: "asc" } },
+    select: { id: true, name: true, remoteJid: true },
+    orderBy: { name: "asc" },
   })
 
   if (conversations.length === 0) {
@@ -48,18 +48,18 @@ export async function POST(req: NextRequest, { params }: Params) {
     try {
       const result = await syncConversationMessages({
         conversationId: conversation.id,
-        remoteJid: conversation.group.remoteJid,
+        remoteJid: conversation.remoteJid,
         since,
       })
       totalStored += result.stored
       results.push({
-        group: conversation.group.name,
+        group: conversation.name,
         fetched: result.fetched,
         stored: result.stored,
       })
     } catch (err) {
       results.push({
-        group: conversation.group.name,
+        group: conversation.name,
         fetched: 0,
         stored: 0,
         error: err instanceof Error ? err.message : "Falha ao sincronizar.",

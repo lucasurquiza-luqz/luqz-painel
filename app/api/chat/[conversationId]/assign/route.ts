@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
-import { canAccessClient, requireApiUser, type ApiUser } from "@/lib/api-auth"
+import { requireApiUser } from "@/lib/api-auth"
 
 type Params = { params: Promise<{ conversationId: string }> }
 
-async function getConversation(conversationId: string, user: ApiUser) {
+// Rota interna (ADMIN/OPERADOR): acesso a qualquer conversa.
+async function getConversation(conversationId: string) {
   const conversation = await prisma.waConversation.findUnique({
     where: { id: conversationId },
     select: { id: true, clientId: true, assignedToId: true },
   })
-  if (!conversation) return null
-  if (!canAccessClient(user, conversation.clientId)) return null
   return conversation
 }
 
@@ -20,7 +19,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (!auth.ok) return auth.response
 
   const { conversationId } = await params
-  const conversation = await getConversation(conversationId, auth.user)
+  const conversation = await getConversation(conversationId)
   if (!conversation) return NextResponse.json({ error: "Nao encontrado" }, { status: 404 })
 
   const [team, transfers, assignedTo] = await Promise.all([
@@ -53,7 +52,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!auth.ok) return auth.response
 
   const { conversationId } = await params
-  const conversation = await getConversation(conversationId, auth.user)
+  const conversation = await getConversation(conversationId)
   if (!conversation) return NextResponse.json({ error: "Nao encontrado" }, { status: 404 })
 
   const body = await req.json().catch(() => ({}))

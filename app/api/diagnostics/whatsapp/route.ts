@@ -17,8 +17,8 @@ export async function GET() {
       prisma.waConversation.findMany({
         select: {
           id: true,
+          name: true,
           lastMessageAt: true,
-          group: { select: { name: true, remoteJid: true } },
           client: { select: { name: true } },
           _count: { select: { messages: true } },
         },
@@ -50,8 +50,8 @@ export async function GET() {
     },
     conversations: conversations.map((conversation) => ({
       id: conversation.id,
-      group: conversation.group.name,
-      client: conversation.client.name,
+      group: conversation.name,
+      client: conversation.client?.name ?? "Sem cliente",
       lastMessageAt: conversation.lastMessageAt,
       messageCount: conversation._count.messages,
     })),

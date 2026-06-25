@@ -163,21 +163,25 @@ model MessageLog {
 
 model WaConversation {
   id            String    @id @default(cuid())
-  groupId       String    @unique
-  clientId      String
+  remoteJid     String    @unique
+  isGroup       Boolean   @default(true)
+  name          String
+  groupId       String?   @unique
+  clientId      String?
   unreadCount   Int       @default(0)
   lastMessageAt DateTime?
   assignedToId  String?
   createdAt     DateTime  @default(now())
 
-  group          Group                    @relation(fields: [groupId], references: [id])
-  client         Client                   @relation(fields: [clientId], references: [id])
+  group          Group?                   @relation(fields: [groupId], references: [id])
+  client         Client?                  @relation(fields: [clientId], references: [id])
   assignedTo     User?                    @relation("WaConversationAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   messages       WaMessage[]
   dailySummaries GroupDailySummary[]
   transfers      WaConversationTransfer[]
 
   @@index([assignedToId])
+  @@index([clientId])
 }
 
 // Histórico de transferências de conversa entre membros do time.

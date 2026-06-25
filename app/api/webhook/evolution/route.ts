@@ -6,7 +6,10 @@ import {
   contentToText,
   extractMessageContent,
   getNestedMessage,
+  isGroupJid,
   isStorableContent,
+  isValidJid,
+  jidToPhone,
 } from "@/lib/wa-content"
 
 const BASE_URL = process.env.EVOLUTION_URL!
@@ -118,12 +121,20 @@ export async function POST(req: NextRequest) {
     if (!msg) return NextResponse.json({ ok: true })
 
     const { key, pushName, messageTimestamp } = msg
+    const remoteJid: string | undefined = key?.remoteJid
 
-    if (!key?.remoteJid?.endsWith("@g.us")) return NextResponse.json({ ok: true })
+    // Aceita grupos e individuais; ignora status/broadcast e JIDs invalidos.
+    if (!isValidJid(remoteJid) || remoteJid === "status@broadcast") {
+      await touchRuntime()
+      return NextResponse.json({ ok: true })
+    }
 
-    const group = await prisma.group.findUnique({ where: { remoteJid: key.remoteJid } })
-    if (!group?.clientId) {
-      // Grupo desconhecido ou nao vinculado a cliente: registra o sinal mas nao guarda.
+    const isGroup = isGroupJid(remoteJid)
+
+    // Grupos continuam curados (so guardamos grupos vinculados a um cliente).
+    // Conversas individuais sao capturadas todas (cliente vinculado depois).
+    const group = isGroup ? await prisma.group.findUnique({ where: { remoteJid } }) : null
+    if (isGroup && !group?.clientId) {
       await touchRuntime()
       return NextResponse.json({ ok: true })
     }
@@ -150,16 +161,25 @@ export async function POST(req: NextRequest) {
     }
 
     const timestamp = new Date(Number(messageTimestamp) * 1000)
+    const contactName = !key.fromMe && pushName ? pushName : null
+    const fallbackName = isGroup
+      ? (group?.name ?? "Grupo")
+      : (contactName ?? jidToPhone(remoteJid) ?? remoteJid.split("@")[0])
 
     const conversation = await prisma.waConversation.upsert({
-      where: { groupId: group.id },
+      where: { remoteJid },
       update: {
         lastMessageAt: timestamp,
         unreadCount: { increment: key.fromMe ? 0 : 1 },
+        ...(isGroup && group ? { groupId: group.id, clientId: group.clientId } : {}),
+        ...(!isGroup && contactName ? { name: contactName } : {}),
       },
       create: {
-        groupId: group.id,
-        clientId: group.clientId,
+        remoteJid,
+        isGroup,
+        name: fallbackName,
+        groupId: group?.id ?? null,
+        clientId: group?.clientId ?? null,
         lastMessageAt: timestamp,
         unreadCount: key.fromMe ? 0 : 1,
       },

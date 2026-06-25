@@ -16,16 +16,20 @@ export async function GET(req: NextRequest) {
 
   // Filtro de responsavel: "me" (minhas), "none" (sem dono) ou todas.
   const assignee = req.nextUrl.searchParams.get("assignee")
-  const where: { clientId?: string; assignedToId?: string | null } = {}
+  // Filtro de vinculo: "1" mostra so conversas sem cliente (triagem).
+  const unlinked = req.nextUrl.searchParams.get("unlinked") === "1"
+
+  const where: { clientId?: string | null; assignedToId?: string | null } = {}
   if (clientId) where.clientId = clientId
+  else if (unlinked) where.clientId = null
   if (assignee === "me") where.assignedToId = auth.user.userId
   else if (assignee === "none") where.assignedToId = null
 
   const conversations = await prisma.waConversation.findMany({
     where,
-    orderBy: { lastMessageAt: "desc" },
+    orderBy: { lastMessageAt: { sort: "desc", nulls: "last" } },
     include: {
-      group: { select: { id: true, name: true, participants: true } },
+      group: { select: { participants: true } },
       client: { select: { id: true, name: true } },
       assignedTo: { select: { id: true, name: true } },
       messages: {

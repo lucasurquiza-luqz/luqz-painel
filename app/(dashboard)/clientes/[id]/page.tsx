@@ -79,7 +79,7 @@ export default async function ClienteVisaoGeralPage({ params }: { params: Promis
     prisma.groupDailySummary.findFirst({
       where: { clientId },
       orderBy: { date: "desc" },
-      select: { date: true, conversation: { select: { group: { select: { name: true } } } } },
+      select: { date: true, conversation: { select: { name: true } } },
     }),
     prisma.groupDailySummaryItem.count({ where: { status: "PROPOSED", summary: { clientId } } }),
     prisma.groupDailySummaryItem.count({ where: { status: "PROPOSED", kind: { in: ["RISK", "PENDING"] }, summary: { clientId } } }),
@@ -231,7 +231,7 @@ export default async function ClienteVisaoGeralPage({ params }: { params: Promis
           <ActivityRow
             icon={MessagesSquare}
             label="Último resumo diário"
-            value={lastSummary ? `${lastSummary.conversation.group.name} · ${fmtDay(lastSummary.date)}` : "Nenhum resumo gerado"}
+            value={lastSummary ? `${lastSummary.conversation.name} · ${fmtDay(lastSummary.date)}` : "Nenhum resumo gerado"}
             href={`/clientes/${clientId}/grupo/resumo-diario`}
           />
           <ActivityRow

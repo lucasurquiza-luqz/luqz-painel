@@ -26,7 +26,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     prisma.groupDailySummary.findMany({
       where: { clientId },
       include: {
-        conversation: { select: { id: true, group: { select: { id: true, name: true } } } },
+        conversation: { select: { id: true, name: true } },
         generatedBy: { select: { id: true, name: true } },
         items: {
           include: { reviewedBy: { select: { id: true, name: true } } },
@@ -36,10 +36,11 @@ export async function GET(req: NextRequest, { params }: Params) {
       orderBy: { date: "desc" },
       take: 60,
     }),
+    // Resumo diário é por grupo: só conversas de grupo entram.
     prisma.waConversation.findMany({
-      where: { clientId },
-      select: { id: true, group: { select: { id: true, name: true, active: true } } },
-      orderBy: { group: { name: "asc" } },
+      where: { clientId, isGroup: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
     }),
   ])
 
@@ -92,9 +93,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
 
   const conversations = await prisma.waConversation.findMany({
-    where: { clientId },
-    select: { id: true, group: { select: { name: true } } },
-    orderBy: { group: { name: "asc" } },
+    where: { clientId, isGroup: true },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
   })
   if (conversations.length === 0) {
     return NextResponse.json({ error: "Cliente nao possui conversa de WhatsApp vinculada." }, { status: 404 })

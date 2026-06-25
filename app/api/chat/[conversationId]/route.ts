@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
-import { canAccessClient, requireApiUser, type ApiUser } from "@/lib/api-auth"
+import { requireApiUser, type ApiUser } from "@/lib/api-auth"
 import { sendText, sendMedia } from "@/lib/evolution"
 
 type Params = { params: Promise<{ conversationId: string }> }
@@ -8,12 +8,12 @@ type Params = { params: Promise<{ conversationId: string }> }
 async function getAuthorizedConversation(conversationId: string, user: ApiUser) {
   const conversation = await prisma.waConversation.findUnique({
     where: { id: conversationId },
-    include: { group: true },
+    select: { id: true, remoteJid: true, clientId: true },
   })
   if (!conversation) return null
 
-  // CLIENTE so pode ver a propria conversa
-  if (!canAccessClient(user, conversation.clientId)) {
+  // CLIENTE so pode ver conversas vinculadas ao proprio cliente.
+  if (user.role === "CLIENTE" && conversation.clientId !== user.clientId) {
     return null
   }
 
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Mensagem vazia" }, { status: 400 })
   }
 
-  const remoteJid = conversation.group.remoteJid
+  const remoteJid = conversation.remoteJid
 
   try {
     if (mediaUrl || mediaBase64) {

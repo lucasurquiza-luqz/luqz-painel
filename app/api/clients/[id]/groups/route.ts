@@ -14,14 +14,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data: { clientId: linked ? clientId : null },
   })
 
-  // Ao vincular: garante que a conversa existe para o chat aparecer imediatamente
-  if (linked) {
-    await prisma.waConversation.upsert({
-      where: { groupId },
-      update: {},
-      create: { groupId, clientId },
-    })
-  }
+  // Reflete o vinculo na conversa do chat (vincular/desvincular o cliente).
+  await prisma.waConversation.upsert({
+    where: { remoteJid: group.remoteJid },
+    update: { clientId: linked ? clientId : null, groupId: group.id, isGroup: true },
+    create: {
+      remoteJid: group.remoteJid,
+      isGroup: true,
+      name: group.name,
+      groupId: group.id,
+      clientId: linked ? clientId : null,
+    },
+  })
 
   return NextResponse.json({ group })
 }

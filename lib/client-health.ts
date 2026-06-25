@@ -188,7 +188,9 @@ export async function getClientsHealth(
 
   const lastActivity = new Map<string, Date>()
   for (const conv of conversations) {
-    if (conv.lastMessageAt && !lastActivity.has(conv.clientId)) lastActivity.set(conv.clientId, conv.lastMessageAt)
+    if (conv.clientId && conv.lastMessageAt && !lastActivity.has(conv.clientId)) {
+      lastActivity.set(conv.clientId, conv.lastMessageAt)
+    }
   }
 
   const startOfToday = new Date()
