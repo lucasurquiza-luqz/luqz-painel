@@ -45,4 +45,17 @@ export const CLIENT_ROSTER: ClientRosterItem[] = [
   { name: "Meu Imovel", active: false, clickupFolderId: null, statusReason: inactiveWithoutDocumentedReason },
   { name: "Rijeero", active: false, clickupFolderId: null, statusReason: inactiveWithoutDocumentedReason },
   { name: "Soul Artsy", active: true, clickupFolderId: "90133247746", statusReason: null },
+  // Clientes adicionados em 25/06/2026 (estavam no repo/ClickUp mas faltavam no roster).
+  { name: "Azulia", active: true, clickupFolderId: null, statusReason: null },
+  { name: "Bambue", active: true, clickupFolderId: null, statusReason: null },
+  { name: "Goleiro da Fiel", active: true, clickupFolderId: null, statusReason: null },
+  { name: "Imigra", active: true, clickupFolderId: "90136848083", statusReason: null },
+  { name: "JF Pecas de Empilhadeiras", active: true, clickupFolderId: null, statusReason: null },
+  { name: "Lake Business", active: true, clickupFolderId: null, statusReason: null },
+  { name: "Marina Mulinet", active: true, clickupFolderId: null, statusReason: null },
+  { name: "Otica Nova Visao", active: true, clickupFolderId: null, statusReason: null },
+  { name: "Palacio das Borrachas", active: true, clickupFolderId: null, statusReason: null },
+  { name: "PeakPace", active: true, clickupFolderId: "901318246087", statusReason: null },
+  { name: "Veronica Bourroul", active: true, clickupFolderId: null, statusReason: null },
+  { name: "WMI Imoveis", active: true, clickupFolderId: null, statusReason: null },
 ]

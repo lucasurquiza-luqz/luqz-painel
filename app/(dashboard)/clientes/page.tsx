@@ -8,6 +8,7 @@ import {
   CircleCheck,
   CirclePause,
   Loader2,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
@@ -43,6 +44,8 @@ export default function ClientesPage() {
   const [filter, setFilter] = useState<"ALL" | "ACTIVE" | "INACTIVE">("ACTIVE")
   const [editingStatus, setEditingStatus] = useState<Client | null>(null)
   const [statusForm, setStatusForm] = useState({ active: true, reason: "" })
+  const [editingClient, setEditingClient] = useState<Client | null>(null)
+  const [editForm, setEditForm] = useState({ name: "", description: "" })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -111,6 +114,33 @@ export default function ClientesPage() {
   function openStatus(client: Client) {
     setEditingStatus(client)
     setStatusForm({ active: client.active, reason: client.statusReason ?? "" })
+  }
+
+  function openEdit(client: Client) {
+    setEditingClient(client)
+    setEditForm({ name: client.name, description: client.description ?? "" })
+  }
+
+  async function saveEdit(event: React.FormEvent) {
+    event.preventDefault()
+    if (!editingClient) return
+    if (!editForm.name.trim()) { setError("O nome não pode ficar vazio."); return }
+    setSaving(true)
+    setError("")
+    const response = await fetch(`/api/clients/${editingClient.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: editForm.name.trim(), description: editForm.description.trim() || null }),
+    })
+    const payload = await response.json()
+    if (!response.ok) {
+      setError(payload.error ?? "Não foi possível salvar o cliente.")
+      setSaving(false)
+      return
+    }
+    setEditingClient(null)
+    setSaving(false)
+    await load()
   }
 
   async function saveStatus(event: React.FormEvent) {
@@ -199,7 +229,10 @@ export default function ClientesPage() {
                 <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold text-zinc-100">{client.name}</p><StatusBadge status={client.active ? "healthy" : "unknown"}>{client.active ? "Ativo" : "Inativo"}</StatusBadge></div><p className="mt-1 truncate text-xs text-zinc-600">{client._count.groups} grupos · {client._count.messages} mensagens{client.description ? ` · ${client.description}` : ""}</p>{!client.active && client.statusReason && <p className="mt-1 truncate text-xs text-zinc-700">{client.statusReason}</p>}</div>
                 <ChevronRight size={16} className="shrink-0 text-zinc-700" />
               </Link>
-              <Button variant="secondary" className="min-h-9 shrink-0 px-3 py-1.5 text-xs" onClick={() => openStatus(client)}>Alterar status</Button>
+              <div className="flex shrink-0 gap-2">
+                <Button variant="secondary" className="min-h-9 px-3 py-1.5 text-xs" onClick={() => openEdit(client)}><Pencil size={13} /> Editar</Button>
+                <Button variant="secondary" className="min-h-9 px-3 py-1.5 text-xs" onClick={() => openStatus(client)}>Status</Button>
+              </div>
             </Panel>
           ))}
         </section>
@@ -214,6 +247,19 @@ export default function ClientesPage() {
               {!statusForm.active && <Field label="Motivo da inativação"><textarea required rows={3} value={statusForm.reason} onChange={(event) => setStatusForm({ ...statusForm, reason: event.target.value })} className="dash-input w-full resize-none rounded-lg px-3.5 py-3 text-sm" placeholder="Registre o motivo para preservar o contexto operacional." /></Field>}
               <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3 text-xs leading-5 text-zinc-600">A alteração será registrada no histórico com data, responsável e origem manual.</div>
               <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setEditingStatus(null)}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? <Loader2 size={16} className="animate-spin" /> : null} Salvar status</Button></div>
+            </form>
+          </Panel>
+        </div>
+      )}
+
+      {editingClient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+          <Panel className="w-full max-w-lg border-white/15 p-6 shadow-2xl">
+            <form onSubmit={saveEdit} className="space-y-5">
+              <div className="flex items-start justify-between gap-4"><div><p className="dash-eyebrow">Editar cliente</p><h2 className="mt-2 text-xl font-semibold text-white">Dados do cliente</h2></div><button type="button" onClick={() => setEditingClient(null)} className="text-zinc-600 hover:text-white"><X size={18} /></button></div>
+              <Field label="Nome"><Input required value={editForm.name} onChange={(event) => setEditForm({ ...editForm, name: event.target.value })} placeholder="Nome do cliente" /></Field>
+              <Field label="Descrição opcional"><Input value={editForm.description} onChange={(event) => setEditForm({ ...editForm, description: event.target.value })} placeholder="Escopo ou observação curta" /></Field>
+              <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setEditingClient(null)}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? <Loader2 size={16} className="animate-spin" /> : null} Salvar</Button></div>
             </form>
           </Panel>
         </div>
