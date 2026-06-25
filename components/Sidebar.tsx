@@ -28,8 +28,6 @@ const clientNav = [
   { href: "/grupo/resumo-diario", label: "Resumo do grupo", icon: MessagesSquare, internalOnly: true },
   { href: "/reunioes", label: "Reunioes", icon: Video, internalOnly: true },
   { href: "/checkin", label: "Check-in", icon: HeartPulse, internalOnly: true },
-  { href: "/reunioes", label: "Reunioes", icon: Video, internalOnly: true },
-  { href: "/checkin", label: "Check-in", icon: HeartPulse, internalOnly: true },
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/configuracoes", label: "Configurações", icon: Settings },
   { href: "/credenciais", label: "Credenciais", icon: KeyRound, soon: true },
