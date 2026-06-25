@@ -22,6 +22,7 @@ import {
 import { sessionOptions, type SessionData, isEquipe } from "@/lib/auth"
 import { buildReading, daysAgo, LEVEL_LABEL, PERCEPTION, type Level } from "@/lib/client-health"
 import { PageHeader, Panel, StatusBadge } from "@/components/ui/primitives"
+import { NextActionCard } from "@/components/NextActionCard"
 import { cn } from "@/lib/utils"
 
 const TZ = "America/Sao_Paulo"
@@ -96,6 +97,7 @@ export default async function ClienteVisaoGeralPage({ params }: { params: Promis
   const latest = checkins[0]
   const previous = checkins[1]
   const reading = buildReading({ latest, previous, openRisks })
+  const isNew = checkins.length === 0 && activeContext === 0 && !lastSummary && pendingApprovals === 0
 
   return (
     <main className="mx-auto max-w-5xl space-y-6 p-6 lg:p-8">
@@ -113,6 +115,26 @@ export default async function ClienteVisaoGeralPage({ params }: { params: Promis
       {!client.active && client.statusReason && (
         <Panel className="border-amber-400/20 bg-amber-500/[0.06] p-4 text-sm text-amber-200">
           Inativo desde {fmtDay(client.statusChangedAt)} — {client.statusReason}
+        </Panel>
+      )}
+
+      {isNew && (
+        <Panel className="border-[#FF8F50]/20 bg-[#FF8F50]/[0.05] p-5">
+          <p className="text-sm font-medium text-[#FFB185]">Comece por aqui</p>
+          <p className="mt-1 text-sm leading-6 text-zinc-400">
+            Este cliente ainda tem pouca informação. Dê o primeiro passo para a leitura de saúde ganhar vida:
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link href={`/clientes/${clientId}/checkin`} className="rounded-lg border border-white/8 bg-black/20 px-3 py-1.5 text-xs text-zinc-300 hover:border-white/15">
+              Registrar check-in do time
+            </Link>
+            <Link href={`/clientes/${clientId}/grupo/resumo-diario`} className="rounded-lg border border-white/8 bg-black/20 px-3 py-1.5 text-xs text-zinc-300 hover:border-white/15">
+              Gerar resumo diário
+            </Link>
+            <Link href={`/clientes/${clientId}/contexto`} className="rounded-lg border border-white/8 bg-black/20 px-3 py-1.5 text-xs text-zinc-300 hover:border-white/15">
+              Construir contexto
+            </Link>
+          </div>
         </Panel>
       )}
 
@@ -144,6 +166,8 @@ export default async function ClienteVisaoGeralPage({ params }: { params: Promis
           </div>
         )}
       </Panel>
+
+      <NextActionCard clientId={clientId} />
 
       {/* Sinais */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

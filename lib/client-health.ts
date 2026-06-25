@@ -92,6 +92,13 @@ export function buildReading(input: {
 
 // === Saúde em lote (Torre da agência) ===
 
+export interface NextActionSummary {
+  description: string
+  responsibleName: string | null
+  dueAt: Date | null
+  overdue: boolean
+}
+
 export interface ClientHealth {
   id: string
   name: string
@@ -101,6 +108,7 @@ export interface ClientHealth {
   pendingApprovals: number
   lastActivityAt: Date | null
   lastCheckinPerception: string | null
+  nextAction: NextActionSummary | null
 }
 
 function countByClient(rows: { summary?: { clientId: string } | null; clientId?: string }[]): Map<string, number> {
@@ -128,6 +136,7 @@ export async function getClientsHealth(
     pendingGroupItems,
     pendingMeetingItems,
     conversations,
+    nextActions,
   ] = await Promise.all([
     prisma.teamCheckin.findMany({
       where: { clientId: { in: ids } },
@@ -156,6 +165,11 @@ export async function getClientsHealth(
       orderBy: { lastMessageAt: "desc" },
       select: { clientId: true, lastMessageAt: true },
     }),
+    prisma.clientNextAction.findMany({
+      where: { clientId: { in: ids }, status: "OPEN" },
+      orderBy: { createdAt: "desc" },
+      select: { clientId: true, description: true, dueAt: true, responsible: { select: { name: true } } },
+    }),
   ])
 
   // Últimos 2 check-ins por cliente (já vêm ordenados desc).
@@ -177,6 +191,19 @@ export async function getClientsHealth(
     if (conv.lastMessageAt && !lastActivity.has(conv.clientId)) lastActivity.set(conv.clientId, conv.lastMessageAt)
   }
 
+  const startOfToday = new Date()
+  startOfToday.setHours(0, 0, 0, 0)
+  const nextActionByClient = new Map<string, NextActionSummary>()
+  for (const na of nextActions) {
+    if (nextActionByClient.has(na.clientId)) continue // já vem ordenado desc; mantém a mais recente
+    nextActionByClient.set(na.clientId, {
+      description: na.description,
+      responsibleName: na.responsible?.name ?? null,
+      dueAt: na.dueAt,
+      overdue: na.dueAt ? na.dueAt < startOfToday : false,
+    })
+  }
+
   return clients.map((client) => {
     const cc = checkinsByClient.get(client.id) ?? []
     const openRisks = (groupRiskCount.get(client.id) ?? 0) + (meetingRiskCount.get(client.id) ?? 0)
@@ -194,6 +221,7 @@ export async function getClientsHealth(
       pendingApprovals,
       lastActivityAt: lastActivity.get(client.id) ?? null,
       lastCheckinPerception: cc[0]?.perception ?? null,
+      nextAction: nextActionByClient.get(client.id) ?? null,
     }
   })
 }

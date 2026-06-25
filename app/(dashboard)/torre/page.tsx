@@ -87,7 +87,19 @@ function ClientRow({ health }: { health: ClientHealth }) {
           <span className="truncate text-sm font-semibold text-zinc-100">{health.name}</span>
           {!health.active && <span className="text-[10px] uppercase tracking-wide text-zinc-600">inativo</span>}
         </div>
-        <p className="mt-0.5 truncate text-xs text-zinc-500">{health.reading.summary}</p>
+        {health.nextAction ? (
+          <p className="mt-0.5 truncate text-xs">
+            <span className="text-zinc-400">→ {health.nextAction.description}</span>
+            {health.nextAction.responsibleName && <span className="text-zinc-600"> · {health.nextAction.responsibleName}</span>}
+            {health.nextAction.dueAt && (
+              <span className={cn(health.nextAction.overdue ? "text-red-300" : "text-zinc-600")}>
+                {" "}· {new Date(health.nextAction.dueAt).toLocaleDateString("pt-BR")}{health.nextAction.overdue ? " (atrasada)" : ""}
+              </span>
+            )}
+          </p>
+        ) : (
+          <p className="mt-0.5 truncate text-xs text-zinc-600">{health.reading.summary}</p>
+        )}
       </div>
 
       <div className="hidden shrink-0 items-center gap-4 sm:flex">
