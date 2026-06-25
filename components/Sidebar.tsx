@@ -10,6 +10,8 @@ import {
   CalendarClock,
   ChevronDown,
   ChevronsUpDown,
+  ClipboardList,
+  FileText,
   Gauge,
   KeyRound,
   LayoutDashboard,
@@ -18,6 +20,7 @@ import {
   MessagesSquare,
   Search,
   Settings,
+  Target,
   Users,
   Video,
   HeartPulse,
@@ -34,6 +37,14 @@ type NavGroup = { label?: string; internalOnly?: boolean; items: NavLink[] }
 const clientNav: NavGroup[] = [
   { items: [{ href: "", label: "Visão geral", icon: LayoutDashboard }] },
   {
+    label: "Cadastro",
+    internalOnly: true,
+    items: [
+      { href: "/cadastro", label: "Cadastro", icon: ClipboardList },
+      { href: "/documentos", label: "Documentos", icon: FileText },
+    ],
+  },
+  {
     label: "Relacionamento",
     internalOnly: true,
     items: [
@@ -42,6 +53,13 @@ const clientNav: NavGroup[] = [
       { href: "/grupo/resumo-diario", label: "Resumo do grupo", icon: MessagesSquare },
       { href: "/reunioes", label: "Reuniões", icon: Video },
       { href: "/checkin", label: "Check-in", icon: HeartPulse },
+    ],
+  },
+  {
+    label: "Resultado",
+    internalOnly: true,
+    items: [
+      { href: "/metas", label: "Metas / Plano de mídia", icon: Target },
     ],
   },
   {
