@@ -9,6 +9,7 @@ import {
   BrainCircuit,
   Building2,
   CalendarClock,
+  ChevronDown,
   Gauge,
   KeyRound,
   LayoutDashboard,
@@ -23,17 +24,39 @@ import {
 import { DashBrandMark } from "@/components/DashBrandMark"
 import { cn } from "@/lib/utils"
 
-const clientNav = [
-  { href: "", label: "Visão geral", icon: LayoutDashboard },
-  { href: "/status", label: "Status", icon: Activity, internalOnly: true },
-  { href: "/contexto", label: "Contexto", icon: BrainCircuit, internalOnly: true },
-  { href: "/grupo/resumo-diario", label: "Resumo do grupo", icon: MessagesSquare, internalOnly: true },
-  { href: "/reunioes", label: "Reunioes", icon: Video, internalOnly: true },
-  { href: "/checkin", label: "Check-in", icon: HeartPulse, internalOnly: true },
-  { href: "/agendamentos", label: "Agendamentos", icon: CalendarClock, internalOnly: true },
-  { href: "/chat", label: "Chat", icon: MessageSquare },
-  { href: "/configuracoes", label: "Configurações", icon: Settings },
-  { href: "/credenciais", label: "Credenciais", icon: KeyRound, soon: true },
+type IconType = React.ComponentType<{ size?: number; className?: string }>
+type NavLink = { href: string; label: string; icon: IconType; internalOnly?: boolean; soon?: boolean }
+type NavGroup = { label?: string; internalOnly?: boolean; items: NavLink[] }
+
+// Menu agrupado e colapsável. Concentra por categoria para o menu não inchar
+// conforme novas dimensões (Resultado, NPS) entram.
+const clientNav: NavGroup[] = [
+  { items: [{ href: "", label: "Visão geral", icon: LayoutDashboard }] },
+  {
+    label: "Relacionamento",
+    internalOnly: true,
+    items: [
+      { href: "/status", label: "Status", icon: Activity },
+      { href: "/contexto", label: "Contexto", icon: BrainCircuit },
+      { href: "/grupo/resumo-diario", label: "Resumo do grupo", icon: MessagesSquare },
+      { href: "/reunioes", label: "Reuniões", icon: Video },
+      { href: "/checkin", label: "Check-in", icon: HeartPulse },
+    ],
+  },
+  {
+    label: "Mensageria",
+    items: [
+      { href: "/chat", label: "Chat", icon: MessageSquare },
+      { href: "/agendamentos", label: "Agendamentos", icon: CalendarClock, internalOnly: true },
+    ],
+  },
+  {
+    label: "Configurações",
+    items: [
+      { href: "/configuracoes", label: "Geral", icon: Settings },
+      { href: "/credenciais", label: "Credenciais", icon: KeyRound, soon: true },
+    ],
+  },
 ]
 
 interface SidebarProps {
@@ -92,28 +115,7 @@ export function Sidebar({ role, name }: SidebarProps) {
 
       <nav className="dash-scrollbar flex-1 overflow-y-auto p-3">
         {clientId ? (
-          <NavSection label="Workspace do cliente">
-            {clientNav.filter((item) => !item.internalOnly || role !== "CLIENTE").map((item) => {
-              const fullHref = `/clientes/${clientId}${item.href}`
-              const active = item.href === ""
-                ? pathname === fullHref
-                : pathname === fullHref || pathname.startsWith(`${fullHref}/`)
-
-              if (item.soon) {
-                return (
-                  <div key={item.href} className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-zinc-700">
-                    <item.icon size={16} />
-                    <span>{item.label}</span>
-                    <span className="ml-auto rounded-full border border-white/5 px-2 py-0.5 text-[10px] uppercase tracking-wide text-zinc-700">
-                      Em breve
-                    </span>
-                  </div>
-                )
-              }
-
-              return <NavItem key={item.href} href={fullHref} label={item.label} icon={item.icon} active={active} />
-            })}
-          </NavSection>
+          <ClientNav clientId={clientId} role={role} pathname={pathname} />
         ) : (
           <>
             <NavSection label="Operação">
@@ -155,6 +157,63 @@ export function Sidebar({ role, name }: SidebarProps) {
         </button>
       </div>
     </aside>
+  )
+}
+
+function ClientNav({ clientId, role, pathname }: { clientId: string; role: string; pathname: string }) {
+  const isActive = (href: string) => {
+    const full = `/clientes/${clientId}${href}`
+    return href === "" ? pathname === full : pathname === full || pathname.startsWith(`${full}/`)
+  }
+
+  const groups = clientNav
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => (!group.internalOnly && !item.internalOnly) || role !== "CLIENTE"),
+    }))
+    .filter((group) => group.items.length > 0)
+
+  const activeGroupLabel = groups.find((g) => g.label && g.items.some((it) => isActive(it.href)))?.label ?? null
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({})
+  const isOpen = (label: string) => overrides[label] ?? label === activeGroupLabel
+
+  const renderItem = (item: NavLink) => {
+    if (item.soon) {
+      return (
+        <div key={item.href} className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-zinc-700">
+          <item.icon size={16} />
+          <span>{item.label}</span>
+          <span className="ml-auto rounded-full border border-white/5 px-2 py-0.5 text-[10px] uppercase tracking-wide text-zinc-700">
+            Em breve
+          </span>
+        </div>
+      )
+    }
+    return <NavItem key={item.href} href={`/clientes/${clientId}${item.href}`} label={item.label} icon={item.icon} active={isActive(item.href)} />
+  }
+
+  return (
+    <div>
+      {groups.map((group, index) => {
+        if (!group.label) {
+          return <div key={`top-${index}`} className="mb-3 space-y-1">{group.items.map(renderItem)}</div>
+        }
+        const open = isOpen(group.label)
+        const label = group.label
+        return (
+          <section key={label} className="mb-2">
+            <button
+              onClick={() => setOverrides((o) => ({ ...o, [label]: !isOpen(label) }))}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600 hover:text-zinc-400"
+            >
+              <ChevronDown size={12} className={cn("transition-transform", open ? "" : "-rotate-90")} />
+              {label}
+            </button>
+            {open && <div className="mt-1 space-y-1">{group.items.map(renderItem)}</div>}
+          </section>
+        )
+      })}
+    </div>
   )
 }
 
