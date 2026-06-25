@@ -4,18 +4,19 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 import {
-  ArrowLeft,
   Activity,
   BrainCircuit,
   Building2,
   CalendarClock,
   ChevronDown,
+  ChevronsUpDown,
   Gauge,
   KeyRound,
   LayoutDashboard,
   LogOut,
   MessageSquare,
   MessagesSquare,
+  Search,
   Settings,
   Users,
   Video,
@@ -99,18 +100,7 @@ export function Sidebar({ role, name }: SidebarProps) {
           <DashBrandMark />
         </Link>
 
-        {clientId && (
-          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
-            <p className="dash-eyebrow text-[10px] text-zinc-600">Cliente ativo</p>
-            <p className="mt-2 truncate text-sm font-semibold text-zinc-100" title={clientName ?? undefined}>
-              {clientName ?? "Carregando..."}
-            </p>
-            <Link href="/clientes" className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-[#FFB185] hover:text-[#FFD482]">
-              <ArrowLeft size={12} />
-              Trocar cliente
-            </Link>
-          </div>
-        )}
+        {clientId && <ClientSwitcher clientId={clientId} clientName={clientName} />}
       </div>
 
       <nav className="dash-scrollbar flex-1 overflow-y-auto p-3">
@@ -160,6 +150,90 @@ export function Sidebar({ role, name }: SidebarProps) {
   )
 }
 
+function ClientSwitcher({ clientId, clientName }: { clientId: string; clientName: string | null }) {
+  const [open, setOpen] = useState(false)
+  const [clients, setClients] = useState<{ id: string; name: string; active: boolean }[]>([])
+  const [loaded, setLoaded] = useState(false)
+  const [search, setSearch] = useState("")
+
+  async function toggle() {
+    const next = !open
+    setOpen(next)
+    if (next && !loaded) {
+      try {
+        const res = await fetch("/api/clients")
+        const data = await res.json()
+        if (res.ok) setClients(data.clients ?? [])
+      } catch {
+        /* ignore */
+      }
+      setLoaded(true)
+    }
+  }
+
+  const term = search.trim().toLowerCase()
+  const filtered = clients
+    .filter((c) => c.active && c.id !== clientId && (!term || c.name.toLowerCase().includes(term)))
+    .slice(0, 40)
+
+  return (
+    <div className="mt-4">
+      <button
+        onClick={toggle}
+        className="flex w-full items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-left hover:border-white/20"
+      >
+        <div className="min-w-0 flex-1">
+          <p className="dash-eyebrow text-[10px] text-zinc-600">Cliente ativo</p>
+          <p className="mt-1 truncate text-sm font-semibold text-zinc-100" title={clientName ?? undefined}>
+            {clientName ?? "Carregando..."}
+          </p>
+        </div>
+        <ChevronsUpDown size={15} className="shrink-0 text-zinc-600" />
+      </button>
+
+      {open && (
+        <div className="mt-2 rounded-xl border border-white/10 bg-[#161616] p-2 shadow-xl">
+          <div className="relative mb-2">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-700" />
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar cliente..."
+              className="dash-input w-full rounded-lg py-2 pl-8 pr-2 text-xs"
+            />
+          </div>
+          <div className="dash-scrollbar max-h-64 space-y-0.5 overflow-y-auto">
+            {!loaded ? (
+              <p className="px-2 py-3 text-xs text-zinc-600">Carregando…</p>
+            ) : filtered.length === 0 ? (
+              <p className="px-2 py-3 text-xs text-zinc-600">Nenhum cliente.</p>
+            ) : (
+              filtered.map((c) => (
+                <Link
+                  key={c.id}
+                  href={`/clientes/${c.id}`}
+                  onClick={() => setOpen(false)}
+                  className="block truncate rounded-lg px-2.5 py-2 text-xs text-zinc-300 hover:bg-white/5 hover:text-white"
+                >
+                  {c.name}
+                </Link>
+              ))
+            )}
+          </div>
+          <Link
+            href="/clientes"
+            onClick={() => setOpen(false)}
+            className="mt-1 block border-t border-white/8 px-2.5 pt-2 text-[11px] font-medium text-[#FFB185] hover:text-[#FFD482]"
+          >
+            Ver carteira completa →
+          </Link>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ClientNav({ clientId, role, pathname }: { clientId: string; role: string; pathname: string }) {
   const isActive = (href: string) => {
     const full = `/clientes/${clientId}${href}`
@@ -173,9 +247,9 @@ function ClientNav({ clientId, role, pathname }: { clientId: string; role: strin
     }))
     .filter((group) => group.items.length > 0)
 
-  const activeGroupLabel = groups.find((g) => g.label && g.items.some((it) => isActive(it.href)))?.label ?? null
   const [overrides, setOverrides] = useState<Record<string, boolean>>({})
-  const isOpen = (label: string) => overrides[label] ?? label === activeGroupLabel
+  // Abertos por padrão (mais convidativo); recolher é opcional para economizar espaço.
+  const isOpen = (label: string) => overrides[label] ?? true
 
   const renderItem = (item: NavLink) => {
     if (item.soon) {
