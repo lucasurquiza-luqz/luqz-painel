@@ -131,38 +131,39 @@ export async function getConnectionState(): Promise<string | null> {
   }
 }
 
+// Cria a instancia na Evolution (idempotente: ignora se ja existe).
+export async function createInstance(): Promise<unknown> {
+  const res = await evoFetch(`${BASE_URL}/instance/create`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      instanceName: process.env.EVOLUTION_INSTANCE,
+      integration: "WHATSAPP-BAILEYS",
+    }),
+  })
+  // 403/409 = ja existe; nao e erro para o nosso fluxo.
+  if (res.status === 403 || res.status === 409) return { exists: true }
+  return evoJSON(res)
+}
+
 // (Re)registra o webhook na Evolution apontando para o Dash, com os eventos
-// necessarios para ler grupos. Provavel correcao quando "nao le os grupos".
-// Envia o corpo nos dois formatos (v2 aninhado em `webhook` + v1 flat) para
-// funcionar em qualquer versao da Evolution. Timeout maior porque o set e lento.
-export async function setWebhook(url: string, secret?: string): Promise<unknown> {
-  const events = [
-    "MESSAGES_UPSERT",
-    "MESSAGES_UPDATE",
-    "CONNECTION_UPDATE",
-    "GROUPS_UPSERT",
-    "GROUPS_UPDATE",
-  ]
-  const webhookHeaders = secret ? { "x-webhook-secret": secret } : undefined
+// necessarios para ler grupos. Formato flat (mesmo do LUQZCRM, comprovado).
+// Timeout maior porque o set pode ser lento.
+export async function setWebhook(url: string): Promise<unknown> {
   const body = {
-    // v2 (aninhado)
-    webhook: {
-      enabled: true,
-      url,
-      webhookByEvents: false,
-      webhookBase64: true,
-      events,
-      ...(webhookHeaders ? { headers: webhookHeaders } : {}),
-    },
-    // v1 (flat) — ignorado por versoes que so leem `webhook`
     enabled: true,
     url,
     webhook_by_events: false,
     webhookByEvents: false,
     webhook_base64: true,
     webhookBase64: true,
-    events,
-    ...(webhookHeaders ? { headers: webhookHeaders } : {}),
+    events: [
+      "MESSAGES_UPSERT",
+      "MESSAGES_UPDATE",
+      "CONNECTION_UPDATE",
+      "GROUPS_UPSERT",
+      "GROUPS_UPDATE",
+    ],
   }
 
   const controller = new AbortController()

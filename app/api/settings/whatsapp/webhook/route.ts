@@ -54,10 +54,9 @@ export async function POST(req: NextRequest) {
   }
 
   const url = buildWebhookUrl(base)
-  const secret = process.env.EVOLUTION_WEBHOOK_SECRET
 
   try {
-    await setWebhook(url, secret)
+    await setWebhook(url)
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Falha ao configurar webhook na Evolution." },

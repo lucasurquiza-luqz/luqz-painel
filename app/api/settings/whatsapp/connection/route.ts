@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { requireApiUser } from "@/lib/api-auth"
-import { connectInstance, getConnectionState, logoutInstance } from "@/lib/evolution"
+import { connectInstance, createInstance, getConnectionState, logoutInstance } from "@/lib/evolution"
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : null
@@ -38,6 +38,12 @@ export async function GET() {
   }
 
   try {
+    // Cria a instancia se ainda nao existir (Evolution nova/dedicada), depois conecta.
+    try {
+      await createInstance()
+    } catch {
+      // Ja existe ou erro nao-fatal: segue para o connect.
+    }
     const data = asRecord(await connectInstance())
     return NextResponse.json({
       state: state ?? "close",
