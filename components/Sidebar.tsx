@@ -116,6 +116,12 @@ export function Sidebar({ role, name }: SidebarProps) {
                 active={pathname.startsWith("/torre")}
               />
               <NavItem
+                href="/conversas"
+                label="Conversas"
+                icon={MessageSquare}
+                active={pathname.startsWith("/conversas")}
+              />
+              <NavItem
                 href="/clientes"
                 label="Clientes"
                 icon={Building2}
