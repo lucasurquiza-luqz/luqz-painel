@@ -36,6 +36,26 @@ export function daysAgo(date: Date | null | undefined): number | null {
 
 export type Trend = "up" | "down" | "flat" | "none"
 
+export type Sentiment = "POSITIVE" | "NEUTRAL" | "CONCERN" | "CRITICAL"
+
+// A leitura da IA SINALIZA — nunca vira saúde oficial sem revisão humana.
+export const SENTIMENT: Record<Sentiment, { label: string; level: Level }> = {
+  POSITIVE: { label: "Positivo", level: "healthy" },
+  NEUTRAL: { label: "Neutro", level: "healthy" },
+  CONCERN: { label: "Preocupante", level: "attention" },
+  CRITICAL: { label: "Crítico", level: "critical" },
+}
+
+export interface AiSignal {
+  sentiment: Sentiment
+  level: Level
+  analysis: string
+  confidence: string
+  ageDays: number
+  // A IA enxerga algo pior do que o time registrou? (sinal de atenção)
+  divergesFromTeam: boolean
+}
+
 export interface Reading {
   level: Level
   trend: Trend
@@ -43,20 +63,58 @@ export interface Reading {
   summary: string
   evidence?: string
   evidenceMeta?: string
+  // Origem da leitura oficial: time, IA (preliminar, sem check-in) ou nenhuma.
+  source: "team" | "ai" | "none"
+  aiSignal?: AiSignal
 }
+
+export type AiReadingInput = {
+  sentiment: Sentiment
+  analysis: string | null
+  confidence: string | null
+  date: Date
+} | null
 
 export function buildReading(input: {
   latest?: { perception: string; justification: string; createdAt: Date; author: { name: string } } | null
   previous?: { perception: string } | null
   openRisks: number
+  ai?: AiReadingInput
 }): Reading {
-  const { latest, previous, openRisks } = input
+  const { latest, previous, openRisks, ai } = input
 
+  const aiSignal: AiSignal | undefined = ai
+    ? {
+        sentiment: ai.sentiment,
+        level: SENTIMENT[ai.sentiment].level,
+        analysis: ai.analysis ?? "",
+        confidence: ai.confidence ?? "baixa",
+        ageDays: daysAgo(ai.date) ?? 999,
+        divergesFromTeam: false, // ajustado abaixo quando há check-in do time
+      }
+    : undefined
+
+  // === Sem check-in do time: a IA dá uma leitura preliminar (clara como tal). ===
   if (!latest) {
+    if (aiSignal) {
+      return {
+        level: aiSignal.level,
+        trend: "none",
+        confidence: "baixa",
+        source: "ai",
+        summary: `Leitura preliminar da IA (sem check-in do time): ${SENTIMENT[aiSignal.sentiment].label}.${
+          openRisks > 0 ? ` ${openRisks} risco(s)/pendência(s) aberto(s).` : ""
+        } Registre um check-in para confirmar.`,
+        evidence: aiSignal.analysis || undefined,
+        evidenceMeta: `IA · ${aiSignal.ageDays}d atrás`,
+        aiSignal,
+      }
+    }
     return {
       level: "unknown",
       trend: "none",
       confidence: "baixa",
+      source: "none",
       summary:
         openRisks > 0
           ? `Sem check-in do time. Há ${openRisks} risco(s)/pendência(s) aberto(s) sem revisão — registre um check-in para uma leitura confiável.`
@@ -77,16 +135,27 @@ export function buildReading(input: {
     trend = delta > 0 ? "up" : delta < 0 ? "down" : "flat"
   }
 
+  // Divergência: a IA enxerga clima pior do que o time registrou.
+  if (aiSignal) {
+    aiSignal.divergesFromTeam = LEVEL_ORDER[aiSignal.level] < LEVEL_ORDER[level]
+  }
+
   const riskPart = openRisks > 0 ? ` ${openRisks} risco(s)/pendência(s) aberto(s) aguardam revisão.` : ""
   const agePart = ageDays > 30 ? " Baixa confiança: o último check-in é antigo." : ""
+  const divergePart =
+    aiSignal?.divergesFromTeam
+      ? ` ⚠ A IA leu o grupo como "${SENTIMENT[aiSignal.sentiment].label}" — pior que o time. Vale revisar.`
+      : ""
 
   return {
     level,
     trend,
     confidence,
-    summary: `Percepção mais recente do time: ${p?.label ?? latest.perception}.${riskPart}${agePart}`,
+    source: "team",
+    summary: `Percepção mais recente do time: ${p?.label ?? latest.perception}.${riskPart}${agePart}${divergePart}`,
     evidence: latest.justification,
     evidenceMeta: `${latest.author.name} · ${ageDays}d atrás`,
+    aiSignal,
   }
 }
 
@@ -137,6 +206,7 @@ export async function getClientsHealth(
     pendingMeetingItems,
     conversations,
     nextActions,
+    aiSummaries,
   ] = await Promise.all([
     prisma.teamCheckin.findMany({
       where: { clientId: { in: ids } },
@@ -170,6 +240,12 @@ export async function getClientsHealth(
       orderBy: { createdAt: "desc" },
       select: { clientId: true, description: true, dueAt: true, responsible: { select: { name: true } } },
     }),
+    // Último resumo de IA com leitura de clima por cliente (sinaliza a saúde).
+    prisma.groupDailySummary.findMany({
+      where: { clientId: { in: ids }, sentiment: { not: null } },
+      orderBy: { date: "desc" },
+      select: { clientId: true, sentiment: true, analysis: true, confidence: true, date: true },
+    }),
   ])
 
   // Últimos 2 check-ins por cliente (já vêm ordenados desc).
@@ -193,6 +269,18 @@ export async function getClientsHealth(
     }
   }
 
+  // Último resumo de IA por cliente (já vem ordenado desc).
+  const aiByClient = new Map<string, AiReadingInput>()
+  for (const s of aiSummaries) {
+    if (aiByClient.has(s.clientId) || !s.sentiment) continue
+    aiByClient.set(s.clientId, {
+      sentiment: s.sentiment as Sentiment,
+      analysis: s.analysis,
+      confidence: s.confidence,
+      date: s.date,
+    })
+  }
+
   const startOfToday = new Date()
   startOfToday.setHours(0, 0, 0, 0)
   const nextActionByClient = new Map<string, NextActionSummary>()
@@ -213,7 +301,12 @@ export async function getClientsHealth(
       (pendingContextCount.get(client.id) ?? 0) +
       (pendingGroupCount.get(client.id) ?? 0) +
       (pendingMeetingCount.get(client.id) ?? 0)
-    const reading = buildReading({ latest: cc[0] ?? null, previous: cc[1] ?? null, openRisks })
+    const reading = buildReading({
+      latest: cc[0] ?? null,
+      previous: cc[1] ?? null,
+      openRisks,
+      ai: aiByClient.get(client.id) ?? null,
+    })
     return {
       id: client.id,
       name: client.name,

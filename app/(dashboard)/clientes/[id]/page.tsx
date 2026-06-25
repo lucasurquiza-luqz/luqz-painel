@@ -79,7 +79,7 @@ export default async function ClienteVisaoGeralPage({ params }: { params: Promis
     prisma.groupDailySummary.findFirst({
       where: { clientId },
       orderBy: { date: "desc" },
-      select: { date: true, conversation: { select: { name: true } } },
+      select: { date: true, sentiment: true, analysis: true, confidence: true, conversation: { select: { name: true } } },
     }),
     prisma.groupDailySummaryItem.count({ where: { status: "PROPOSED", summary: { clientId } } }),
     prisma.groupDailySummaryItem.count({ where: { status: "PROPOSED", kind: { in: ["RISK", "PENDING"] }, summary: { clientId } } }),
@@ -96,7 +96,19 @@ export default async function ClienteVisaoGeralPage({ params }: { params: Promis
   // === Leitura de relacionamento (derivada, explicável) ===
   const latest = checkins[0]
   const previous = checkins[1]
-  const reading = buildReading({ latest, previous, openRisks })
+  const reading = buildReading({
+    latest,
+    previous,
+    openRisks,
+    ai: lastSummary?.sentiment
+      ? {
+          sentiment: lastSummary.sentiment,
+          analysis: lastSummary.analysis,
+          confidence: lastSummary.confidence,
+          date: lastSummary.date,
+        }
+      : null,
+  })
   const isNew = checkins.length === 0 && activeContext === 0 && !lastSummary && pendingApprovals === 0
 
   return (

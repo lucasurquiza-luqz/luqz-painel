@@ -379,6 +379,15 @@ enum GroupSummaryStatus {
   REVIEWED
 }
 
+// Leitura interpretativa da IA sobre o clima do relacionamento no dia.
+// Sinaliza — nunca vira saúde oficial sem revisão humana.
+enum GroupSummarySentiment {
+  POSITIVE
+  NEUTRAL
+  CONCERN
+  CRITICAL
+}
+
 enum GroupSummaryItemKind {
   DECISION
   COMMITMENT
@@ -402,12 +411,19 @@ model GroupDailySummary {
   status         GroupSummaryStatus @default(DRAFT)
   messageCount   Int
   rawSummary     String
-  generatedById  String
-  generatedAt    DateTime           @default(now())
+  // Leitura interpretativa da IA (clima do relacionamento). Opcionais para
+  // não quebrar resumos antigos gerados antes da análise interpretativa.
+  sentiment       GroupSummarySentiment?
+  analysis        String?
+  attentionPoints String[]               @default([])
+  confidence      String?
+  generatedByAi   Boolean                @default(false)
+  generatedById   String?
+  generatedAt     DateTime               @default(now())
 
   client       Client                  @relation(fields: [clientId], references: [id], onDelete: Cascade)
   conversation WaConversation          @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  generatedBy  User                    @relation("GroupDailySummaryGeneratedBy", fields: [generatedById], references: [id], onDelete: Restrict)
+  generatedBy  User?                   @relation("GroupDailySummaryGeneratedBy", fields: [generatedById], references: [id], onDelete: SetNull)
   items        GroupDailySummaryItem[]
 
   @@unique([conversationId, date])

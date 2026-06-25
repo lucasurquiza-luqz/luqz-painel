@@ -25,6 +25,7 @@ type SummaryItem = {
     timestamp: string
   }>
 }
+type Sentiment = "POSITIVE" | "NEUTRAL" | "CONCERN" | "CRITICAL"
 type Conversation = { id: string; name: string }
 type Summary = {
   id: string
@@ -32,10 +33,28 @@ type Summary = {
   status: "DRAFT" | "REVIEWED"
   messageCount: number
   rawSummary: string
-  generatedBy: { name: string }
+  sentiment: Sentiment | null
+  confidence: string | null
+  analysis: string | null
+  attentionPoints: string[]
+  generatedByAi: boolean
+  generatedBy: { name: string } | null
   generatedAt: string
   conversation: { id: string; name: string }
   items: SummaryItem[]
+}
+
+const SENTIMENT_LABEL: Record<Sentiment, string> = {
+  POSITIVE: "Positivo",
+  NEUTRAL: "Neutro",
+  CONCERN: "Preocupante",
+  CRITICAL: "Crítico",
+}
+const SENTIMENT_TONE: Record<Sentiment, "healthy" | "attention" | "critical" | "unknown"> = {
+  POSITIVE: "healthy",
+  NEUTRAL: "unknown",
+  CONCERN: "attention",
+  CRITICAL: "critical",
 }
 
 const KIND_LABEL: Record<ItemKind, string> = {
@@ -174,8 +193,8 @@ export default function ResumoDiarioGrupoPage() {
     <main className="mx-auto max-w-5xl space-y-6 p-6 lg:p-8">
       <PageHeader
         eyebrow="Inteligência de relacionamento"
-        title="Resumo diário do grupo"
-        description="A IA lê as mensagens do dia e propõe decisões, compromissos, riscos, elogios e pendências. Nada entra no Contexto Vivo sem revisão humana."
+        title="Leitura diária do grupo"
+        description="A IA lê o grupo do dia e dá uma leitura do clima do relacionamento, com os fatos por trás. Roda sozinha todo dia às 21h — você revisa. Nada entra no Contexto Vivo sem revisão humana."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <select
@@ -235,14 +254,53 @@ export default function ResumoDiarioGrupoPage() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="dash-eyebrow">{formatInTimeZone(new Date(summary.date), TZ, "dd/MM/yyyy")}</p>
-                <p className="mt-1 text-xs text-zinc-600">{summary.conversation.name} · {summary.messageCount} mensagens · gerado por {summary.generatedBy.name}</p>
+                <p className="mt-1 text-xs text-zinc-600">
+                  {summary.conversation.name} · {summary.messageCount} mensagens · {summary.generatedByAi ? "gerado automaticamente pela IA" : `gerado por ${summary.generatedBy?.name ?? "—"}`}
+                </p>
               </div>
-              <StatusBadge status={summary.status === "REVIEWED" ? "healthy" : "attention"}>
-                {summary.status === "REVIEWED" ? "Revisado" : "Em revisão"}
-              </StatusBadge>
+              <div className="flex items-center gap-2">
+                {summary.sentiment && (
+                  <StatusBadge status={SENTIMENT_TONE[summary.sentiment]}>
+                    Clima: {SENTIMENT_LABEL[summary.sentiment]}
+                  </StatusBadge>
+                )}
+                <StatusBadge status={summary.status === "REVIEWED" ? "healthy" : "attention"}>
+                  {summary.status === "REVIEWED" ? "Revisado" : "Em revisão"}
+                </StatusBadge>
+              </div>
             </div>
 
-            <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-zinc-400">{summary.rawSummary}</p>
+            {/* Leitura interpretativa da IA — o destaque da tela. */}
+            {summary.analysis ? (
+              <div className="mt-4 rounded-xl border border-[#FF8F50]/20 bg-[#FF8F50]/[0.05] p-4">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={14} className="text-[#FF8F50]" />
+                  <span className="text-xs font-semibold uppercase tracking-wide text-[#FFB27A]">Leitura da IA</span>
+                  {summary.confidence && <span className="text-xs text-zinc-600">confiança {summary.confidence}</span>}
+                </div>
+                <p className="mt-2 text-sm leading-6 text-zinc-200">{summary.analysis}</p>
+                {summary.attentionPoints.length > 0 && (
+                  <ul className="mt-3 space-y-1.5 border-t border-white/8 pt-3">
+                    {summary.attentionPoints.map((point, index) => (
+                      <li key={index} className="flex gap-2 text-xs leading-5 text-[#FFD482]">
+                        <span aria-hidden>→</span>
+                        <span>{point}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : (
+              <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-zinc-400">{summary.rawSummary}</p>
+            )}
+
+            {/* Registro factual (secundário, recolhido por padrão). */}
+            {summary.analysis && (
+              <details className="mt-3 rounded-lg border border-white/8 bg-black/20 px-3 py-2">
+                <summary className="cursor-pointer text-xs font-medium text-zinc-500">Registro factual do dia</summary>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-400">{summary.rawSummary}</p>
+              </details>
+            )}
 
             <div className="mt-5 space-y-3 border-t border-white/8 pt-4">
               {summary.items.length === 0 ? (

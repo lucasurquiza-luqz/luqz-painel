@@ -1,15 +1,12 @@
 import { fromZonedTime } from "date-fns-tz"
-import { Prisma } from "@prisma/client"
 import { NextRequest, NextResponse } from "next/server"
 import { requireApiUser } from "@/lib/api-auth"
 import { prisma } from "@/lib/db"
-import { generateGroupDailySummary } from "@/lib/ai/group-summary"
 import { AiProviderNotConfiguredError } from "@/lib/ai/openai"
+import { createGroupDailySummary, SummaryError } from "@/lib/group-summary-service"
 
 type Params = { params: Promise<{ id: string }> }
 const TZ = "America/Sao_Paulo"
-const MAX_MESSAGES_PER_SUMMARY = 400
-const MAX_CHARACTERS_PER_SUMMARY = 120_000
 
 function parseDateParam(value: string | null): Date {
   const raw = value ?? new Date().toISOString().slice(0, 10)
@@ -104,7 +101,6 @@ export async function POST(req: NextRequest, { params }: Params) {
   } catch {
     return NextResponse.json({ error: "Data invalida. Use o formato AAAA-MM-DD." }, { status: 400 })
   }
-  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
 
   const conversations = await prisma.waConversation.findMany({
     where: { clientId, isGroup: true },
@@ -127,42 +123,18 @@ export async function POST(req: NextRequest, { params }: Params) {
     )
   }
 
-  const existing = await prisma.groupDailySummary.findUnique({
-    where: { conversationId_date: { conversationId: conversation.id, date: dayStart } },
-  })
-  if (existing) {
-    return NextResponse.json({ error: "Ja existe um resumo gerado para esta data." }, { status: 409 })
-  }
-
-  const messages = await prisma.waMessage.findMany({
-    where: { conversationId: conversation.id, timestamp: { gte: dayStart, lt: dayEnd } },
-    orderBy: { timestamp: "asc" },
-  })
-
-  if (messages.length === 0) {
-    return NextResponse.json({ error: "Nenhuma mensagem encontrada nesta data." }, { status: 400 })
-  }
-
-  const characterCount = messages.reduce((total, message) => total + (message.text?.length ?? 0), 0)
-  if (messages.length > MAX_MESSAGES_PER_SUMMARY || characterCount > MAX_CHARACTERS_PER_SUMMARY) {
-    return NextResponse.json(
-      { error: "O volume deste dia excede o limite seguro do resumo. Divisao em blocos ainda precisa ser implementada." },
-      { status: 413 }
-    )
-  }
-
-  let draft
   try {
-    draft = await generateGroupDailySummary(
-      messages.map((message) => ({
-        id: message.id,
-        fromName: message.fromName,
-        isFromMe: message.isFromMe,
-        text: message.text,
-        timestamp: message.timestamp,
-      }))
-    )
+    const summary = await createGroupDailySummary({
+      clientId,
+      conversationId: conversation.id,
+      dayStart,
+      generatedById: auth.user.userId,
+    })
+    return NextResponse.json({ summary }, { status: 201 })
   } catch (error) {
+    if (error instanceof SummaryError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
     if (error instanceof AiProviderNotConfiguredError) {
       return NextResponse.json({ error: error.message }, { status: 503 })
     }
@@ -171,35 +143,4 @@ export async function POST(req: NextRequest, { params }: Params) {
       { status: 502 }
     )
   }
-
-  let summary
-  try {
-    summary = await prisma.groupDailySummary.create({
-      data: {
-        clientId,
-        conversationId: conversation.id,
-        date: dayStart,
-        status: draft.items.length === 0 ? "REVIEWED" : "DRAFT",
-        messageCount: messages.length,
-        rawSummary: draft.rawSummary,
-        generatedById: auth.user.userId,
-        items: {
-          create: draft.items.map((item) => ({
-            kind: item.kind,
-            text: item.text,
-            responsible: item.responsible,
-            sourceMessageIds: item.sourceMessageIds,
-          })),
-        },
-      },
-      include: { items: true },
-    })
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return NextResponse.json({ error: "Este grupo já possui um resumo para a data informada." }, { status: 409 })
-    }
-    throw error
-  }
-
-  return NextResponse.json({ summary }, { status: 201 })
 }
