@@ -48,6 +48,54 @@ model Client {
   nextActions         ClientNextAction[]
   contacts            ClientContact[]
   teamMembers         ClientTeamMember[]
+  documents           ClientDocument[]
+}
+
+enum DocumentCategory {
+  PROPOSTA
+  CONTRATO
+  BRIEFING
+  RELATORIO
+  CRIATIVO
+  ESTRATEGIA
+  APRESENTACAO
+  OUTRO
+}
+
+enum DocumentStatus {
+  DRAFT
+  APPROVED
+}
+
+enum DocVisibility {
+  INTERNAL
+  CLIENT
+}
+
+// Documento do cliente: arquivo no storage OU link externo (Drive etc.).
+model ClientDocument {
+  id           String           @id @default(cuid())
+  clientId     String
+  title        String
+  category     DocumentCategory @default(OUTRO)
+  status       DocumentStatus   @default(DRAFT)
+  visibility   DocVisibility    @default(INTERNAL)
+  fileUrl      String?
+  fileName     String?
+  fileType     String?
+  externalUrl  String?
+  notes        String?
+  uploadedById String
+  approvedById String?
+  approvedAt   DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  uploadedBy User   @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  approvedBy User?  @relation("DocumentApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([clientId, category])
 }
 
 // Contatos do lado do cliente (quem fala com a gente).
@@ -124,6 +172,8 @@ model User {
   waTransfersTo                 WaConversationTransfer[] @relation("WaTransferTo")
   waTransfersBy                 WaConversationTransfer[] @relation("WaTransferBy")
   clientTeamMemberships         ClientTeamMember[]       @relation("ClientTeamMemberUser")
+  documentsUploaded             ClientDocument[]         @relation("DocumentUploadedBy")
+  documentsApproved             ClientDocument[]         @relation("DocumentApprovedBy")
 }
 
 enum Role {

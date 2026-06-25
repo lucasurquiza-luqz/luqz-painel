@@ -125,6 +125,12 @@ export default async function ClienteVisaoGeralPage({ params }: { params: Promis
             >
               Cadastro
             </Link>
+            <Link
+              href={`/clientes/${clientId}/documentos`}
+              className="rounded-lg border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-white/20 hover:text-white"
+            >
+              Documentos
+            </Link>
             <StatusBadge status={client.active ? "healthy" : "unknown"}>
               {client.active ? "Cliente ativo" : "Inativo"}
             </StatusBadge>
