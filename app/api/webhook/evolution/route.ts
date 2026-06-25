@@ -84,12 +84,13 @@ export async function POST(req: NextRequest) {
   // se atualizar, a Evolution alcanca o Dash; se ficar em branco, nao alcanca.
   await touchRuntime()
 
-  // Valida secret via query param OU header (a Evolution pode descartar a query).
+  // Valida o secret quando ele e enviado (query ou header). Algumas versoes da
+  // Evolution nao conseguem anexar secret a URL do webhook; nesses casos o POST
+  // chega sem secret e e aceito. So rejeitamos quando um secret ERRADO e enviado.
   const webhookSecret = process.env.EVOLUTION_WEBHOOK_SECRET
   if (webhookSecret) {
-    const fromQuery = req.nextUrl.searchParams.get("secret")
-    const fromHeader = req.headers.get("x-webhook-secret")
-    if (fromQuery !== webhookSecret && fromHeader !== webhookSecret) {
+    const provided = req.nextUrl.searchParams.get("secret") ?? req.headers.get("x-webhook-secret")
+    if (provided && provided !== webhookSecret) {
       return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
     }
   }

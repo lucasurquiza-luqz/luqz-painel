@@ -146,24 +146,19 @@ export async function createInstance(): Promise<unknown> {
   return evoJSON(res)
 }
 
-// (Re)registra o webhook na Evolution apontando para o Dash, com os eventos
-// necessarios para ler grupos. Formato flat (mesmo do LUQZCRM, comprovado).
-// Timeout maior porque o set pode ser lento.
+// (Re)registra o webhook na Evolution apontando para o Dash.
+// Formato NESTED (v2.3): `{ webhook: { byEvents, base64, ... } }`. A URL NAO pode
+// conter query string (?secret=) nem o campo `headers` — essa versao retorna 400.
+// Eventos limitados aos validos/comprovados nesta versao.
 export async function setWebhook(url: string): Promise<unknown> {
   const body = {
-    enabled: true,
-    url,
-    webhook_by_events: false,
-    webhookByEvents: false,
-    webhook_base64: true,
-    webhookBase64: true,
-    events: [
-      "MESSAGES_UPSERT",
-      "MESSAGES_UPDATE",
-      "CONNECTION_UPDATE",
-      "GROUPS_UPSERT",
-      "GROUPS_UPDATE",
-    ],
+    webhook: {
+      enabled: true,
+      url,
+      byEvents: false,
+      base64: true,
+      events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "GROUPS_UPSERT"],
+    },
   }
 
   const controller = new AbortController()

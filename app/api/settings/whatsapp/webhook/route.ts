@@ -16,9 +16,10 @@ function resolveBase(override?: string | null): string | null {
   return candidate.replace(/\/$/, "")
 }
 
+// A Evolution (2.3) rejeita webhook com query string; registra a URL limpa.
+// O handler aceita POST sem secret, validando apenas se um secret for enviado.
 function buildWebhookUrl(base: string): string {
-  const secret = process.env.EVOLUTION_WEBHOOK_SECRET
-  return secret ? `${base}${WEBHOOK_PATH}?secret=${encodeURIComponent(secret)}` : `${base}${WEBHOOK_PATH}`
+  return `${base}${WEBHOOK_PATH}`
 }
 
 function maskSecret(url: string): string {
