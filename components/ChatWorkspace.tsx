@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { Send, Paperclip, X, Users, MessageSquare, CalendarClock, Plus, Clock, CheckCircle2, XCircle, Ban, Mic, MicOff } from "lucide-react"
+import { Send, Paperclip, X, Users, MessageSquare, CalendarClock, Plus, Clock, CheckCircle2, XCircle, Ban, Mic, MicOff, ArrowLeftRight, History, UserRound, Loader2 } from "lucide-react"
 import { formatInTimeZone } from "date-fns-tz"
 import { ptBR } from "date-fns/locale"
 import { cn } from "@/lib/utils"
@@ -47,7 +47,19 @@ interface Conversation {
   lastMessageAt: string | null
   group: { id: string; name: string; participants: number }
   client: { id: string; name: string } | null
+  assignedTo: { id: string; name: string } | null
   messages: Message[]
+}
+
+type AssigneeFilter = "all" | "me" | "none"
+type TeamMember = { id: string; name: string }
+type Transfer = {
+  id: string
+  note: string | null
+  createdAt: string
+  fromUser: { name: string } | null
+  toUser: { name: string } | null
+  byUser: { name: string }
 }
 
 // Chat reutilizável. Sem clientId => modo global (todas as conversas, com o
@@ -73,14 +85,34 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const pollRef = useRef<NodeJS.Timeout | null>(null)
 
+  // Filtro de responsável
+  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all")
+
+  // Transferência
+  const [transferOpen, setTransferOpen] = useState(false)
+  const [team, setTeam] = useState<TeamMember[]>([])
+  const [transfers, setTransfers] = useState<Transfer[]>([])
+  const [transferTo, setTransferTo] = useState("")
+  const [transferNote, setTransferNote] = useState("")
+  const [transferring, setTransferring] = useState(false)
+
+  // Agendar pelo chat
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [scheduleAt, setScheduleAt] = useState("")
+  const [scheduling, setScheduling] = useState(false)
+
   const activeConv = conversations.find((c) => c.id === activeConvId)
 
   const loadConversations = useCallback(async () => {
-    const res = await fetch(clientId ? `/api/chat?clientId=${clientId}` : "/api/chat")
+    const params = new URLSearchParams()
+    if (clientId) params.set("clientId", clientId)
+    if (assigneeFilter !== "all") params.set("assignee", assigneeFilter)
+    const qs = params.toString()
+    const res = await fetch(`/api/chat${qs ? `?${qs}` : ""}`)
     const data = await res.json()
     setConversations(data.conversations ?? [])
     setLoading(false)
-  }, [clientId])
+  }, [clientId, assigneeFilter])
 
   const loadMessages = useCallback(async (convId: string) => {
     const res = await fetch(`/api/chat/${convId}`)
@@ -202,6 +234,60 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
     setRecording(false)
   }
 
+  async function openTransfer() {
+    if (!activeConvId) return
+    setTransferOpen(true)
+    setTransferNote("")
+    setTransferTo(activeConv?.assignedTo?.id ?? "")
+    const res = await fetch(`/api/chat/${activeConvId}/assign`)
+    if (res.ok) {
+      const data = await res.json()
+      setTeam(data.team ?? [])
+      setTransfers(data.transfers ?? [])
+    }
+  }
+
+  async function submitTransfer() {
+    if (!activeConvId) return
+    setTransferring(true)
+    const res = await fetch(`/api/chat/${activeConvId}/assign`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ toUserId: transferTo || null, note: transferNote.trim() || null }),
+    })
+    setTransferring(false)
+    if (res.ok) {
+      setTransferOpen(false)
+      await loadConversations()
+    }
+  }
+
+  async function submitSchedule() {
+    if (!activeConv || !text.trim() || !scheduleAt) return
+    setScheduling(true)
+    setSendError("")
+    const res = await fetch("/api/schedules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: text.trim(),
+        scheduledAt: new Date(scheduleAt).toISOString(),
+        groupIds: [activeConv.group.id],
+        clientId: activeConv.client?.id ?? clientId,
+      }),
+    })
+    const data = await res.json().catch(() => ({}))
+    setScheduling(false)
+    if (!res.ok) {
+      setSendError(data.error ?? "Não foi possível agendar.")
+      setTimeout(() => setSendError(""), 5000)
+      return
+    }
+    setText("")
+    setScheduleAt("")
+    setScheduleOpen(false)
+  }
+
   function formatTime(ts: string) {
     return formatInTimeZone(new Date(ts), TZ, "HH:mm", { locale: ptBR })
   }
@@ -237,6 +323,20 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
         <div className="px-4 py-4 border-b border-white/8">
           <h2 className="text-sm font-semibold text-zinc-100">{isGlobal ? "Todas as conversas" : "Conversas"}</h2>
           <p className="text-xs text-zinc-500 mt-0.5">{conversations.length} grupo{conversations.length !== 1 ? "s" : ""}</p>
+          <div className="mt-3 flex gap-1 rounded-lg border border-white/8 bg-black/20 p-0.5">
+            {([["all", "Todas"], ["me", "Minhas"], ["none", "Sem dono"]] as [AssigneeFilter, string][]).map(([value, label]) => (
+              <button
+                key={value}
+                onClick={() => setAssigneeFilter(value)}
+                className={cn(
+                  "flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
+                  assigneeFilter === value ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -285,6 +385,10 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
                         </span>
                       )}
                     </div>
+                    <p className={cn("mt-0.5 flex items-center gap-1 text-[10px]", conv.assignedTo ? "text-zinc-600" : "text-zinc-700")}>
+                      <UserRound size={10} />
+                      {conv.assignedTo ? conv.assignedTo.name : "sem responsável"}
+                    </p>
                   </div>
                 </button>
               )
@@ -304,18 +408,30 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
           </div>
         ) : (
           <>
-            <div className="px-5 py-3 border-b border-white/8 bg-zinc-900/50">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center">
+            <div className="px-5 py-3 border-b border-white/8 bg-zinc-900/50 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0">
                   <Users size={14} className="text-zinc-500" />
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-zinc-100 truncate">{activeConv?.group.name}</p>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-zinc-500 truncate">
                     {isGlobal && activeConv?.client ? `${activeConv.client.name} · ` : ""}
                     {activeConv?.group.participants} membros
                   </p>
                 </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="hidden sm:flex items-center gap-1 text-xs text-zinc-500">
+                  <UserRound size={13} />
+                  {activeConv?.assignedTo?.name ?? "Sem responsável"}
+                </span>
+                <button
+                  onClick={openTransfer}
+                  className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-white/20 hover:text-white"
+                >
+                  <ArrowLeftRight size={13} /> Transferir
+                </button>
               </div>
             </div>
 
@@ -420,6 +536,25 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
                   </button>
                 </div>
               )}
+              {scheduleOpen && (
+                <div className="mb-2 mx-1 flex flex-wrap items-center gap-2 rounded-xl border border-orange-500/20 bg-orange-500/[0.05] p-3">
+                  <span className="text-xs text-orange-300">Agendar esta mensagem para:</span>
+                  <input
+                    type="datetime-local"
+                    value={scheduleAt}
+                    onChange={(e) => setScheduleAt(e.target.value)}
+                    className="dash-input rounded-lg px-2 py-1.5 text-xs"
+                  />
+                  <button type="button" onClick={submitSchedule} disabled={scheduling || !text.trim() || !scheduleAt}
+                    className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-400 disabled:opacity-40">
+                    {scheduling ? "Agendando..." : "Agendar"}
+                  </button>
+                  <button type="button" onClick={() => setScheduleOpen(false)} className="ml-auto text-zinc-500 hover:text-white">
+                    <X size={14} />
+                  </button>
+                  <p className="w-full text-[11px] text-zinc-600">A mensagem agendada usa o texto digitado (sem anexo). Veja na aba Agendamentos.</p>
+                </div>
+              )}
               <div className="flex items-end gap-1">
                 <EmojiPicker onSelect={(emoji) => setText((t) => t + emoji)} />
                 <label className="p-2.5 text-zinc-500 hover:text-zinc-300 cursor-pointer transition-colors flex-shrink-0">
@@ -440,6 +575,10 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
                 <button type="button" onClick={recording ? stopRecording : startRecording}
                   className={cn("p-2.5 cursor-pointer transition-colors flex-shrink-0", recording ? "text-red-400 hover:text-red-300" : "text-zinc-500 hover:text-zinc-300")}>
                   {recording ? <MicOff size={18} /> : <Mic size={18} />}
+                </button>
+                <button type="button" onClick={() => setScheduleOpen((o) => !o)} title="Agendar mensagem"
+                  className={cn("p-2.5 cursor-pointer transition-colors flex-shrink-0", scheduleOpen ? "text-orange-400" : "text-zinc-500 hover:text-zinc-300")}>
+                  <CalendarClock size={18} />
                 </button>
                 <textarea
                   value={text}
@@ -501,6 +640,56 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
         </div>
       )}
       </div>
+
+      {/* Modal de transferência */}
+      {transferOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onClick={() => setTransferOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl border border-white/15 bg-[#161616] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-white"><ArrowLeftRight size={15} /> Transferir conversa</h3>
+              <button onClick={() => setTransferOpen(false)} className="text-zinc-600 hover:text-white"><X size={16} /></button>
+            </div>
+            <p className="mt-1 text-xs text-zinc-600 truncate">{activeConv?.group.name}{activeConv?.client ? ` · ${activeConv.client.name}` : ""}</p>
+
+            <label className="mt-4 block">
+              <span className="mb-1.5 block text-xs font-medium text-zinc-400">Responsável</span>
+              <select value={transferTo} onChange={(e) => setTransferTo(e.target.value)} className="dash-input w-full rounded-lg px-3 py-2.5 text-sm">
+                <option value="">Sem responsável</option>
+                {team.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </label>
+
+            <label className="mt-3 block">
+              <span className="mb-1.5 block text-xs font-medium text-zinc-400">Nota (opcional)</span>
+              <textarea value={transferNote} onChange={(e) => setTransferNote(e.target.value)} rows={2} placeholder="Contexto da transferência..." className="dash-input w-full resize-none rounded-lg px-3 py-2.5 text-sm" />
+            </label>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setTransferOpen(false)} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-zinc-300 hover:border-white/20">Cancelar</button>
+              <button onClick={submitTransfer} disabled={transferring} className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-xs font-medium text-white hover:bg-orange-400 disabled:opacity-40">
+                {transferring ? <Loader2 size={13} className="animate-spin" /> : <ArrowLeftRight size={13} />} Transferir
+              </button>
+            </div>
+
+            {transfers.length > 0 && (
+              <div className="mt-5 border-t border-white/8 pt-4">
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-zinc-500"><History size={12} /> Histórico</p>
+                <div className="dash-scrollbar max-h-40 space-y-2 overflow-y-auto">
+                  {transfers.map((t) => (
+                    <div key={t.id} className="text-xs leading-5 text-zinc-500">
+                      <span className="text-zinc-400">{t.byUser.name}</span> transferiu de{" "}
+                      <span className="text-zinc-400">{t.fromUser?.name ?? "ninguém"}</span> para{" "}
+                      <span className="text-zinc-400">{t.toUser?.name ?? "ninguém"}</span>
+                      <span className="text-zinc-700"> · {formatInTimeZone(new Date(t.createdAt), TZ, "dd/MM HH:mm", { locale: ptBR })}</span>
+                      {t.note && <p className="text-zinc-600 italic">“{t.note}”</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

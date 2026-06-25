@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic"
 
 // Marcador de build: bumpado a cada release para confirmar, sem login, qual
 // versao esta efetivamente no ar (o middleware bloqueia as demais rotas /api).
-const BUILD_MARKER = "chat-global-2026-06-25"
+const BUILD_MARKER = "chat-transfer-agendar-2026-06-25"
 
 export async function GET() {
   try {

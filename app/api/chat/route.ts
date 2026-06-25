@@ -14,12 +14,20 @@ export async function GET(req: NextRequest) {
     clientId = auth.user.clientId
   }
 
+  // Filtro de responsavel: "me" (minhas), "none" (sem dono) ou todas.
+  const assignee = req.nextUrl.searchParams.get("assignee")
+  const where: { clientId?: string; assignedToId?: string | null } = {}
+  if (clientId) where.clientId = clientId
+  if (assignee === "me") where.assignedToId = auth.user.userId
+  else if (assignee === "none") where.assignedToId = null
+
   const conversations = await prisma.waConversation.findMany({
-    where: clientId ? { clientId } : {},
+    where,
     orderBy: { lastMessageAt: "desc" },
     include: {
       group: { select: { id: true, name: true, participants: true } },
       client: { select: { id: true, name: true } },
+      assignedTo: { select: { id: true, name: true } },
       messages: {
         orderBy: { timestamp: "desc" },
         take: 1,

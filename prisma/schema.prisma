@@ -60,6 +60,10 @@ model User {
   teamCheckins                  TeamCheckin[]           @relation("TeamCheckinAuthor")
   nextActionsResponsible        ClientNextAction[]      @relation("NextActionResponsible")
   nextActionsCreated            ClientNextAction[]      @relation("NextActionCreatedBy")
+  assignedConversations         WaConversation[]        @relation("WaConversationAssignee")
+  waTransfersFrom               WaConversationTransfer[] @relation("WaTransferFrom")
+  waTransfersTo                 WaConversationTransfer[] @relation("WaTransferTo")
+  waTransfersBy                 WaConversationTransfer[] @relation("WaTransferBy")
 }
 
 enum Role {
@@ -163,12 +167,35 @@ model WaConversation {
   clientId      String
   unreadCount   Int       @default(0)
   lastMessageAt DateTime?
+  assignedToId  String?
   createdAt     DateTime  @default(now())
 
-  group          Group               @relation(fields: [groupId], references: [id])
-  client         Client              @relation(fields: [clientId], references: [id])
+  group          Group                    @relation(fields: [groupId], references: [id])
+  client         Client                   @relation(fields: [clientId], references: [id])
+  assignedTo     User?                    @relation("WaConversationAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   messages       WaMessage[]
   dailySummaries GroupDailySummary[]
+  transfers      WaConversationTransfer[]
+
+  @@index([assignedToId])
+}
+
+// Histórico de transferências de conversa entre membros do time.
+model WaConversationTransfer {
+  id             String   @id @default(cuid())
+  conversationId String
+  fromUserId     String?
+  toUserId       String?
+  byUserId       String
+  note           String?
+  createdAt      DateTime @default(now())
+
+  conversation WaConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  fromUser     User?          @relation("WaTransferFrom", fields: [fromUserId], references: [id], onDelete: SetNull)
+  toUser       User?          @relation("WaTransferTo", fields: [toUserId], references: [id], onDelete: SetNull)
+  byUser       User           @relation("WaTransferBy", fields: [byUserId], references: [id], onDelete: Restrict)
+
+  @@index([conversationId, createdAt])
 }
 
 model WaMessage {
