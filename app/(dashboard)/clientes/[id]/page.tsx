@@ -20,27 +20,11 @@ import {
   TrendingUp,
 } from "lucide-react"
 import { sessionOptions, type SessionData, isEquipe } from "@/lib/auth"
+import { buildReading, daysAgo, LEVEL_LABEL, PERCEPTION, type Level } from "@/lib/client-health"
 import { PageHeader, Panel, StatusBadge } from "@/components/ui/primitives"
 import { cn } from "@/lib/utils"
 
 const TZ = "America/Sao_Paulo"
-
-type Level = "healthy" | "attention" | "critical" | "unknown"
-
-const PERCEPTION: Record<string, { label: string; level: Level; rank: number }> = {
-  GREAT: { label: "Ótimo", level: "healthy", rank: 4 },
-  GOOD: { label: "Bom", level: "healthy", rank: 3 },
-  NEUTRAL: { label: "Neutro", level: "attention", rank: 2 },
-  CONCERN: { label: "Preocupante", level: "attention", rank: 1 },
-  CRITICAL: { label: "Crítico", level: "critical", rank: 0 },
-}
-
-const LEVEL_LABEL: Record<Level, string> = {
-  healthy: "Saudável",
-  attention: "Atenção",
-  critical: "Crítico",
-  unknown: "Sem leitura",
-}
 
 function fmt(date: Date | null | undefined) {
   if (!date) return "—"
@@ -50,11 +34,6 @@ function fmt(date: Date | null | undefined) {
 function fmtDay(date: Date | null | undefined) {
   if (!date) return "—"
   return formatInTimeZone(date, TZ, "dd/MM/yyyy", { locale: ptBR })
-}
-
-function daysAgo(date: Date | null | undefined): number | null {
-  if (!date) return null
-  return Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24))
 }
 
 export default async function ClienteVisaoGeralPage({ params }: { params: Promise<{ id: string }> }) {
@@ -253,54 +232,6 @@ export default async function ClienteVisaoGeralPage({ params }: { params: Promis
       </Panel>
     </main>
   )
-}
-
-// === Leitura derivada (sem inventar: "Sem leitura" quando não há check-in) ===
-function buildReading(input: {
-  latest?: { perception: string; justification: string; createdAt: Date; author: { name: string } }
-  previous?: { perception: string }
-  openRisks: number
-}): { level: Level; trend: "up" | "down" | "flat" | "none"; confidence: string; summary: string; evidence?: string; evidenceMeta?: string } {
-  const { latest, previous, openRisks } = input
-
-  if (!latest) {
-    return {
-      level: "unknown",
-      trend: "none",
-      confidence: "baixa",
-      summary:
-        openRisks > 0
-          ? `Sem check-in do time registrado. Há ${openRisks} risco(s)/pendência(s) aberto(s) que ainda não foram revisados — registre um check-in para uma leitura confiável.`
-          : "Sem check-in do time registrado. Registre a primeira percepção da equipe para gerar uma leitura de relacionamento.",
-    }
-  }
-
-  const p = PERCEPTION[latest.perception]
-  // Escala para atenção/crítico quando há riscos abertos, mesmo com percepção boa.
-  let level = p?.level ?? "unknown"
-  if (level === "healthy" && openRisks >= 2) level = "attention"
-
-  const ageDays = daysAgo(latest.createdAt) ?? 999
-  const confidence = ageDays <= 14 ? "alta" : ageDays <= 30 ? "média" : "baixa"
-
-  let trend: "up" | "down" | "flat" | "none" = "none"
-  if (previous && p && PERCEPTION[previous.perception]) {
-    const delta = p.rank - PERCEPTION[previous.perception].rank
-    trend = delta > 0 ? "up" : delta < 0 ? "down" : "flat"
-  }
-
-  const riskPart = openRisks > 0 ? ` ${openRisks} risco(s)/pendência(s) aberto(s) aguardam revisão.` : ""
-  const agePart = ageDays > 30 ? " A leitura tem baixa confiança: o último check-in é antigo." : ""
-  const summary = `Percepção mais recente do time: ${p?.label ?? latest.perception}.${riskPart}${agePart}`
-
-  return {
-    level,
-    trend,
-    confidence,
-    summary,
-    evidence: latest.justification,
-    evidenceMeta: `${latest.author.name} · ${fmtDay(latest.createdAt)}`,
-  }
 }
 
 function TrendChip({ trend }: { trend: "up" | "down" | "flat" | "none" }) {

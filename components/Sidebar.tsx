@@ -9,6 +9,7 @@ import {
   BrainCircuit,
   Building2,
   CalendarClock,
+  Gauge,
   KeyRound,
   LayoutDashboard,
   LogOut,
@@ -116,6 +117,12 @@ export function Sidebar({ role, name }: SidebarProps) {
         ) : (
           <>
             <NavSection label="Operação">
+              <NavItem
+                href="/torre"
+                label="Torre de controle"
+                icon={Gauge}
+                active={pathname.startsWith("/torre")}
+              />
               <NavItem
                 href="/clientes"
                 label="Clientes"
