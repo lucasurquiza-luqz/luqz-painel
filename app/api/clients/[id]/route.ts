@@ -28,7 +28,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!client) return NextResponse.json({ error: "Cliente nao encontrado." }, { status: 404 })
   // Decimal não serializa bem em JSON: converte para number.
   return NextResponse.json({
-    client: { ...client, contractValue: client.contractValue ? Number(client.contractValue) : null },
+    client: {
+      ...client,
+      contractValue: client.contractValue ? Number(client.contractValue) : null,
+      ticket: client.ticket ? Number(client.ticket) : null,
+    },
   })
 }
 
@@ -87,7 +91,7 @@ function buildProfileUpdate(body: Record<string, unknown>) {
     if (value === null) data[key] = null
     else if (typeof value === "string") data[key] = value.trim() || null
   }
-  for (const key of ["segment", "website", "instagram", "region", "logoUrl", "product", "billingCycle", "projectPhase"]) {
+  for (const key of ["legalName", "cnpj", "segment", "website", "instagram", "region", "logoUrl", "product", "billingCycle", "projectPhase"]) {
     text(key)
   }
 
@@ -103,9 +107,11 @@ function buildProfileUpdate(body: Record<string, unknown>) {
   date("contractStart")
   date("renewalDate")
 
-  if ("contractValue" in body) {
-    const value = body.contractValue
-    data.contractValue = typeof value === "number" && isFinite(value) ? value : null
+  for (const key of ["contractValue", "ticket"]) {
+    if (key in body) {
+      const value = body[key]
+      data[key] = typeof value === "number" && isFinite(value) ? value : null
+    }
   }
 
   return data

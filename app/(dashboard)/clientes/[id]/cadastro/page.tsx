@@ -32,12 +32,15 @@ type Client = {
   id: string
   name: string
   description: string | null
+  legalName: string | null
+  cnpj: string | null
   segment: string | null
   website: string | null
   instagram: string | null
   region: string | null
   product: string | null
   contractValue: number | null
+  ticket: number | null
   billingCycle: string | null
   contractStart: string | null
   renewalDate: string | null
@@ -99,12 +102,12 @@ export default function CadastroClientePage() {
         <Link href={`/clientes/${clientId}`} className="rounded-xl p-2 text-zinc-500 hover:bg-white/5 hover:text-zinc-100">
           <ArrowLeft size={18} />
         </Link>
-        <PageHeader eyebrow="Cadastro do cliente" title={client.name} description="Perfil, contrato, contatos e responsáveis — tudo centralizado aqui." />
+        <PageHeader eyebrow="Cadastro do cliente" title={client.name} description="Negócio, contrato, contatos e responsáveis — tudo centralizado aqui." />
       </div>
 
       {error && <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}
 
-      <ProfileSection client={client} onSaved={load} onError={setError} />
+      <BusinessSection client={client} onSaved={load} onError={setError} />
       <ContractSection client={client} onSaved={load} onError={setError} />
       <ContactsSection clientId={clientId} contacts={client.contacts} onChanged={load} onError={setError} />
       <TeamSection clientId={clientId} members={client.teamMembers} onChanged={load} onError={setError} />
@@ -113,13 +116,15 @@ export default function CadastroClientePage() {
   )
 }
 
-// === Perfil do negócio ===
-function ProfileSection({ client, onSaved, onError }: { client: Client; onSaved: () => void; onError: (m: string) => void }) {
+// === Negócio do cliente (núcleo comum + ponte pro Contexto Vivo) ===
+function BusinessSection({ client, onSaved, onError }: { client: Client; onSaved: () => void; onError: (m: string) => void }) {
   const [form, setForm] = useState({
+    legalName: client.legalName ?? "",
+    cnpj: client.cnpj ?? "",
     segment: client.segment ?? "",
+    region: client.region ?? "",
     website: client.website ?? "",
     instagram: client.instagram ?? "",
-    region: client.region ?? "",
     description: client.description ?? "",
   })
   const [saving, setSaving] = useState(false)
@@ -133,31 +138,40 @@ function ProfileSection({ client, onSaved, onError }: { client: Client; onSaved:
       body: JSON.stringify(form),
     })
     setSaving(false)
-    if (!res.ok) { onError((await res.json()).error ?? "Erro ao salvar perfil."); return }
+    if (!res.ok) { onError((await res.json()).error ?? "Erro ao salvar dados do negócio."); return }
     onSaved()
   }
 
   return (
-    <SectionPanel title="Perfil do negócio">
+    <SectionPanel title="Negócio do cliente">
       <div className="grid gap-4 md:grid-cols-2">
-        <FormField label="Segmento"><Input value={form.segment} onChange={(e) => setForm({ ...form, segment: e.target.value })} placeholder="Ex: Estética, Imobiliária..." /></FormField>
-        <FormField label="Praça / região"><Input value={form.region} onChange={(e) => setForm({ ...form, region: e.target.value })} placeholder="Cidade / estado" /></FormField>
+        <FormField label="Razão social"><Input value={form.legalName} onChange={(e) => setForm({ ...form, legalName: e.target.value })} placeholder="Razão social / nome jurídico" /></FormField>
+        <FormField label="CNPJ"><Input value={form.cnpj} onChange={(e) => setForm({ ...form, cnpj: e.target.value })} placeholder="00.000.000/0000-00" /></FormField>
+        <FormField label="Nicho / ramo"><Input value={form.segment} onChange={(e) => setForm({ ...form, segment: e.target.value })} placeholder="Ex: Consultoria, Estética, E-commerce..." /></FormField>
+        <FormField label="Praça / localização"><Input value={form.region} onChange={(e) => setForm({ ...form, region: e.target.value })} placeholder="Cidade / estado" /></FormField>
         <FormField label="Site"><Input value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} placeholder="https://" /></FormField>
-        <FormField label="Instagram"><Input value={form.instagram} onChange={(e) => setForm({ ...form, instagram: e.target.value })} placeholder="@perfil" /></FormField>
+        <FormField label="Instagram"><Input value={form.instagram} onChange={(e) => setForm({ ...form, instagram: e.target.value })} placeholder="@perfil ou URL" /></FormField>
       </div>
       <FormField label="Descrição do negócio">
-        <textarea rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="dash-input w-full resize-none rounded-lg px-3.5 py-3 text-sm" placeholder="O que o cliente faz, contexto geral." />
+        <textarea rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="dash-input w-full resize-none rounded-lg px-3.5 py-3 text-sm" placeholder="O que o cliente faz, em poucas linhas." />
       </FormField>
-      <div className="flex justify-end"><Button onClick={save} disabled={saving}>{saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Salvar perfil</Button></div>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs leading-5 text-zinc-600">
+          Conhecimento estratégico do negócio (persona, oferta, tom de voz, diferenciais, diretrizes) — que varia por nicho — fica no{" "}
+          <Link href={`/clientes/${client.id}/contexto`} className="text-[#FFB185] hover:text-[#FFD482]">Contexto Vivo →</Link>
+        </p>
+        <Button onClick={save} disabled={saving}>{saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Salvar</Button>
+      </div>
     </SectionPanel>
   )
 }
 
-// === Plano / contrato ===
+// === Contrato (relação comercial LUQZ × cliente) ===
 function ContractSection({ client, onSaved, onError }: { client: Client; onSaved: () => void; onError: (m: string) => void }) {
   const [form, setForm] = useState({
     product: client.product ?? "",
     contractValue: client.contractValue != null ? String(client.contractValue) : "",
+    ticket: client.ticket != null ? String(client.ticket) : "",
     billingCycle: client.billingCycle ?? "",
     contractStart: dateInput(client.contractStart),
     renewalDate: dateInput(client.renewalDate),
@@ -165,16 +179,21 @@ function ContractSection({ client, onSaved, onError }: { client: Client; onSaved
   })
   const [saving, setSaving] = useState(false)
 
+  const dec = (v: string) => {
+    const c = v.trim().replace(/\./g, "").replace(",", ".")
+    return c ? Number(c) : null
+  }
+
   async function save() {
     setSaving(true)
     onError("")
-    const value = form.contractValue.trim().replace(/\./g, "").replace(",", ".")
     const res = await fetch(`/api/clients/${client.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         product: form.product,
-        contractValue: value ? Number(value) : null,
+        contractValue: dec(form.contractValue),
+        ticket: dec(form.ticket),
         billingCycle: form.billingCycle,
         contractStart: form.contractStart || null,
         renewalDate: form.renewalDate || null,
@@ -187,11 +206,12 @@ function ContractSection({ client, onSaved, onError }: { client: Client; onSaved
   }
 
   return (
-    <SectionPanel title="Plano / contrato">
+    <SectionPanel title="Contrato (LUQZ × cliente)">
       <div className="grid gap-4 md:grid-cols-2">
         <FormField label="Produto contratado"><Input value={form.product} onChange={(e) => setForm({ ...form, product: e.target.value })} placeholder="Ex: Arquitetura de Performance 360" /></FormField>
         <FormField label="Fase do projeto"><Input value={form.projectPhase} onChange={(e) => setForm({ ...form, projectPhase: e.target.value })} placeholder="Ex: Execução — T3" /></FormField>
-        <FormField label="Valor (R$)"><Input value={form.contractValue} onChange={(e) => setForm({ ...form, contractValue: e.target.value })} placeholder="Ex: 3000,00" inputMode="decimal" /></FormField>
+        <FormField label="MRR / valor mensal (R$)"><Input value={form.contractValue} onChange={(e) => setForm({ ...form, contractValue: e.target.value })} placeholder="Ex: 1600,00" inputMode="decimal" /></FormField>
+        <FormField label="Ticket médio do cliente (R$)"><Input value={form.ticket} onChange={(e) => setForm({ ...form, ticket: e.target.value })} placeholder="Ex: 2500,00" inputMode="decimal" /></FormField>
         <FormField label="Ciclo de cobrança"><Input value={form.billingCycle} onChange={(e) => setForm({ ...form, billingCycle: e.target.value })} placeholder="Mensal, trimestral, projeto fechado..." /></FormField>
         <FormField label="Início do contrato"><Input type="date" value={form.contractStart} onChange={(e) => setForm({ ...form, contractStart: e.target.value })} className="[color-scheme:dark]" /></FormField>
         <FormField label="Renovação"><Input type="date" value={form.renewalDate} onChange={(e) => setForm({ ...form, renewalDate: e.target.value })} className="[color-scheme:dark]" /></FormField>

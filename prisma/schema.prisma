@@ -18,16 +18,19 @@ model Client {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  // === Perfil do negócio (Bloco 0.1 — cadastro completo) ===
-  segment    String?
+  // === Negócio do cliente (núcleo comum; o flexível por nicho vive no Contexto Vivo) ===
+  legalName  String? // razão social
+  cnpj       String?
+  segment    String? // nicho / ramo de atuação
   website    String?
   instagram  String?
-  region     String?
+  region     String? // localização / praça
   logoUrl    String?
 
-  // === Plano / contrato ===
+  // === Contrato (relação comercial LUQZ × cliente) ===
   product       String? // produto contratado (ex: AP360)
-  contractValue Decimal?  @db.Decimal(12, 2)
+  contractValue Decimal?  @db.Decimal(12, 2) // MRR / valor mensal pago à LUQZ
+  ticket        Decimal?  @db.Decimal(12, 2) // ticket médio do cliente
   billingCycle  String? // mensal, trimestral, projeto fechado...
   contractStart DateTime?
   renewalDate   DateTime?
