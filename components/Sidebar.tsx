@@ -20,6 +20,7 @@ import {
   MessagesSquare,
   Search,
   Settings,
+  Sparkles,
   Target,
   Users,
   Video,
@@ -35,7 +36,10 @@ type NavGroup = { label?: string; internalOnly?: boolean; items: NavLink[] }
 // Menu agrupado e colapsável. Concentra por categoria para o menu não inchar
 // conforme novas dimensões (Resultado, NPS) entram.
 const clientNav: NavGroup[] = [
-  { items: [{ href: "", label: "Visão geral", icon: LayoutDashboard }] },
+  { items: [
+    { href: "", label: "Visão geral", icon: LayoutDashboard },
+    { href: "/assistente", label: "Assistente IA", icon: Sparkles, internalOnly: true },
+  ] },
   {
     label: "Cadastro",
     internalOnly: true,
@@ -132,6 +136,12 @@ export function Sidebar({ role, name }: SidebarProps) {
                 label="Torre de controle"
                 icon={Gauge}
                 active={pathname.startsWith("/torre")}
+              />
+              <NavItem
+                href="/assistente"
+                label="Assistente IA"
+                icon={Sparkles}
+                active={pathname.startsWith("/assistente")}
               />
               <NavItem
                 href="/conversas"

@@ -136,6 +136,16 @@ export default function ContextoClientePage() {
     await loadContext()
   }
 
+  async function approveAll() {
+    setError("")
+    setNotice("")
+    const response = await fetch(`/api/clients/${clientId}/context/approve-all`, { method: "POST" })
+    const payload = await response.json()
+    if (!response.ok) { setError(payload.error ?? "Não foi possível aprovar em lote."); return }
+    setNotice(`${payload.approved} proposta(s) aprovada(s) e ativada(s).`)
+    await loadContext()
+  }
+
   async function createSnapshot() {
     setSnapshotting(true)
     setError("")
@@ -176,6 +186,11 @@ export default function ContextoClientePage() {
           {data?.currentUser.role === "ADMIN" && data.client.clickupFolderId === "901317617481" && (
             <Button variant="secondary" onClick={importPilot} disabled={importing}>
               {importing ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />} Importar piloto
+            </Button>
+          )}
+          {data?.currentUser.role === "ADMIN" && counts.proposed > 0 && (
+            <Button variant="secondary" onClick={approveAll}>
+              <ShieldCheck size={16} /> Aprovar propostas ({counts.proposed})
             </Button>
           )}
           <Button variant="secondary" onClick={createSnapshot} disabled={snapshotting || counts.active === 0}>
