@@ -4,16 +4,27 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Bot, KeyRound, Loader2, MessageCircle, Plug, Power, QrCode, RefreshCw, Save, Smartphone, Trash2 } from "lucide-react"
 import { Button, Input, PageHeader, Panel } from "@/components/ui/primitives"
 
+type AiProvider = "OPENAI" | "ANTHROPIC"
 type Credential = {
-  provider: "OPENAI"
+  provider: AiProvider
   label: string
   lastFour: string
   updatedAt: string
   updatedBy: { name: string }
 }
 
-const PROVIDER_LABEL: Record<Credential["provider"], string> = {
+const PROVIDER_LABEL: Record<AiProvider, string> = {
   OPENAI: "OpenAI (GPT)",
+  ANTHROPIC: "Anthropic (Claude)",
+}
+const KEY_PLACEHOLDER: Record<AiProvider, string> = {
+  OPENAI: "sk-...",
+  ANTHROPIC: "sk-ant-...",
+}
+const FUNCTION_LABEL: Record<string, string> = {
+  ASSISTANT: "Assistente (chat de contexto)",
+  GROUP_SUMMARY: "Resumo diário do grupo",
+  MEETING_SUMMARY: "Resumo de reunião",
 }
 
 type WhatsAppDiagnostics = {
@@ -36,6 +47,7 @@ export default function ConfiguracoesAgenciaPage() {
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
   const [apiKey, setApiKey] = useState("")
+  const [keyProvider, setKeyProvider] = useState<AiProvider>("OPENAI")
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -55,7 +67,7 @@ export default function ConfiguracoesAgenciaPage() {
     const response = await fetch("/api/settings/ai-credentials", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider: "OPENAI", label: "OpenAI (GPT)", apiKey }),
+      body: JSON.stringify({ provider: keyProvider, label: PROVIDER_LABEL[keyProvider], apiKey }),
     })
     const payload = await response.json()
     setSaving(false)
@@ -78,8 +90,6 @@ export default function ConfiguracoesAgenciaPage() {
     }
     await load()
   }
-
-  const openaiCredential = credentials.find((credential) => credential.provider === "OPENAI")
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6 lg:p-8">
@@ -127,19 +137,21 @@ export default function ConfiguracoesAgenciaPage() {
         )}
 
         <form onSubmit={save} className="mt-6 space-y-4 border-t border-white/8 pt-5">
-          <label className="block">
-            <span className="mb-2 block text-xs font-medium text-zinc-400">
-              {openaiCredential ? "Substituir chave da OpenAI" : "Chave da OpenAI"}
-            </span>
-            <Input
-              type="password"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              placeholder="sk-..."
-              required
-              minLength={10}
-            />
-          </label>
+          <div className="grid gap-4 sm:grid-cols-[200px_1fr]">
+            <label className="block">
+              <span className="mb-2 block text-xs font-medium text-zinc-400">Provedor</span>
+              <select value={keyProvider} onChange={(e) => setKeyProvider(e.target.value as AiProvider)} className="dash-input min-h-11 w-full rounded-lg px-3.5 py-2.5 text-sm">
+                <option value="OPENAI">OpenAI (GPT)</option>
+                <option value="ANTHROPIC">Anthropic (Claude)</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-medium text-zinc-400">
+                {credentials.some((c) => c.provider === keyProvider) ? `Substituir chave ${PROVIDER_LABEL[keyProvider]}` : `Chave ${PROVIDER_LABEL[keyProvider]}`}
+              </span>
+              <Input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={KEY_PLACEHOLDER[keyProvider]} required minLength={10} />
+            </label>
+          </div>
           <div className="flex justify-end">
             <Button type="submit" disabled={saving}>
               {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Salvar chave
@@ -148,8 +160,83 @@ export default function ConfiguracoesAgenciaPage() {
         </form>
       </Panel>
 
+      <AiModelsPanel onError={setError} onNotice={setNotice} />
+
       <WhatsAppPanel onError={setError} onNotice={setNotice} />
     </main>
+  )
+}
+
+type ModelConfig = { function: string; provider: AiProvider; model: string; isDefault: boolean }
+
+function AiModelsPanel({ onError, onNotice }: { onError: (value: string) => void; onNotice: (value: string) => void }) {
+  const [configs, setConfigs] = useState<ModelConfig[]>([])
+  const [options, setOptions] = useState<Record<string, string[]>>({})
+  const [loading, setLoading] = useState(true)
+  const [savingFn, setSavingFn] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    const res = await fetch("/api/settings/ai-models")
+    const payload = await res.json()
+    if (res.ok) { setConfigs(payload.configs); setOptions(payload.modelOptions) }
+    setLoading(false)
+  }, [])
+  useEffect(() => { void load() }, [load])
+
+  function update(fn: string, patch: Partial<ModelConfig>) {
+    setConfigs((cs) => cs.map((c) => (c.function === fn ? { ...c, ...patch } : c)))
+  }
+
+  async function save(cfg: ModelConfig) {
+    setSavingFn(cfg.function)
+    onError(""); onNotice("")
+    const res = await fetch("/api/settings/ai-models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ function: cfg.function, provider: cfg.provider, model: cfg.model }),
+    })
+    setSavingFn(null)
+    if (!res.ok) { onError((await res.json()).error ?? "Erro ao salvar modelo."); return }
+    onNotice(`Modelo de "${FUNCTION_LABEL[cfg.function] ?? cfg.function}" salvo.`)
+    await load()
+  }
+
+  return (
+    <Panel className="p-5 lg:p-6">
+      <div className="flex items-center gap-3">
+        <Bot size={18} className="text-[#FF8F50]" />
+        <h2 className="text-base font-semibold text-white">Modelos por função</h2>
+      </div>
+      <p className="mt-1 text-sm text-zinc-500">Escolha o provedor e o modelo de cada recurso de IA. Cada função precisa da chave do provedor escolhido acima.</p>
+
+      {loading ? (
+        <div className="mt-5 flex min-h-20 items-center justify-center"><Loader2 className="animate-spin text-[#FF8F50]" /></div>
+      ) : (
+        <div className="mt-5 space-y-3">
+          {configs.map((cfg) => (
+            <div key={cfg.function} className="rounded-lg border border-white/8 bg-black/20 p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-zinc-200">{FUNCTION_LABEL[cfg.function] ?? cfg.function}</p>
+                {cfg.isDefault && <span className="rounded-md bg-white/5 px-2 py-0.5 text-[11px] text-zinc-500">padrão</span>}
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-[180px_1fr_auto]">
+                <select value={cfg.provider} onChange={(e) => update(cfg.function, { provider: e.target.value as AiProvider })} className="dash-input min-h-10 rounded-lg px-3 py-2 text-sm">
+                  <option value="OPENAI">OpenAI</option>
+                  <option value="ANTHROPIC">Anthropic</option>
+                </select>
+                <input list={`models-${cfg.function}`} value={cfg.model} onChange={(e) => update(cfg.function, { model: e.target.value })} placeholder="modelo" className="dash-input min-h-10 rounded-lg px-3 py-2 text-sm" />
+                <datalist id={`models-${cfg.function}`}>
+                  {(options[cfg.provider] ?? []).map((m) => <option key={m} value={m} />)}
+                </datalist>
+                <Button variant="secondary" className="min-h-10 px-3 text-xs" onClick={() => save(cfg)} disabled={savingFn === cfg.function}>
+                  {savingFn === cfg.function ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Salvar
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Panel>
   )
 }
 

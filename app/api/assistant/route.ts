@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireApiUser } from "@/lib/api-auth"
-import { chatComplete, type ChatMessage } from "@/lib/ai/chat"
+import { chatComplete, type ChatMessage } from "@/lib/ai/provider"
 import { buildPortfolioGrounding } from "@/lib/ai/context-grounding"
 import { AiProviderNotConfiguredError } from "@/lib/ai/openai"
 
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const grounding = await buildPortfolioGrounding()
-    const answer = await chatComplete(grounding.systemPrompt, messages)
+    const answer = await chatComplete("ASSISTANT", grounding.systemPrompt, messages)
     return NextResponse.json({ answer, clientCount: grounding.clientCount, itemCount: grounding.itemCount })
   } catch (error) {
     if (error instanceof AiProviderNotConfiguredError) return NextResponse.json({ error: error.message }, { status: 503 })

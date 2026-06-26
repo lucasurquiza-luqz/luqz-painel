@@ -1,5 +1,5 @@
 import { formatInTimeZone } from "date-fns-tz"
-import { completeJSON } from "@/lib/ai/openai"
+import { completeJSON } from "@/lib/ai/provider"
 
 const TZ = "America/Sao_Paulo"
 
@@ -80,7 +80,7 @@ const VALID_CONFIDENCE = new Set(["alta", "média", "baixa"])
 export async function generateGroupDailySummary(
   messages: GroupSummaryMessageInput[]
 ): Promise<GroupSummaryDraft> {
-  const result = await completeJSON(SYSTEM_PROMPT, buildUserPrompt(messages))
+  const result = await completeJSON("GROUP_SUMMARY", SYSTEM_PROMPT, buildUserPrompt(messages))
   const payload = result as {
     rawSummary?: unknown
     items?: unknown

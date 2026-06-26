@@ -221,6 +221,7 @@ model User {
   groupSummariesGenerated   GroupDailySummary[]     @relation("GroupDailySummaryGeneratedBy")
   groupSummaryItemsReviewed GroupDailySummaryItem[] @relation("GroupDailySummaryItemReviewedBy")
   aiCredentialsUpdated          AiCredential[]          @relation("AiCredentialUpdatedBy")
+  aiModelConfigsUpdated         AiModelConfig[]         @relation("AiModelConfigUpdatedBy")
   meetingsCreated               Meeting[]               @relation("MeetingCreatedBy")
   meetingSummariesGenerated     MeetingSummary[]        @relation("MeetingSummaryGeneratedBy")
   meetingSummaryItemsReviewed   MeetingSummaryItem[]    @relation("MeetingSummaryItemReviewedBy")
@@ -623,6 +624,26 @@ model GroupDailySummaryItem {
 
 enum AiProvider {
   OPENAI
+  ANTHROPIC
+}
+
+// Funções de IA do Dash — cada uma pode usar um provider/modelo diferente.
+enum AiFunction {
+  ASSISTANT
+  GROUP_SUMMARY
+  MEETING_SUMMARY
+}
+
+model AiModelConfig {
+  id          String     @id @default(cuid())
+  function    AiFunction @unique
+  provider    AiProvider
+  model       String
+  updatedById String?
+  updatedAt   DateTime   @updatedAt
+  createdAt   DateTime   @default(now())
+
+  updatedBy User? @relation("AiModelConfigUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 }
 
 model AiCredential {

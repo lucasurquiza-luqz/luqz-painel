@@ -3,7 +3,7 @@ import { requireApiUser } from "@/lib/api-auth"
 import { prisma } from "@/lib/db"
 import { saveProviderApiKey } from "@/lib/ai/credentials"
 
-const VALID_PROVIDERS = ["OPENAI"] as const
+const VALID_PROVIDERS = ["OPENAI", "ANTHROPIC"] as const
 
 export async function GET() {
   const auth = await requireApiUser(["ADMIN"])

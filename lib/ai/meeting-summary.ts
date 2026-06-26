@@ -1,4 +1,4 @@
-﻿import { completeJSON } from "./openai"
+﻿import { completeJSON } from "./provider"
 
 export type MeetingSummaryDraft = {
   rawSummary: string
@@ -52,7 +52,7 @@ Participantes: ${input.participants.length > 0 ? input.participants.join(", ") :
 ${input.rawContent}
 --- FIM DO CONTEUDO ---`
 
-  const raw = await completeJSON(SYSTEM_PROMPT, userPrompt)
+  const raw = await completeJSON("MEETING_SUMMARY", SYSTEM_PROMPT, userPrompt)
   const parsed = raw as Record<string, unknown>
 
   if (!parsed || typeof parsed.rawSummary !== "string" || !Array.isArray(parsed.items)) {
