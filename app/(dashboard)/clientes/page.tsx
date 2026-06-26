@@ -7,6 +7,7 @@ import {
   ChevronRight,
   CircleCheck,
   CirclePause,
+  DownloadCloud,
   Loader2,
   Pencil,
   Plus,
@@ -28,6 +29,14 @@ interface Client {
   _count: { groups: number; messages: number }
 }
 
+type ImportReport = {
+  dryRun: boolean
+  totalCards: number
+  totalClients: number
+  matched: Array<{ client: string; card: string; fieldsToFill: string[]; contacts: number; team: number }>
+  unmatchedClients: string[]
+}
+
 const EMPTY_FORM = { name: "", description: "", active: true, statusReason: "" }
 
 export default function ClientesPage() {
@@ -46,6 +55,9 @@ export default function ClientesPage() {
   const [statusForm, setStatusForm] = useState({ active: true, reason: "" })
   const [editingClient, setEditingClient] = useState<Client | null>(null)
   const [editForm, setEditForm] = useState({ name: "", description: "" })
+  const [importReport, setImportReport] = useState<ImportReport | null>(null)
+  const [importBusy, setImportBusy] = useState(false)
+  const [importDone, setImportDone] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -93,6 +105,21 @@ export default function ClientesPage() {
       await load()
     }
     setSaving(false)
+  }
+
+  async function runImport(dryRun: boolean) {
+    setImportBusy(true)
+    setError("")
+    const response = await fetch("/api/admin/clickup-import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dryRun }),
+    })
+    const payload = await response.json()
+    setImportBusy(false)
+    if (!response.ok) { setError(payload.error ?? "Falha na importação do ClickUp."); return }
+    setImportReport(payload.report)
+    if (!dryRun) { setImportDone(true); await load() }
   }
 
   async function syncRoster() {
@@ -177,6 +204,12 @@ export default function ClientesPage() {
               Sincronizar carteira
             </Button>
           )}
+          {role === "ADMIN" && (
+            <Button variant="secondary" onClick={() => { setImportDone(false); void runImport(true) }} disabled={importBusy}>
+              {importBusy ? <Loader2 size={16} className="animate-spin" /> : <DownloadCloud size={16} />}
+              Importar do ClickUp
+            </Button>
+          )}
           <Button onClick={() => setShowForm((current) => !current)}><Plus size={16} /> Novo cliente</Button>
         </>}
       />
@@ -248,6 +281,53 @@ export default function ClientesPage() {
               <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3 text-xs leading-5 text-zinc-600">A alteração será registrada no histórico com data, responsável e origem manual.</div>
               <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setEditingStatus(null)}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? <Loader2 size={16} className="animate-spin" /> : null} Salvar status</Button></div>
             </form>
+          </Panel>
+        </div>
+      )}
+
+      {importReport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+          <Panel className="flex max-h-[85vh] w-full max-w-2xl flex-col border-white/15 p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="dash-eyebrow">Importação do ClickUp</p>
+                <h2 className="mt-2 text-xl font-semibold text-white">{importDone ? "Importação concluída" : "Pré-visualização"}</h2>
+              </div>
+              <button type="button" onClick={() => setImportReport(null)} className="text-zinc-600 hover:text-white"><X size={18} /></button>
+            </div>
+
+            <p className="mt-3 text-sm text-zinc-400">
+              {importReport.matched.length} de {importReport.totalClients} clientes ativos casaram com um card do ClickUp ({importReport.totalCards} cards lidos).
+              {importDone ? " Campos vazios preenchidos." : " Só campos vazios serão preenchidos — nada é sobrescrito."}
+            </p>
+
+            <div className="mt-4 flex-1 space-y-2 overflow-y-auto pr-1">
+              {importReport.matched.map((m) => (
+                <div key={m.client} className="rounded-lg border border-white/8 bg-black/20 px-4 py-2.5 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-zinc-200">{m.client}</span>
+                    <span className="text-xs text-zinc-600">
+                      {m.fieldsToFill.length} campo(s){m.contacts ? ` · ${m.contacts} contato(s)` : ""}{m.team ? ` · ${m.team} resp.` : ""}
+                    </span>
+                  </div>
+                  {m.fieldsToFill.length > 0 && <p className="mt-1 text-xs text-zinc-600">{m.fieldsToFill.join(", ")}</p>}
+                </div>
+              ))}
+              {importReport.unmatchedClients.length > 0 && (
+                <div className="rounded-lg border border-amber-400/15 bg-amber-500/[0.06] px-4 py-2.5 text-xs text-amber-200/80">
+                  Sem card no ClickUp ({importReport.unmatchedClients.length}): {importReport.unmatchedClients.join(", ")}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2 border-t border-white/8 pt-4">
+              <Button variant="secondary" onClick={() => setImportReport(null)}>Fechar</Button>
+              {!importDone && (
+                <Button onClick={() => runImport(false)} disabled={importBusy || importReport.matched.length === 0}>
+                  {importBusy ? <Loader2 size={16} className="animate-spin" /> : <DownloadCloud size={16} />} Aplicar importação
+                </Button>
+              )}
+            </div>
           </Panel>
         </div>
       )}
