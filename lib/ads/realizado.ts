@@ -2,13 +2,13 @@ import { prisma } from "@/lib/db"
 import { decryptSecret } from "@/lib/crypto-secrets"
 import { fetchMetaInsights } from "@/lib/ads/meta"
 import { fetchGoogleInsights } from "@/lib/ads/google"
-import type { AdConfig, AdMetrics, AdObjective } from "@/lib/ads/types"
+import { effectiveObjectives, type AdConfig, type AdMetrics, type AdObjective, type ResultBreakdown } from "@/lib/ads/types"
 
 export type ProviderResult = (AdMetrics & { error?: undefined }) | { provider: "META" | "GOOGLE"; error: string }
 export type Realizado = {
   byProvider: ProviderResult[]
   total: { spend: number; impressions: number; clicks: number; results: number; cpa: number | null; revenue: number | null; roas: number | null }
-  objective: AdObjective | null
+  breakdown: ResultBreakdown[]
   trackRevenue: boolean
   configured: boolean
 }
@@ -18,7 +18,11 @@ export async function getClientRealizado(clientId: string, month: string): Promi
   const byProvider: ProviderResult[] = []
 
   for (const acc of accounts) {
-    const config: AdConfig = { objective: acc.objective, resultActions: acc.resultActions, trackRevenue: acc.trackRevenue }
+    const config: AdConfig = {
+      objectives: effectiveObjectives(acc.objectives as AdObjective[], acc.objective as AdObjective),
+      resultActions: acc.resultActions,
+      trackRevenue: acc.trackRevenue,
+    }
     try {
       if (acc.provider === "META") {
         if (!acc.tokenEnc) { byProvider.push({ provider: "META", error: "Sem token cadastrado." }); continue }
@@ -34,9 +38,14 @@ export async function getClientRealizado(clientId: string, month: string): Promi
   const ok = byProvider.filter((r): r is AdMetrics => !("error" in r && r.error !== undefined))
   const spend = ok.reduce((s, r) => s + r.spend, 0)
   const results = ok.reduce((s, r) => s + r.results, 0)
+
+  // Breakdown consolidado por objetivo (soma entre providers).
+  const byObj = new Map<AdObjective, number>()
+  for (const r of ok) for (const b of r.breakdown) byObj.set(b.objective, (byObj.get(b.objective) ?? 0) + b.count)
+  const breakdown = [...byObj.entries()].map(([objective, count]) => ({ objective, count }))
+
   const revenueVals = ok.map((r) => r.revenue).filter((v): v is number => v != null)
   const revenue = revenueVals.length ? revenueVals.reduce((s, v) => s + v, 0) : null
-  const trackRevenue = accounts.some((a) => a.trackRevenue)
 
   return {
     byProvider,
@@ -49,8 +58,8 @@ export async function getClientRealizado(clientId: string, month: string): Promi
       revenue,
       roas: revenue != null && spend > 0 ? revenue / spend : null,
     },
-    objective: accounts[0]?.objective ?? null,
-    trackRevenue,
+    breakdown,
+    trackRevenue: accounts.some((a) => a.trackRevenue),
     configured: accounts.length > 0,
   }
 }

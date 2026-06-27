@@ -63,7 +63,7 @@ const clientNav: NavGroup[] = [
     label: "Resultado",
     internalOnly: true,
     items: [
-      { href: "/metas", label: "Metas / Plano de mídia", icon: Target },
+      { href: "/metas", label: "Performance", icon: Target },
     ],
   },
   {

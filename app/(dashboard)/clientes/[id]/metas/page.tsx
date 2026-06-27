@@ -65,7 +65,7 @@ export default function MetasPage() {
         <Link href={`/clientes/${clientId}`} className="rounded-xl p-2 text-zinc-500 hover:bg-white/5 hover:text-zinc-100">
           <ArrowLeft size={18} />
         </Link>
-        <PageHeader eyebrow="Saúde de resultado" title="Metas / Plano de mídia" description="Alvos por mês e plataforma (verba, leads, CPA, ROAS, ticket) + realizado dos Ads vs meta." />
+        <PageHeader eyebrow="Saúde de resultado" title="Performance" description="Metas + realizado dos Ads por funil (lead, conversa, compra), vs meta. Multi-fonte: Meta + Google (+ vendas em breve)." />
       </div>
 
       <AdIntegrations clientId={clientId} onError={setError} />
@@ -187,22 +187,20 @@ function AddPlan({ clientId, onAdded, onCancel, onError }: { clientId: string; o
   )
 }
 
-// === Configuração das contas de Ads + conversão por cliente (funil flexível) ===
-type AdAccount = { provider: "META" | "GOOGLE"; accountId: string; lastFour: string | null; objective: string; resultActions: string[]; trackRevenue: boolean }
+// === Integrações de Ads + conversão por cliente (multi-objetivo + IA sugere) ===
+type AdAccount = { provider: "META" | "GOOGLE"; accountId: string; lastFour: string | null; objectives: string[]; resultActions: string[]; trackRevenue: boolean }
 const OBJECTIVES = [
   { v: "LEAD", label: "Leads" },
-  { v: "WHATSAPP", label: "Conversas (WhatsApp)" },
-  { v: "ECOMMERCE", label: "Compras (ecommerce)" },
-  { v: "CUSTOM", label: "Custom" },
+  { v: "WHATSAPP", label: "Conversas" },
+  { v: "ECOMMERCE", label: "Compras" },
 ]
 function AdIntegrations({ clientId, onError }: { clientId: string; onError: (m: string) => void }) {
   const [accounts, setAccounts] = useState<AdAccount[]>([])
   const [open, setOpen] = useState(false)
-  const [meta, setMeta] = useState({ accountId: "", token: "", objective: "LEAD", trackRevenue: false, resultActions: [] as string[] })
-  const [google, setGoogle] = useState({ accountId: "", objective: "LEAD", trackRevenue: false })
-  const [discovered, setDiscovered] = useState<{ actionType: string; count: number }[] | null>(null)
-  const [advanced, setAdvanced] = useState(false)
+  const [meta, setMeta] = useState({ accountId: "", token: "", objectives: [] as string[], trackRevenue: false, resultActions: [] as string[] })
+  const [google, setGoogle] = useState({ accountId: "", objectives: [] as string[], trackRevenue: false })
   const [busy, setBusy] = useState(false)
+  const [aiNote, setAiNote] = useState("")
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/clients/${clientId}/ad-accounts`)
@@ -211,8 +209,8 @@ function AdIntegrations({ clientId, onError }: { clientId: string; onError: (m: 
       setAccounts(data.accounts)
       const m = data.accounts.find((a: AdAccount) => a.provider === "META")
       const g = data.accounts.find((a: AdAccount) => a.provider === "GOOGLE")
-      if (m) setMeta((s) => ({ ...s, accountId: m.accountId, objective: m.objective, trackRevenue: m.trackRevenue, resultActions: m.resultActions }))
-      if (g) setGoogle({ accountId: g.accountId, objective: g.objective, trackRevenue: g.trackRevenue })
+      if (m) setMeta((s) => ({ ...s, accountId: m.accountId, objectives: m.objectives ?? [], trackRevenue: m.trackRevenue, resultActions: m.resultActions }))
+      if (g) setGoogle({ accountId: g.accountId, objectives: g.objectives ?? [], trackRevenue: g.trackRevenue })
     }
   }, [clientId])
   useEffect(() => { void load() }, [load])
@@ -228,21 +226,32 @@ function AdIntegrations({ clientId, onError }: { clientId: string; onError: (m: 
     await load()
   }
 
-  async function discover() {
-    setBusy(true); onError(""); setDiscovered(null)
-    const res = await fetch(`/api/clients/${clientId}/ad-accounts/discover?provider=META`)
+  async function suggest(provider: "META" | "GOOGLE") {
+    setBusy(true); onError(""); setAiNote("Lendo o contexto do cliente…")
+    const res = await fetch(`/api/clients/${clientId}/ad-accounts/suggest?provider=${provider}`, { method: "POST" })
     const data = await res.json()
     setBusy(false)
-    if (!res.ok) { onError(data.error ?? "Falha ao descobrir eventos."); return }
-    setDiscovered(data.actions)
+    if (!res.ok) { setAiNote(""); onError(data.error ?? "Falha na sugestão da IA."); return }
+    const s = data.suggestion
+    if (provider === "META") setMeta((m) => ({ ...m, objectives: s.objectives, resultActions: s.resultActions, trackRevenue: s.trackRevenue }))
+    else setGoogle((g) => ({ ...g, objectives: s.objectives, trackRevenue: s.trackRevenue }))
+    setAiNote(`IA sugeriu: ${s.objectives.join(", ")}${s.trackRevenue ? " + ROAS" : ""}. ${s.reasoning ?? ""} — confira e Salve.`)
   }
 
-  function toggleAction(a: string) {
-    setMeta((s) => ({ ...s, resultActions: s.resultActions.includes(a) ? s.resultActions.filter((x) => x !== a) : [...s.resultActions, a] }))
-  }
-
+  const toggle = (arr: string[], v: string) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
   const metaAcc = accounts.find((a) => a.provider === "META")
   const googleAcc = accounts.find((a) => a.provider === "GOOGLE")
+
+  const ObjChecks = ({ selected, onToggle }: { selected: string[]; onToggle: (v: string) => void }) => (
+    <div className="flex flex-wrap gap-2">
+      {OBJECTIVES.map((o) => (
+        <button key={o.v} type="button" onClick={() => onToggle(o.v)}
+          className={`rounded-lg border px-2.5 py-1 text-xs ${selected.includes(o.v) ? "border-[#FF8F50]/50 bg-[#FF8F50]/15 text-[#FFB185]" : "border-white/10 text-zinc-400"}`}>
+          {selected.includes(o.v) ? "✓ " : ""}{o.label}
+        </button>
+      ))}
+    </div>
+  )
 
   return (
     <Panel className="p-5">
@@ -251,47 +260,37 @@ function AdIntegrations({ clientId, onError }: { clientId: string; onError: (m: 
         <span className="text-xs text-zinc-500">{metaAcc ? "Meta ✓" : "Meta —"} · {googleAcc ? "Google ✓" : "Google —"}</span>
       </button>
       {open && (
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          {/* Meta */}
-          <div className="rounded-lg border border-white/8 bg-black/20 p-4 space-y-2">
-            <p className="text-xs font-semibold text-zinc-300">Meta Ads (token por cliente)</p>
-            <Input value={meta.accountId} onChange={(e) => setMeta({ ...meta, accountId: e.target.value })} placeholder="act_XXXXXXXX" />
-            <Input type="password" value={meta.token} onChange={(e) => setMeta({ ...meta, token: e.target.value })} placeholder={metaAcc?.lastFour ? `token salvo ••••${metaAcc.lastFour} — trocar` : "access token"} />
-            <select value={meta.objective} onChange={(e) => setMeta({ ...meta, objective: e.target.value, trackRevenue: e.target.value === "ECOMMERCE" })} className="dash-input min-h-9 w-full rounded-lg px-3 py-2 text-sm">
-              {OBJECTIVES.map((o) => <option key={o.v} value={o.v}>Objetivo: {o.label}</option>)}
-            </select>
-            <label className="flex items-center gap-2 text-xs text-zinc-400"><input type="checkbox" checked={meta.trackRevenue} onChange={(e) => setMeta({ ...meta, trackRevenue: e.target.checked })} /> Acompanhar receita / ROAS</label>
-            <p className="text-[11px] text-zinc-600">O objetivo já usa os eventos padrão. Só ajuste se a conta usar um evento diferente.</p>
-            <Button variant="secondary" className="min-h-9 px-3 py-1.5 text-xs" disabled={busy || !meta.accountId} onClick={() => save("META", meta)}>Salvar Meta</Button>
-            <button type="button" onClick={() => { setAdvanced((v) => !v); if (!advanced && metaAcc) void discover() }} className="block text-[11px] text-zinc-500 hover:text-zinc-300">
-              {advanced ? "ocultar ajuste avançado" : "ajuste avançado (escolher evento)"}
-            </button>
-            {advanced && (
-              <div className="max-h-40 space-y-1 overflow-y-auto rounded border border-white/8 bg-black/30 p-2">
-                {!discovered && <p className="text-[11px] text-zinc-600">Carregando eventos da conta…</p>}
-                {discovered?.length === 0 && <p className="text-[11px] text-zinc-600">Nenhum evento nos últimos 90d.</p>}
-                {discovered?.map((d) => (
-                  <label key={d.actionType} className="flex items-center gap-2 text-[11px] text-zinc-400">
-                    <input type="checkbox" checked={meta.resultActions.includes(d.actionType)} onChange={() => toggleAction(d.actionType)} />
-                    <span className="truncate">{d.actionType}</span><span className="ml-auto text-zinc-600">{d.count}</span>
-                  </label>
-                ))}
-                {meta.resultActions.length > 0 && <p className="text-[11px] text-[#FFB185]">{meta.resultActions.length} evento(s) marcado(s) — Salvar Meta para aplicar.</p>}
+        <>
+          {aiNote && <p className="mt-3 rounded-lg border border-[#FF8F50]/20 bg-[#FF8F50]/[0.06] px-3 py-2 text-[11px] text-[#FFB185]">{aiNote}</p>}
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            {/* Meta */}
+            <div className="rounded-lg border border-white/8 bg-black/20 p-4 space-y-2">
+              <p className="text-xs font-semibold text-zinc-300">Meta Ads (token por cliente)</p>
+              <Input value={meta.accountId} onChange={(e) => setMeta({ ...meta, accountId: e.target.value })} placeholder="act_XXXXXXXX" />
+              <Input type="password" value={meta.token} onChange={(e) => setMeta({ ...meta, token: e.target.value })} placeholder={metaAcc?.lastFour ? `token salvo ••••${metaAcc.lastFour} — trocar` : "access token"} />
+              <p className="text-[11px] text-zinc-500">Funis (pode marcar vários):</p>
+              <ObjChecks selected={meta.objectives} onToggle={(v) => setMeta({ ...meta, objectives: toggle(meta.objectives, v), trackRevenue: meta.trackRevenue || (v === "ECOMMERCE" && !meta.objectives.includes(v)) })} />
+              <label className="flex items-center gap-2 text-xs text-zinc-400"><input type="checkbox" checked={meta.trackRevenue} onChange={(e) => setMeta({ ...meta, trackRevenue: e.target.checked })} /> Receita / ROAS</label>
+              <div className="flex gap-2">
+                <Button variant="secondary" className="min-h-9 px-3 py-1.5 text-xs" disabled={busy || !meta.accountId} onClick={() => save("META", meta)}>Salvar</Button>
+                <Button variant="secondary" className="min-h-9 px-3 py-1.5 text-xs" disabled={busy || !metaAcc} onClick={() => suggest("META")}>✨ Sugerir com IA</Button>
               </div>
-            )}
+            </div>
+            {/* Google */}
+            <div className="rounded-lg border border-white/8 bg-black/20 p-4 space-y-2">
+              <p className="text-xs font-semibold text-zinc-300">Google Ads (MCC central)</p>
+              <Input value={google.accountId} onChange={(e) => setGoogle({ ...google, accountId: e.target.value })} placeholder="customer id (ex: 1284541690)" />
+              <p className="text-[11px] text-zinc-500">Funis (pode marcar vários):</p>
+              <ObjChecks selected={google.objectives} onToggle={(v) => setGoogle({ ...google, objectives: toggle(google.objectives, v), trackRevenue: google.trackRevenue || (v === "ECOMMERCE" && !google.objectives.includes(v)) })} />
+              <label className="flex items-center gap-2 text-xs text-zinc-400"><input type="checkbox" checked={google.trackRevenue} onChange={(e) => setGoogle({ ...google, trackRevenue: e.target.checked })} /> Receita / ROAS</label>
+              <p className="text-[11px] text-zinc-600">Sem token aqui — usa o MCC do ambiente.</p>
+              <div className="flex gap-2">
+                <Button variant="secondary" className="min-h-9 px-3 py-1.5 text-xs" disabled={busy || !google.accountId} onClick={() => save("GOOGLE", google)}>Salvar</Button>
+                <Button variant="secondary" className="min-h-9 px-3 py-1.5 text-xs" disabled={busy || !googleAcc} onClick={() => suggest("GOOGLE")}>✨ Sugerir com IA</Button>
+              </div>
+            </div>
           </div>
-          {/* Google */}
-          <div className="rounded-lg border border-white/8 bg-black/20 p-4 space-y-2">
-            <p className="text-xs font-semibold text-zinc-300">Google Ads (MCC central)</p>
-            <Input value={google.accountId} onChange={(e) => setGoogle({ ...google, accountId: e.target.value })} placeholder="customer id (ex: 1284541690)" />
-            <select value={google.objective} onChange={(e) => setGoogle({ ...google, objective: e.target.value, trackRevenue: e.target.value === "ECOMMERCE" })} className="dash-input min-h-9 w-full rounded-lg px-3 py-2 text-sm">
-              {OBJECTIVES.map((o) => <option key={o.v} value={o.v}>Objetivo: {o.label}</option>)}
-            </select>
-            <label className="flex items-center gap-2 text-xs text-zinc-400"><input type="checkbox" checked={google.trackRevenue} onChange={(e) => setGoogle({ ...google, trackRevenue: e.target.checked })} /> Acompanhar receita / ROAS</label>
-            <p className="text-[11px] text-zinc-600">Conversões do Google entram automático (sem token aqui — usa o MCC do ambiente).</p>
-            <Button variant="secondary" className="min-h-9 px-3 py-1.5 text-xs" disabled={busy || !google.accountId} onClick={() => save("GOOGLE", google)}>Salvar Google</Button>
-          </div>
-        </div>
+        </>
       )}
     </Panel>
   )
@@ -302,7 +301,7 @@ type ProviderRow = { provider: string; spend?: number; results?: number; cpa?: n
 type Realizado = {
   byProvider: ProviderRow[]
   total: { spend: number; impressions: number; clicks: number; results: number; cpa: number | null; revenue: number | null; roas: number | null }
-  objective: string | null
+  breakdown: { objective: string; count: number }[]
   trackRevenue: boolean
   configured: boolean
 }
@@ -322,7 +321,7 @@ function RealizadoBlock({ clientId, plan }: { clientId: string; plan: Plan }) {
   }
 
   const pct = (real: number, target: number | null) => (target && target > 0 ? Math.round((real / target) * 100) : null)
-  const resultLabel = data?.objective ? OBJ_RESULT_LABEL[data.objective] ?? "Resultados" : "Resultados"
+  const resultLabel = data && data.breakdown.length === 1 ? OBJ_RESULT_LABEL[data.breakdown[0].objective] ?? "Resultados" : "Resultados"
 
   return (
     <div className="mt-4 border-t border-white/8 pt-3">
@@ -351,10 +350,19 @@ function RealizadoBlock({ clientId, plan }: { clientId: string; plan: Plan }) {
               <Metric label={`ROAS${plan.targetRoas ? (data.total.roas && data.total.roas >= plan.targetRoas ? " ✓" : " ⚠") : ""}`} value={data.total.roas != null ? `${data.total.roas.toFixed(2)}x` : "—"} />
             </div>
           )}
+          {data.breakdown.length > 1 && (
+            <div className="flex flex-wrap gap-2 text-[11px]">
+              {data.breakdown.map((b) => (
+                <span key={b.objective} className="rounded bg-[#FF8F50]/10 px-2 py-0.5 text-[#FFB185]">
+                  {OBJ_RESULT_LABEL[b.objective] ?? b.objective}: {b.count}
+                </span>
+              ))}
+            </div>
+          )}
           <div className="flex flex-wrap gap-2 text-[11px] text-zinc-600">
             {data.byProvider.map((p) => (
               <span key={p.provider} className="rounded bg-white/5 px-2 py-0.5">
-                {p.provider}: {p.error ? `erro (${p.error})` : `${brl(p.spend ?? 0)} · ${p.results} ${resultLabel.toLowerCase()}`}
+                {p.provider}: {p.error ? `erro (${p.error})` : `${brl(p.spend ?? 0)} · ${p.results} result.`}
               </span>
             ))}
             {!data.configured && <span className="text-amber-300/70">Nenhuma conta de Ads configurada acima.</span>}

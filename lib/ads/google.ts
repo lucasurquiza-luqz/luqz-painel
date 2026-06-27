@@ -69,12 +69,15 @@ export async function fetchGoogleInsights(customerId: string, month: string, con
   }
   const spend = costMicros / 1_000_000
   const results = Math.round(conversions)
+  // Google unifica conversões: atribui ao 1º objetivo configurado (ou CUSTOM).
+  const objective = config.objectives[0] ?? "CUSTOM"
   return {
     provider: "GOOGLE",
     spend,
     impressions,
     clicks,
     results,
+    breakdown: [{ objective, count: results }],
     cpa: results > 0 ? spend / results : null,
     revenue: config.trackRevenue ? convValue : null,
     roas: config.trackRevenue && spend > 0 ? convValue / spend : null,
