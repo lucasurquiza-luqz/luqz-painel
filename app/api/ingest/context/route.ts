@@ -40,6 +40,20 @@ export async function POST(req: NextRequest) {
   const clients = await prisma.client.findMany({ select: { id: true, name: true } })
   const clientByName = new Map(clients.map((c) => [normalizeName(c.name), c]))
 
+  // Apelidos: nome (normalizado) vindo da Torre/diretório → nome (normalizado) do cliente no Dash.
+  const ALIASES: Record<string, string> = {
+    "identifique": "identifique marcas e patentes",
+    "camisetando estamparia": "camisetando",
+    "glamour emporium": "adriana glamour emporium",
+    "cassio eduardo goulart": "dr cassio goulart",
+    "sevira marmitas congeladas": "sevira",
+    "jf empilhadeiras": "jf pecas de empilhadeiras",
+  }
+  const resolve = (name: string) => {
+    const n = normalizeName(name)
+    return clientByName.get(ALIASES[n] ?? n)
+  }
+
   const report = { created: 0, skipped: 0, unmatched: new Set<string>(), byClient: {} as Record<string, number> }
 
   for (const item of items) {
@@ -47,7 +61,7 @@ export async function POST(req: NextRequest) {
       report.skipped++
       continue
     }
-    const client = clientByName.get(normalizeName(item.clientName))
+    const client = resolve(item.clientName)
     if (!client) { report.unmatched.add(item.clientName); continue }
 
     const domain = DOMAINS.has(item.domain as ContextDomain) ? (item.domain as ContextDomain) : "CLIENTE"
