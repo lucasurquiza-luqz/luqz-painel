@@ -425,7 +425,7 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
             ))}
           </div>
 
-          <Destaques clientId={clientId} month={month} />
+          <Explorer clientId={clientId} month={month} />
 
           {/* Leitura de IA */}
           <div className="rounded-xl border border-[#FF8F50]/20 bg-[#FF8F50]/[0.05] p-4">
@@ -441,83 +441,82 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
   )
 }
 
-// Melhores campanhas / públicos / criativos (Meta) — sob demanda por aba.
-type BdRow = { name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; hookRate?: number | null; thruplayRate?: number | null; convRate?: number | null; permalink?: string | null; thumbnail?: string | null }
-const DEST_TABS: { level: string; label: string }[] = [
-  { level: "campaign", label: "Campanhas" },
-  { level: "adset", label: "Públicos" },
-  { level: "ad", label: "Criativos" },
-]
-function Destaques({ clientId, month }: { clientId: string; month: string }) {
-  const [level, setLevel] = useState("campaign")
-  const [rows, setRows] = useState<BdRow[] | null>(null)
+// Explorador: Campanha → Conjunto (público) → Anúncio (preview). Drill-down.
+type AdNode = { id: string; name: string; spend: number; results: number; cpa: number | null; ctr: number | null; hookRate: number | null; convRate: number | null; thumbnail: string | null; permalink: string | null }
+type AdsetNode = { id: string; name: string; spend: number; results: number; cpa: number | null; ctr: number | null; audience: string | null; ads: AdNode[] }
+type CampaignNode = { id: string; name: string; spend: number; results: number; cpa: number | null; ctr: number | null; adsets: AdsetNode[] }
+const mini = (spend: number, results: number, cpa: number | null) => `${brl(spend)} · ${results} result. · CPA ${brl(cpa)}`
+
+function Explorer({ clientId, month }: { clientId: string; month: string }) {
+  const [campaigns, setCampaigns] = useState<CampaignNode[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState("")
+  const [open, setOpen] = useState<Record<string, boolean>>({})
+  const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }))
 
-  const load = useCallback(async (lv: string) => {
-    setLoading(true); setErr(""); setRows(null)
-    const res = await fetch(`/api/clients/${clientId}/performance/breakdown?month=${month}&level=${lv}`)
+  const load = useCallback(async () => {
+    setLoading(true); setErr(""); setCampaigns(null)
+    const res = await fetch(`/api/clients/${clientId}/performance/explore?month=${month}`)
     const data = await res.json()
     setLoading(false)
-    if (!res.ok) { setErr(data.error ?? "Falha ao carregar."); return }
-    setRows(data.rows)
+    if (!res.ok) { setErr(data.error ?? "Falha ao explorar."); return }
+    setCampaigns(data.campaigns)
   }, [clientId, month])
-
-  useEffect(() => { void load(level) }, [load, level])
+  useEffect(() => { void load() }, [load])
 
   return (
     <div className="rounded-xl border border-white/8 bg-black/20 p-4">
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] text-zinc-500">Destaques (Meta)</p>
-        <div className="flex gap-1 rounded-lg border border-white/10 bg-black/30 p-0.5">
-          {DEST_TABS.map((t) => (
-            <button key={t.level} onClick={() => setLevel(t.level)} className={`rounded-md px-2.5 py-1 text-[11px] ${level === t.level ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300"}`}>{t.label}</button>
-          ))}
-        </div>
-      </div>
+      <p className="mb-2 text-[11px] text-zinc-500">Explorador — Campanha ▸ Conjunto (público) ▸ Anúncio (Meta)</p>
       {loading ? (
         <div className="flex min-h-20 items-center justify-center"><Loader2 size={16} className="animate-spin text-[#FF8F50]" /></div>
       ) : err ? (
-        <p className="mt-3 text-xs text-red-300">{err}</p>
-      ) : !rows?.length ? (
-        <p className="mt-3 text-xs text-zinc-600">Sem dados neste nível para o mês.</p>
+        <p className="text-xs text-red-300">{err}</p>
+      ) : !campaigns?.length ? (
+        <p className="text-xs text-zinc-600">Sem campanhas com veiculação no mês.</p>
       ) : (
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="text-[10px] uppercase tracking-wide text-zinc-600">
-              <tr>
-                <th className="pb-1 pr-2">Nome</th>
-                <th className="pb-1 px-2 text-right">Gasto</th>
-                <th className="pb-1 px-2 text-right">Result.</th>
-                <th className="pb-1 px-2 text-right">CPA</th>
-                <th className="pb-1 px-2 text-right">CTR</th>
-                {level === "ad" && <><th className="pb-1 px-2 text-right">Hook</th><th className="pb-1 px-2 text-right">Conv.</th><th className="pb-1 pl-2"></th></>}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.slice(0, 10).map((r, i) => (
-                <tr key={i} className="border-t border-white/5">
-                  <td className="max-w-[200px] py-1.5 pr-2 text-zinc-200" title={r.name}>
-                    <div className="flex items-center gap-2">
-                      {level === "ad" && (r.thumbnail
-                        ? <img src={r.thumbnail} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
-                        : <span className="h-8 w-8 shrink-0 rounded bg-white/5" />)}
-                      <span className="truncate">{r.name}</span>
+        <div className="space-y-1.5">
+          {campaigns.map((c) => (
+            <div key={c.id} className="rounded-lg border border-white/8 bg-black/20">
+              <button onClick={() => toggle(c.id)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left">
+                <span className="flex min-w-0 items-center gap-2 text-sm">
+                  <span className="text-zinc-600">{open[c.id] ? "▾" : "▸"}</span>
+                  <span className="truncate font-medium text-zinc-100">{c.name}</span>
+                </span>
+                <span className="shrink-0 text-[11px] text-zinc-500">{mini(c.spend, c.results, c.cpa)}</span>
+              </button>
+              {open[c.id] && (
+                <div className="space-y-1 border-t border-white/5 px-2 py-2">
+                  {c.adsets.map((s) => (
+                    <div key={s.id} className="rounded-lg bg-white/[0.02]">
+                      <button onClick={() => toggle(s.id)} className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left">
+                        <span className="flex min-w-0 items-center gap-2 text-xs">
+                          <span className="text-zinc-600">{open[s.id] ? "▾" : "▸"}</span>
+                          <span className="truncate text-zinc-300">{s.name}</span>
+                        </span>
+                        <span className="shrink-0 text-[10px] text-zinc-500">{mini(s.spend, s.results, s.cpa)}</span>
+                      </button>
+                      {s.audience && <p className="px-3 pb-1 text-[10px] text-sky-300/70">👥 {s.audience}</p>}
+                      {open[s.id] && (
+                        <div className="space-y-1 px-2 pb-2">
+                          {s.ads.map((ad) => (
+                            <div key={ad.id} className="flex items-center gap-2 rounded-md bg-black/30 px-2 py-1.5">
+                              {ad.thumbnail ? <img src={ad.thumbnail} alt="" className="h-9 w-9 shrink-0 rounded object-cover" /> : <span className="h-9 w-9 shrink-0 rounded bg-white/5" />}
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-[11px] text-zinc-200" title={ad.name}>{ad.name}</p>
+                                <p className="text-[10px] text-zinc-500">{brl(ad.spend)} · {ad.results} result. · CTR {ad.ctr != null ? `${ad.ctr.toFixed(1)}%` : "—"} · Hook {ad.hookRate != null ? `${ad.hookRate.toFixed(0)}%` : "—"} · Conv {ad.convRate != null ? `${ad.convRate.toFixed(0)}%` : "—"}</p>
+                              </div>
+                              {ad.permalink && <a href={ad.permalink} target="_blank" rel="noopener noreferrer" className="shrink-0 text-[10px] text-[#FFB185] hover:underline">abrir ↗</a>}
+                            </div>
+                          ))}
+                          {!s.ads.length && <p className="px-2 text-[10px] text-zinc-600">Sem anúncios com veiculação.</p>}
+                        </div>
+                      )}
                     </div>
-                  </td>
-                  <td className="px-2 py-1.5 text-right text-zinc-400">{brl(r.spend)}</td>
-                  <td className="px-2 py-1.5 text-right font-medium text-zinc-100">{r.results}</td>
-                  <td className="px-2 py-1.5 text-right text-zinc-400">{brl(r.cpa)}</td>
-                  <td className="px-2 py-1.5 text-right text-zinc-400">{r.ctr != null ? `${r.ctr.toFixed(2)}%` : "—"}</td>
-                  {level === "ad" && <>
-                    <td className="px-2 py-1.5 text-right text-zinc-400" title="visualizações de 3s ÷ impressões">{r.hookRate != null ? `${r.hookRate.toFixed(1)}%` : "—"}</td>
-                    <td className="px-2 py-1.5 text-right text-zinc-400" title="resultados ÷ cliques">{r.convRate != null ? `${r.convRate.toFixed(1)}%` : "—"}</td>
-                    <td className="pl-2 py-1.5 text-right">{r.permalink ? <a href={r.permalink} target="_blank" rel="noopener noreferrer" className="text-[#FFB185] hover:underline">abrir ↗</a> : <span className="text-zinc-700">—</span>}</td>
-                  </>}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>

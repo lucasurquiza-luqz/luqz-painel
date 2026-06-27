@@ -19,6 +19,11 @@ export type BreakdownRow = {
 }
 export type BreakdownLevel = "campaign" | "adset" | "ad"
 
+// Árvore de exploração: Campanha → Conjunto (com público) → Anúncio (com preview).
+export type AdNode = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; hookRate: number | null; convRate: number | null; thumbnail: string | null; permalink: string | null }
+export type AdsetNode = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; audience: string | null; ads: AdNode[] }
+export type CampaignNode = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; adsets: AdsetNode[] }
+
 export type AdMetrics = {
   provider: "META" | "GOOGLE"
   spend: number
