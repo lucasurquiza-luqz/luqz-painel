@@ -107,6 +107,18 @@ export default function ClientesPage() {
     setSaving(false)
   }
 
+  async function approveAllContext() {
+    if (!window.confirm("Aprovar (ativar) todo o contexto importado de toda a carteira? Itens versionados ficam de fora.")) return
+    setImportBusy(true)
+    setError("")
+    setSyncMessage("")
+    const response = await fetch("/api/admin/context/approve-all", { method: "POST" })
+    const payload = await response.json()
+    setImportBusy(false)
+    if (!response.ok) { setError(payload.error ?? "Falha ao aprovar contexto."); return }
+    setSyncMessage(`${payload.approved} item(ns) de contexto aprovado(s) e ativado(s) na carteira.`)
+  }
+
   async function runImport(dryRun: boolean) {
     setImportBusy(true)
     setError("")
@@ -208,6 +220,11 @@ export default function ClientesPage() {
             <Button variant="secondary" onClick={() => { setImportDone(false); void runImport(true) }} disabled={importBusy}>
               {importBusy ? <Loader2 size={16} className="animate-spin" /> : <DownloadCloud size={16} />}
               Importar do ClickUp
+            </Button>
+          )}
+          {role === "ADMIN" && (
+            <Button variant="secondary" onClick={approveAllContext} disabled={importBusy}>
+              <CircleCheck size={16} /> Aprovar contexto da carteira
             </Button>
           )}
           <Button onClick={() => setShowForm((current) => !current)}><Plus size={16} /> Novo cliente</Button>
