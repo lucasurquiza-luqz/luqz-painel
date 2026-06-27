@@ -196,7 +196,7 @@ function AddPlan({ clientId, onAdded, onCancel, onError }: { clientId: string; o
 type Perf = {
   month: string
   current: {
-    total: { spend: number; impressions: number; clicks: number; results: number; cpa: number | null; revenue: number | null; roas: number | null; ctr: number | null; cpc: number | null; cpm: number | null }
+    total: { spend: number; impressions: number; clicks: number; pageViews: number; results: number; cpa: number | null; revenue: number | null; roas: number | null; ctr: number | null; cpc: number | null; cpm: number | null }
     breakdown: { objective: string; count: number }[]
     daily: { date: string; spend: number; results: number }[]
     byProvider: { provider: string; spend?: number; results?: number; error?: string }[]
@@ -410,6 +410,7 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
             <VisualFunnel steps={[
               { label: "Impressões", value: t.impressions, display: t.impressions.toLocaleString("pt-BR") },
               { label: "Cliques", value: t.clicks, display: t.clicks.toLocaleString("pt-BR") },
+              ...(t.pageViews > 0 ? [{ label: "Visualizações de página", value: t.pageViews, display: t.pageViews.toLocaleString("pt-BR") }] : []),
               { label: resultLabel, value: t.results, display: String(t.results) },
               ...(perf.current.trackRevenue && t.revenue != null ? [{ label: "Receita", value: t.revenue, display: brl(t.revenue) }] : []),
             ]} />
@@ -441,7 +442,7 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
 }
 
 // Melhores campanhas / públicos / criativos (Meta) — sob demanda por aba.
-type BdRow = { name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null }
+type BdRow = { name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; hookRate?: number | null; thruplayRate?: number | null; convRate?: number | null; permalink?: string | null }
 const DEST_TABS: { level: string; label: string }[] = [
   { level: "campaign", label: "Campanhas" },
   { level: "adset", label: "Públicos" },
@@ -484,16 +485,28 @@ function Destaques({ clientId, month }: { clientId: string; month: string }) {
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="text-[10px] uppercase tracking-wide text-zinc-600">
-              <tr><th className="pb-1 pr-2">Nome</th><th className="pb-1 px-2 text-right">Gasto</th><th className="pb-1 px-2 text-right">Result.</th><th className="pb-1 px-2 text-right">CPA</th><th className="pb-1 pl-2 text-right">CTR</th></tr>
+              <tr>
+                <th className="pb-1 pr-2">Nome</th>
+                <th className="pb-1 px-2 text-right">Gasto</th>
+                <th className="pb-1 px-2 text-right">Result.</th>
+                <th className="pb-1 px-2 text-right">CPA</th>
+                <th className="pb-1 px-2 text-right">CTR</th>
+                {level === "ad" && <><th className="pb-1 px-2 text-right">Hook</th><th className="pb-1 px-2 text-right">Conv.</th><th className="pb-1 pl-2"></th></>}
+              </tr>
             </thead>
             <tbody>
               {rows.slice(0, 10).map((r, i) => (
                 <tr key={i} className="border-t border-white/5">
-                  <td className="max-w-[200px] truncate py-1.5 pr-2 text-zinc-200" title={r.name}>{r.name}</td>
+                  <td className="max-w-[180px] truncate py-1.5 pr-2 text-zinc-200" title={r.name}>{r.name}</td>
                   <td className="px-2 py-1.5 text-right text-zinc-400">{brl(r.spend)}</td>
                   <td className="px-2 py-1.5 text-right font-medium text-zinc-100">{r.results}</td>
                   <td className="px-2 py-1.5 text-right text-zinc-400">{brl(r.cpa)}</td>
-                  <td className="pl-2 py-1.5 text-right text-zinc-400">{r.ctr != null ? `${r.ctr.toFixed(2)}%` : "—"}</td>
+                  <td className="px-2 py-1.5 text-right text-zinc-400">{r.ctr != null ? `${r.ctr.toFixed(2)}%` : "—"}</td>
+                  {level === "ad" && <>
+                    <td className="px-2 py-1.5 text-right text-zinc-400" title="visualizações de 3s ÷ impressões">{r.hookRate != null ? `${r.hookRate.toFixed(1)}%` : "—"}</td>
+                    <td className="px-2 py-1.5 text-right text-zinc-400" title="resultados ÷ cliques">{r.convRate != null ? `${r.convRate.toFixed(1)}%` : "—"}</td>
+                    <td className="pl-2 py-1.5 text-right">{r.permalink ? <a href={r.permalink} target="_blank" rel="noopener noreferrer" className="text-[#FFB185] hover:underline">abrir ↗</a> : <span className="text-zinc-700">—</span>}</td>
+                  </>}
                 </tr>
               ))}
             </tbody>

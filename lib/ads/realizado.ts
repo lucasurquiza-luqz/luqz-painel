@@ -5,7 +5,7 @@ import { fetchGoogleInsights } from "@/lib/ads/google"
 import { effectiveObjectives, type AdConfig, type AdMetrics, type AdObjective, type DailyPoint, type ResultBreakdown } from "@/lib/ads/types"
 
 export type ProviderResult = (AdMetrics & { error?: undefined }) | { provider: "META" | "GOOGLE"; error: string }
-export type Totals = { spend: number; impressions: number; clicks: number; results: number; cpa: number | null; revenue: number | null; roas: number | null; ctr: number | null; cpc: number | null; cpm: number | null }
+export type Totals = { spend: number; impressions: number; clicks: number; pageViews: number; results: number; cpa: number | null; revenue: number | null; roas: number | null; ctr: number | null; cpc: number | null; cpm: number | null }
 export type Realizado = {
   byProvider: ProviderResult[]
   total: Totals
@@ -85,6 +85,7 @@ export async function getClientRealizado(clientId: string, month: string): Promi
       spend,
       impressions,
       clicks,
+      pageViews: ok.reduce((s, r) => s + r.pageViews, 0),
       results,
       cpa: results > 0 ? spend / results : null,
       revenue,

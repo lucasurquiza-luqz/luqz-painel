@@ -79,7 +79,7 @@ export async function fetchGoogleInsights(customerId: string, month: string, con
   const daily = [...perDay.entries()].map(([date, v]) => ({ date, spend: v.spend, results: Math.round(v.results) })).sort((a, b) => a.date.localeCompare(b.date))
   return {
     provider: "GOOGLE",
-    spend, impressions, clicks, results,
+    spend, impressions, clicks, pageViews: 0, results,
     breakdown: [{ objective, count: results }],
     cpa: results > 0 ? spend / results : null,
     revenue: config.trackRevenue ? convValue : null,
