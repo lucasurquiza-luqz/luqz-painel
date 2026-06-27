@@ -68,6 +68,13 @@ enum AdProvider {
   GOOGLE
 }
 
+enum AdObjective {
+  LEAD
+  WHATSAPP
+  ECOMMERCE
+  CUSTOM
+}
+
 // Conta de anúncios por cliente. Meta: cada cliente tem a própria BM → token
 // criptografado por cliente. Google: credencial central (MCC no env) → só o customer_id.
 model ClientAdAccount {
@@ -77,6 +84,10 @@ model ClientAdAccount {
   accountId   String // META: act_...  | GOOGLE: customer_id (sem traços)
   tokenEnc    String? // META: token criptografado. GOOGLE: null (usa MCC central)
   lastFour    String?
+  // Config de conversão por cliente (funil flexível):
+  objective     AdObjective @default(LEAD)
+  resultActions String[]    @default([]) // eventos que contam como "resultado" (Meta action_type). Vazio = padrão do objetivo.
+  trackRevenue  Boolean     @default(false) // ecommerce: somar receita → ROAS
   updatedById String?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt

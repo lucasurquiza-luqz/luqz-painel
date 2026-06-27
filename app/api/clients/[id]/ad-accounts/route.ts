@@ -14,7 +14,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const accounts = await prisma.clientAdAccount.findMany({
     where: { clientId: id },
-    select: { provider: true, accountId: true, lastFour: true, updatedAt: true },
+    select: { provider: true, accountId: true, lastFour: true, objective: true, resultActions: true, trackRevenue: true, updatedAt: true },
   })
   return NextResponse.json({ accounts })
 }
@@ -35,11 +35,23 @@ export async function POST(req: NextRequest, { params }: Params) {
   const tokenEnc = token ? encryptSecret(token) : undefined
   const lastFour = token ? token.slice(-4) : undefined
 
+  // Config de conversão (funil).
+  const OBJ = new Set(["LEAD", "WHATSAPP", "ECOMMERCE", "CUSTOM"])
+  const objective = typeof body.objective === "string" && OBJ.has(body.objective) ? body.objective : undefined
+  const resultActions = Array.isArray(body.resultActions) ? body.resultActions.filter((x: unknown) => typeof x === "string") : undefined
+  const trackRevenue = typeof body.trackRevenue === "boolean" ? body.trackRevenue : undefined
+
+  const cfg = {
+    ...(objective ? { objective: objective as never } : {}),
+    ...(resultActions ? { resultActions } : {}),
+    ...(trackRevenue !== undefined ? { trackRevenue } : {}),
+  }
+
   const account = await prisma.clientAdAccount.upsert({
     where: { clientId_provider: { clientId: id, provider: provider as never } },
-    create: { clientId: id, provider: provider as never, accountId, tokenEnc: tokenEnc ?? null, lastFour: lastFour ?? null, updatedById: auth.user.userId },
-    update: { accountId, ...(tokenEnc ? { tokenEnc, lastFour } : {}), updatedById: auth.user.userId },
-    select: { provider: true, accountId: true, lastFour: true, updatedAt: true },
+    create: { clientId: id, provider: provider as never, accountId, tokenEnc: tokenEnc ?? null, lastFour: lastFour ?? null, updatedById: auth.user.userId, ...cfg },
+    update: { accountId, ...(tokenEnc ? { tokenEnc, lastFour } : {}), updatedById: auth.user.userId, ...cfg },
+    select: { provider: true, accountId: true, lastFour: true, objective: true, resultActions: true, trackRevenue: true, updatedAt: true },
   })
   return NextResponse.json({ account })
 }

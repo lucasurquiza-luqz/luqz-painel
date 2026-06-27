@@ -1,4 +1,4 @@
-import { monthRange, AdsNotConfiguredError, type AdMetrics } from "@/lib/ads/types"
+import { monthRange, AdsNotConfiguredError, type AdConfig, type AdMetrics } from "@/lib/ads/types"
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token"
 const ADS_API = "https://googleads.googleapis.com/v17"
@@ -33,13 +33,13 @@ async function accessToken(env: ReturnType<typeof googleEnv>): Promise<string> {
 }
 
 // Lê métricas de um customer (sem traços) no mês, via MCC central.
-export async function fetchGoogleInsights(customerId: string, month: string): Promise<AdMetrics> {
+export async function fetchGoogleInsights(customerId: string, month: string, config: AdConfig): Promise<AdMetrics> {
   const env = googleEnv()
   const cid = customerId.replace(/-/g, "")
   const { since, until } = monthRange(month)
   const token = await accessToken(env)
 
-  const query = `SELECT metrics.cost_micros, metrics.conversions FROM customer WHERE segments.date BETWEEN '${since}' AND '${until}'`
+  const query = `SELECT metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM customer WHERE segments.date BETWEEN '${since}' AND '${until}'`
   const res = await fetch(`${ADS_API}/customers/${cid}/googleAds:searchStream`, {
     method: "POST",
     headers: {
@@ -56,16 +56,27 @@ export async function fetchGoogleInsights(customerId: string, month: string): Pr
     throw new Error(`Google Ads: ${msg ?? res.status}`)
   }
 
-  let costMicros = 0
-  let conversions = 0
+  let costMicros = 0, impressions = 0, clicks = 0, conversions = 0, convValue = 0
   const batches = Array.isArray(body) ? body : [body]
   for (const batch of batches) {
     for (const row of batch.results ?? []) {
       costMicros += Number(row.metrics?.costMicros ?? 0)
+      impressions += Number(row.metrics?.impressions ?? 0)
+      clicks += Number(row.metrics?.clicks ?? 0)
       conversions += Number(row.metrics?.conversions ?? 0)
+      convValue += Number(row.metrics?.conversionsValue ?? 0)
     }
   }
   const spend = costMicros / 1_000_000
-  const leads = Math.round(conversions)
-  return { provider: "GOOGLE", spend, leads, cpa: leads > 0 ? spend / leads : null }
+  const results = Math.round(conversions)
+  return {
+    provider: "GOOGLE",
+    spend,
+    impressions,
+    clicks,
+    results,
+    cpa: results > 0 ? spend / results : null,
+    revenue: config.trackRevenue ? convValue : null,
+    roas: config.trackRevenue && spend > 0 ? convValue / spend : null,
+  }
 }
