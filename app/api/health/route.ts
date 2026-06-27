@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic"
 
 // Marcador de build: bumpado a cada release para confirmar, sem login, qual
 // versao esta efetivamente no ar (o middleware bloqueia as demais rotas /api).
-const BUILD_MARKER = "saude-resultado-ads-2026-06-26"
+const BUILD_MARKER = "ingest-ad-accounts-2026-06-26"
 
 export async function GET() {
   try {
