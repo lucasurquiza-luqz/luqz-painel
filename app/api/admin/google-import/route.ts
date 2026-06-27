@@ -20,11 +20,29 @@ export async function POST() {
   }
 
   const clients = await prisma.client.findMany({ select: { id: true, name: true } })
-  const byName = new Map(clients.map((c) => [normalizeName(c.name), c]))
+
+  // Casamento fuzzy: nomes no MCC diferem do Dash ("Haroldo Freire" vs "Dr Haroldo Freire",
+  // "GADS - Natrilhas", "Santa Helena Google Ads"...). Compara por tokens significativos.
+  const STOP = new Set(["dr", "dra", "de", "da", "do", "e", "group", "ltda", "google", "ads", "gads", "ca01", "agencia", "trafego", "solucoes", "digitais", "the"])
+  const toks = (s: string) => normalizeName(s).split(" ").filter((t) => t.length > 2 && !STOP.has(t))
+  const clientToks = clients.map((c) => ({ c, t: toks(c.name) }))
+  const matchClient = (acctName: string) => {
+    const at = toks(acctName)
+    if (!at.length) return null
+    let best: (typeof clientToks)[number] | null = null, score = 0
+    for (const ct of clientToks) {
+      const shared = at.filter((x) => ct.t.includes(x)).length
+      if (shared > score) { score = shared; best = ct }
+    }
+    if (!best) return null
+    if (score >= 2) return best.c
+    if (score === 1 && at.length === 1 && best.t.length === 1) return best.c // ambos um token só, iguais
+    return null
+  }
 
   const report = { configured: 0, matched: [] as string[], unmatched: [] as string[] }
   for (const acc of mccAccounts) {
-    const client = byName.get(normalizeName(acc.name))
+    const client = matchClient(acc.name)
     if (!client) { report.unmatched.push(`${acc.name} (${acc.customerId})`); continue }
     await prisma.clientAdAccount.upsert({
       where: { clientId_provider: { clientId: client.id, provider: "GOOGLE" } },

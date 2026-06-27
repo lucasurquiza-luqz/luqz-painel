@@ -1,7 +1,7 @@
 import { monthRange, AdsNotConfiguredError, type AdConfig, type AdMetrics } from "@/lib/ads/types"
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token"
-const ADS_API = "https://googleads.googleapis.com/v17"
+const ADS_API = "https://googleads.googleapis.com/v21"
 
 // Credenciais centrais do MCC (env do Dash) — Google é centralizado.
 function googleEnv() {
