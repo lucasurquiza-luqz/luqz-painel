@@ -193,13 +193,17 @@ function AddPlan({ clientId, onAdded, onCancel, onError }: { clientId: string; o
 }
 
 // === Painel Performance (visual + leitura de IA) ===
+type Totals = { spend: number; impressions: number; clicks: number; pageViews: number; results: number; cpa: number | null; revenue: number | null; roas: number | null; ctr: number | null; cpc: number | null; cpm: number | null }
+type Bd = { objective: string; count: number }[]
+type Dly = { date: string; spend: number; results: number }[]
+type ProviderMetrics = { provider: string; error?: string; spend?: number; impressions?: number; clicks?: number; pageViews?: number; results?: number; cpa?: number | null; revenue?: number | null; roas?: number | null; breakdown?: Bd; daily?: Dly }
 type Perf = {
   month: string
   current: {
-    total: { spend: number; impressions: number; clicks: number; pageViews: number; results: number; cpa: number | null; revenue: number | null; roas: number | null; ctr: number | null; cpc: number | null; cpm: number | null }
-    breakdown: { objective: string; count: number }[]
-    daily: { date: string; spend: number; results: number }[]
-    byProvider: { provider: string; spend?: number; results?: number; error?: string }[]
+    total: Totals
+    breakdown: Bd
+    daily: Dly
+    byProvider: ProviderMetrics[]
     trackRevenue: boolean
     configured: boolean
   }
@@ -322,6 +326,7 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
   const [err, setErr] = useState("")
   const [reading, setReading] = useState("")
   const [readingBusy, setReadingBusy] = useState(false)
+  const [source, setSource] = useState<string>("all") // "all" | "META" | "GOOGLE"
 
   const load = useCallback(async () => {
     setLoading(true); setErr(""); setReading("")
@@ -357,15 +362,34 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
   const plan = plans.find((p) => p.month === month && p.platform === "TOTAL") ?? plans.find((p) => p.month === month)
   const t = perf?.current.total
   const pct = (real: number, target: number | null | undefined) => (target && target > 0 ? Math.round((real / target) * 100) : null)
-  const resultLabel = perf && perf.current.breakdown.length === 1 ? OBJ_LABEL[perf.current.breakdown[0].objective] ?? "Resultados" : "Resultados"
 
-  // Status de saúde de resultado (simples, explicável).
+  // Fontes disponíveis (com dados, sem erro) + a "view" da fonte selecionada.
+  const okProviders = (perf?.current.byProvider ?? []).filter((p) => !p.error)
+  const isAll = source === "all"
+  const provider = isAll ? null : okProviders.find((p) => p.provider === source)
+  const view: Totals & { breakdown: Bd; daily: Dly } | null = !perf || !t ? null
+    : isAll ? { ...t, breakdown: perf.current.breakdown, daily: perf.current.daily }
+    : provider ? (() => {
+        const spend = provider.spend ?? 0, impressions = provider.impressions ?? 0, clicks = provider.clicks ?? 0
+        return {
+          spend, impressions, clicks, pageViews: provider.pageViews ?? 0, results: provider.results ?? 0,
+          cpa: provider.cpa ?? null, revenue: provider.revenue ?? null, roas: provider.roas ?? null,
+          ctr: impressions > 0 ? (clicks / impressions) * 100 : null,
+          cpc: clicks > 0 ? spend / clicks : null,
+          cpm: impressions > 0 ? (spend / impressions) * 1000 : null,
+          breakdown: provider.breakdown ?? [], daily: provider.daily ?? [],
+        }
+      })() : null
+  const resultLabel = view && view.breakdown.length === 1 ? OBJ_LABEL[view.breakdown[0].objective] ?? "Resultados" : "Resultados"
+
+  // Status de saúde de resultado (consolidado, simples, explicável).
   let status: { label: string; tone: string; why: string } | null = null
   if (t) {
     if (plan?.targetCpa && t.cpa && t.cpa > plan.targetCpa * 1.1) status = { label: "Atenção", tone: "text-amber-300", why: `CPA acima da meta (${brl(t.cpa)} vs ${brl(plan.targetCpa)})` }
     else if (plan?.targetRoas && t.roas != null && t.roas < plan.targetRoas) status = { label: "Atenção", tone: "text-amber-300", why: `ROAS abaixo da meta (${t.roas.toFixed(2)}x vs ${plan.targetRoas}x)` }
     else if (plan?.targetCpa || plan?.targetRoas) status = { label: "Saudável", tone: "text-emerald-300", why: "Dentro das metas" }
   }
+  const SOURCE_LABEL: Record<string, string> = { all: "Consolidado", META: "Meta", GOOGLE: "Google" }
 
   return (
     <Panel className="p-5">
@@ -388,44 +412,69 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
         <div className="mt-4 space-y-4">
           {status && <p className="text-sm"><span className="text-zinc-500">Saúde de resultado: </span><span className={`font-semibold ${status.tone}`}>{status.label}</span> <span className="text-zinc-600">· {status.why}</span></p>}
 
-          {/* KPIs */}
+          {/* Seletor de fonte de tráfego — só aparece quando há mais de uma fonte */}
+          {okProviders.length > 1 && (
+            <div className="flex flex-wrap gap-1.5">
+              {["all", ...okProviders.map((p) => p.provider)].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setSource(s)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${source === s ? "bg-[#FF8F50] text-black" : "bg-white/5 text-zinc-400 hover:bg-white/10"}`}
+                >
+                  {SOURCE_LABEL[s] ?? s}
+                  {s !== "all" && <span className="ml-1.5 opacity-60">{brl(okProviders.find((p) => p.provider === s)?.spend ?? 0)}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {!view ? (
+            <p className="text-sm text-zinc-500">Sem dados para {SOURCE_LABEL[source] ?? source} neste mês.</p>
+          ) : (
+          <>
+          {/* KPIs — investimento/resultado/CPA/ROAS. Metas e tendência só no consolidado. */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <KpiCard label="Investimento" value={brl(t.spend)} pct={pct(t.spend, plan?.budget)} trend={<Trend cur={t.spend} prev={perf.previous.spend} />} />
-            <KpiCard label={resultLabel} value={String(t.results)} pct={pct(t.results, plan?.targetLeads)} trend={<Trend cur={t.results} prev={perf.previous.results} />} />
-            <KpiCard label="CPA" value={brl(t.cpa)} trend={<Trend cur={t.cpa} prev={perf.previous.cpa} goodWhenUp={false} />} />
+            <KpiCard label="Investimento" value={brl(view.spend)} pct={isAll ? pct(view.spend, plan?.budget) : null} trend={isAll ? <Trend cur={view.spend} prev={perf.previous.spend} /> : undefined} />
+            <KpiCard label={resultLabel} value={String(view.results)} pct={isAll ? pct(view.results, plan?.targetLeads) : null} trend={isAll ? <Trend cur={view.results} prev={perf.previous.results} /> : undefined} />
+            <KpiCard label="CPA" value={brl(view.cpa)} trend={isAll ? <Trend cur={view.cpa} prev={perf.previous.cpa} goodWhenUp={false} /> : undefined} />
             {perf.current.trackRevenue
-              ? <KpiCard label="ROAS" value={t.roas != null ? `${t.roas.toFixed(2)}x` : "—"} trend={<Trend cur={t.roas} prev={perf.previous.roas} />} />
-              : <KpiCard label="Cliques" value={t.clicks.toLocaleString("pt-BR")} />}
+              ? <KpiCard label="ROAS" value={view.roas != null ? `${view.roas.toFixed(2)}x` : "—"} trend={isAll ? <Trend cur={view.roas} prev={perf.previous.roas} /> : undefined} />
+              : <KpiCard label="Cliques" value={view.clicks.toLocaleString("pt-BR")} />}
           </div>
 
           {/* Métricas de mídia */}
           <div className="grid grid-cols-3 gap-3">
-            <KpiCard label="CTR" value={t.ctr != null ? `${t.ctr.toFixed(2)}%` : "—"} />
-            <KpiCard label="CPC" value={brl(t.cpc)} />
-            <KpiCard label="CPM" value={brl(t.cpm)} />
+            <KpiCard label="CTR" value={view.ctr != null ? `${view.ctr.toFixed(2)}%` : "—"} />
+            <KpiCard label="CPC" value={brl(view.cpc)} />
+            <KpiCard label="CPM" value={brl(view.cpm)} />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <DailyChart daily={perf.current.daily} resultLabel={resultLabel} />
+            <DailyChart daily={view.daily} resultLabel={resultLabel} />
             <VisualFunnel steps={[
-              { label: "Impressões", value: t.impressions, display: t.impressions.toLocaleString("pt-BR") },
-              { label: "Cliques", value: t.clicks, display: t.clicks.toLocaleString("pt-BR") },
-              ...(t.pageViews > 0 ? [{ label: "Visualizações de página", value: t.pageViews, display: t.pageViews.toLocaleString("pt-BR") }] : []),
-              { label: resultLabel, value: t.results, display: String(t.results) },
-              ...(perf.current.trackRevenue && t.revenue != null ? [{ label: "Receita", value: t.revenue, display: brl(t.revenue) }] : []),
+              { label: "Impressões", value: view.impressions, display: view.impressions.toLocaleString("pt-BR") },
+              { label: "Cliques", value: view.clicks, display: view.clicks.toLocaleString("pt-BR") },
+              ...(view.pageViews > 0 ? [{ label: "Visualizações de página", value: view.pageViews, display: view.pageViews.toLocaleString("pt-BR") }] : []),
+              { label: resultLabel, value: view.results, display: String(view.results) },
+              ...(perf.current.trackRevenue && view.revenue != null ? [{ label: "Receita", value: view.revenue, display: brl(view.revenue) }] : []),
             ]} />
           </div>
+          </>
+          )}
 
-          <HistoryChart history={history} resultLabel={resultLabel} />
+          {/* Histórico e composição de fontes — sempre consolidado */}
+          {isAll && <HistoryChart history={history} resultLabel={resultLabel} />}
 
-          {/* Fontes */}
-          <div className="flex flex-wrap gap-2 text-[11px] text-zinc-500">
-            {perf.current.byProvider.map((p) => (
-              <span key={p.provider} className="rounded bg-white/5 px-2 py-1">{p.provider}: {p.error ? `erro` : `${brl(p.spend ?? 0)} · ${p.results} ${resultLabel.toLowerCase()}`}</span>
-            ))}
-          </div>
+          {isAll && perf.current.byProvider.length > 1 && (
+            <div className="flex flex-wrap gap-2 text-[11px] text-zinc-500">
+              {perf.current.byProvider.map((p) => (
+                <span key={p.provider} className="rounded bg-white/5 px-2 py-1">{SOURCE_LABEL[p.provider] ?? p.provider}: {p.error ? `erro` : `${brl(p.spend ?? 0)} · ${p.results} resultados`}</span>
+              ))}
+            </div>
+          )}
 
-          <Explorer clientId={clientId} month={month} />
+          {/* Explorador é Meta-only (árvore Campanha/Conjunto/Anúncio) */}
+          {(isAll || source === "META") && okProviders.some((p) => p.provider === "META") && <Explorer clientId={clientId} month={month} />}
 
           {/* Leitura de IA */}
           <div className="rounded-xl border border-[#FF8F50]/20 bg-[#FF8F50]/[0.05] p-4">
