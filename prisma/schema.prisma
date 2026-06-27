@@ -54,12 +54,36 @@ model Client {
   documents           ClientDocument[]
   resources           ClientResource[]
   mediaPlans          MediaPlan[]
+  adAccounts          ClientAdAccount[]
 }
 
 enum AdPlatform {
   META
   GOOGLE
   TOTAL
+}
+
+enum AdProvider {
+  META
+  GOOGLE
+}
+
+// Conta de anúncios por cliente. Meta: cada cliente tem a própria BM → token
+// criptografado por cliente. Google: credencial central (MCC no env) → só o customer_id.
+model ClientAdAccount {
+  id          String     @id @default(cuid())
+  clientId    String
+  provider    AdProvider
+  accountId   String // META: act_...  | GOOGLE: customer_id (sem traços)
+  tokenEnc    String? // META: token criptografado. GOOGLE: null (usa MCC central)
+  lastFour    String?
+  updatedById String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, provider])
 }
 
 // Plano de mídia / metas por cliente e período (mês). Guarda os ALVOS;
