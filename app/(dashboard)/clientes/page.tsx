@@ -107,6 +107,17 @@ export default function ClientesPage() {
     setSaving(false)
   }
 
+  async function runGoogleImport() {
+    setImportBusy(true)
+    setError("")
+    setSyncMessage("")
+    const response = await fetch("/api/admin/google-import", { method: "POST" })
+    const payload = await response.json()
+    setImportBusy(false)
+    if (!response.ok) { setError(payload.error ?? "Falha no auto-import do Google."); return }
+    setSyncMessage(`Google (MCC): ${payload.report.configured} conta(s) configurada(s).${payload.report.unmatched.length ? ` Sem cliente: ${payload.report.unmatched.join(", ")}` : ""}`)
+  }
+
   async function approveAllContext() {
     if (!window.confirm("Aprovar (ativar) todo o contexto importado de toda a carteira? Itens versionados ficam de fora.")) return
     setImportBusy(true)
@@ -220,6 +231,11 @@ export default function ClientesPage() {
             <Button variant="secondary" onClick={() => { setImportDone(false); void runImport(true) }} disabled={importBusy}>
               {importBusy ? <Loader2 size={16} className="animate-spin" /> : <DownloadCloud size={16} />}
               Importar do ClickUp
+            </Button>
+          )}
+          {role === "ADMIN" && (
+            <Button variant="secondary" onClick={runGoogleImport} disabled={importBusy}>
+              {importBusy ? <Loader2 size={16} className="animate-spin" /> : <DownloadCloud size={16} />} Importar Google (MCC)
             </Button>
           )}
           {role === "ADMIN" && (

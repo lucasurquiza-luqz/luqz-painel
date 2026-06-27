@@ -32,6 +32,32 @@ async function accessToken(env: ReturnType<typeof googleEnv>): Promise<string> {
   return body.access_token as string
 }
 
+// Lista as contas gerenciadas pelo MCC (id + nome) — para auto-mapear aos clientes.
+export async function listMccAccounts(): Promise<{ customerId: string; name: string }[]> {
+  const env = googleEnv()
+  const token = await accessToken(env)
+  const query = "SELECT customer_client.id, customer_client.descriptive_name, customer_client.manager FROM customer_client WHERE customer_client.level <= 2"
+  const res = await fetch(`${ADS_API}/customers/${env.loginCustomerId}/googleAds:searchStream`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "developer-token": env.developerToken, "login-customer-id": env.loginCustomerId, "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const msg = Array.isArray(body) ? body[0]?.error?.message : body?.error?.message
+    throw new Error(`Google Ads: ${msg ?? res.status}`)
+  }
+  const out: { customerId: string; name: string }[] = []
+  for (const batch of Array.isArray(body) ? body : [body]) {
+    for (const row of batch.results ?? []) {
+      const cc = row.customerClient
+      if (!cc || cc.manager) continue // pula contas gerenciadoras
+      out.push({ customerId: String(cc.id), name: String(cc.descriptiveName ?? cc.id) })
+    }
+  }
+  return out
+}
+
 // Lê métricas de um customer (sem traços) no mês, via MCC central.
 export async function fetchGoogleInsights(customerId: string, month: string, config: AdConfig): Promise<AdMetrics> {
   const env = googleEnv()
