@@ -9,13 +9,13 @@ export default function AssistenteClientePage() {
     <div className="h-[calc(100vh-0px)]">
       <AssistantChat
         endpoint={`/api/clients/${id}/assistant`}
-        title="Assistente do cliente"
-        description="Responde com base no contexto aprovado deste cliente — sem inventar, citando a fonte."
+        title="Copiloto de gestão"
+        description="Saúde, próxima ação, riscos e o que está travando — mais o contexto aprovado. Sem inventar, citando a fonte."
         suggestions={[
-          "Qual a promessa central e o mecanismo único?",
+          "Como está a conta? O que está travando?",
+          "Qual a próxima ação e quem é o responsável?",
           "Escreva 3 ganchos de anúncio no tom de voz do cliente.",
-          "O que eu NÃO posso dizer pra esse público?",
-          "Resuma o posicionamento pra um designer novo.",
+          "Qual a promessa central e o mecanismo único?",
         ]}
       />
     </div>

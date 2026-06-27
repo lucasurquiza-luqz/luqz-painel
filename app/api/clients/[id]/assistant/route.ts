@@ -20,9 +20,9 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   try {
     const grounding = await buildClientGrounding(id)
-    if (grounding.itemCount === 0) {
+    if (!grounding.hasSignal) {
       return NextResponse.json({
-        answer: "Este cliente ainda não tem contexto **aprovado**. Vá na aba Contexto, importe/aprove os itens (botão \"Aprovar propostas\") e volte aqui — eu só respondo com base no que está aprovado.",
+        answer: "Ainda não há dados deste cliente: nem contexto aprovado, nem check-in, próxima ação ou atividade. Comece registrando um check-in ou aprovando o contexto (aba Contexto) — aí eu consigo te ajudar a gerir a conta.",
         itemCount: 0,
       })
     }
