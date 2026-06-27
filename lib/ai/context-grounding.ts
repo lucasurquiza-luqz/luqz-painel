@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db"
-import { buildReading, LEVEL_LABEL, type Sentiment } from "@/lib/client-health"
+import { buildReading, getClientsHealth, LEVEL_LABEL, daysAgo, type Sentiment } from "@/lib/client-health"
 
 const DOMAIN_LABEL: Record<string, string> = {
   DIRETRIZES: "Diretrizes (regras inegociáveis)",
@@ -107,12 +107,14 @@ export async function buildClientGrounding(clientId: string): Promise<{ clientNa
   }
 }
 
-// Grounding da CARTEIRA: índice compacto dos clientes ativos + contexto aprovado resumido.
+// Grounding da CARTEIRA = briefing do dia: estado operacional de todos os clientes
+// ativos (saúde, riscos, pendências, próxima ação) + contexto aprovado resumido.
 export async function buildPortfolioGrounding(): Promise<{ clientCount: number; itemCount: number; systemPrompt: string }> {
   const clients = await prisma.client.findMany({
     where: { active: true },
     orderBy: { name: "asc" },
     select: {
+      id: true,
       name: true,
       segment: true,
       product: true,
@@ -124,24 +126,44 @@ export async function buildPortfolioGrounding(): Promise<{ clientCount: number; 
     },
   })
 
+  // === Estado operacional (briefing do dia) ===
+  const health = await getClientsHealth(clients.map((c) => ({ id: c.id, name: c.name, active: true })))
+  const opLines = health
+    .sort((a, b) => a.reading.level.localeCompare(b.reading.level))
+    .map((h) => {
+      const na = h.nextAction
+        ? `próx: ${h.nextAction.description}${h.nextAction.overdue ? " (ATRASADA)" : ""}`
+        : "sem próxima ação"
+      const act = h.lastActivityAt ? `ativ ${daysAgo(h.lastActivityAt)}d` : "sem WhatsApp"
+      return `- ${h.name}: saúde ${LEVEL_LABEL[h.reading.level]} · ${h.openRisks} risco(s) · ${h.pendingApprovals} pendência(s) · ${na} · ${act}`
+    })
+    .join("\n")
+
+  // === Contexto aprovado (resumido, controle de token) ===
   let body = ""
   let itemCount = 0
   for (const c of clients) {
     itemCount += c.contextItems.length
+    if (c.contextItems.length === 0) continue
     const lines = [`\n\n## ${c.name}${c.segment ? ` — ${c.segment}` : ""}${c.product ? ` (${c.product})` : ""}`]
     for (const item of c.contextItems) {
-      // No global, resume: domínio + título + trecho curto (controle de token).
-      const snippet = item.content.replace(/\s+/g, " ").slice(0, 300)
+      const snippet = item.content.replace(/\s+/g, " ").slice(0, 240)
       lines.push(`- [${DOMAIN_LABEL[item.domain] ?? item.domain}] ${item.title}: ${snippet}`)
     }
     const block = lines.join("\n")
-    if (body.length + block.length > MAX_CHARS) { body += `\n\n(… carteira truncada por tamanho)`; break }
+    if (body.length + block.length > MAX_CHARS) { body += `\n\n(… contexto truncado por tamanho)`; break }
     body += block
   }
 
   return {
     clientCount: clients.length,
     itemCount,
-    systemPrompt: `${rules("DA CARTEIRA (varios clientes)")}\nAo falar de um cliente especifico, deixe claro de quem e. Para detalhes profundos, sugira abrir o assistente daquele cliente.\n\n=== CONTEXTO APROVADO DA CARTEIRA ===${body || "\n\n(Nenhum contexto aprovado ainda.)"}`,
+    systemPrompt: `${rules("DA CARTEIRA (varios clientes)")}
+Voce e o briefing operacional da agencia. Use o ESTADO OPERACIONAL para responder o que esta critico/em atencao, o que esta travando, acoes atrasadas e prioridades do dia. Ao citar um cliente, seja claro de quem e; para detalhes profundos, sugira abrir o assistente daquele cliente.
+
+=== ESTADO OPERACIONAL DA CARTEIRA (${health.length} clientes ativos) ===
+${opLines}
+
+=== CONTEXTO APROVADO (resumo) ===${body || "\n\n(Nenhum contexto aprovado ainda.)"}`,
   }
 }

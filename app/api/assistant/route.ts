@@ -17,12 +17,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const grounding = await buildPortfolioGrounding()
-    if (grounding.itemCount === 0) {
-      return NextResponse.json({
-        answer: "Ainda não há contexto **aprovado** em nenhum cliente. Aprove o contexto de alguns clientes (aba Contexto → \"Aprovar propostas\") para eu poder responder sobre a carteira.",
-        clientCount: grounding.clientCount,
-        itemCount: 0,
-      })
+    if (grounding.clientCount === 0) {
+      return NextResponse.json({ answer: "Nenhum cliente ativo na carteira.", clientCount: 0, itemCount: 0 })
     }
     const answer = await chatComplete("ASSISTANT", grounding.systemPrompt, messages)
     return NextResponse.json({ answer, clientCount: grounding.clientCount, itemCount: grounding.itemCount })

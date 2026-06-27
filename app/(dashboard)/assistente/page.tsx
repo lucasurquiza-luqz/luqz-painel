@@ -7,12 +7,13 @@ export default function AssistenteGlobalPage() {
     <div className="h-[calc(100vh-0px)]">
       <AssistantChat
         endpoint="/api/assistant"
-        title="Assistente da carteira"
-        description="Responde sobre a carteira com base no contexto aprovado de todos os clientes ativos."
+        title="Copiloto da carteira"
+        description="Briefing do dia: saúde, riscos, pendências e o que está travando em toda a carteira."
         suggestions={[
-          "Quais clientes são do nicho de saúde?",
-          "Que clientes têm restrição de tom de voz?",
-          "Resuma o posicionamento dos clientes de consultoria.",
+          "Quais contas estão críticas ou em atenção hoje?",
+          "O que está travando na carteira? Onde focar?",
+          "Quais ações estão atrasadas e de quem?",
+          "Quais clientes estão sem atividade há mais tempo?",
         ]}
       />
     </div>
