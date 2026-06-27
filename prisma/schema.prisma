@@ -55,6 +55,22 @@ model Client {
   resources           ClientResource[]
   mediaPlans          MediaPlan[]
   adAccounts          ClientAdAccount[]
+  perfSnapshots       PerformanceSnapshot[]
+}
+
+// Cache de performance por cliente/mês. O painel lê daqui (instantâneo); um cron
+// diário (+ botão "atualizar") refaz a leitura nas APIs de Ads e regrava o JSON.
+model PerformanceSnapshot {
+  id        String   @id @default(cuid())
+  clientId  String
+  month     String // AAAA-MM
+  data      Json // objeto Performance serializado
+  fetchedAt DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, month])
+  @@index([clientId])
 }
 
 enum AdPlatform {

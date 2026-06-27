@@ -1,6 +1,7 @@
 import cron from "node-cron"
 import { sendDueMessages } from "./scheduler"
 import { generateAutomaticDailySummaries } from "./group-summary-cron"
+import { refreshActiveSnapshots } from "./ads/snapshot"
 
 let started = false
 
@@ -31,5 +32,19 @@ export function startCron() {
     { timezone: "America/Sao_Paulo" }
   )
 
-  console.log("[cron] Scheduler iniciado (mensagens + resumos diários)")
+  // Snapshots de performance (Ads): atualiza de madrugada (06h SP).
+  cron.schedule(
+    "0 6 * * *",
+    async () => {
+      try {
+        const r = await refreshActiveSnapshots()
+        console.log(`[cron] Snapshots de performance: ${JSON.stringify(r)}`)
+      } catch (err) {
+        console.error("[cron] Erro ao atualizar snapshots de performance:", err)
+      }
+    },
+    { timezone: "America/Sao_Paulo" }
+  )
+
+  console.log("[cron] Scheduler iniciado (mensagens + resumos diários + performance)")
 }

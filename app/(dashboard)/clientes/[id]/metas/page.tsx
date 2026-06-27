@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Loader2, Plug, Plus, Target, Trash2, X } from "lucide-react"
+import { ArrowLeft, Loader2, Plug, Plus, RefreshCw, Target, Trash2, X } from "lucide-react"
+import { Area, Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Button, Input, PageHeader, Panel } from "@/components/ui/primitives"
 
 type Plan = {
@@ -231,28 +232,93 @@ function KpiCard({ label, value, pct, trend }: { label: string; value: string; p
   )
 }
 
-function DailyChart({ daily }: { daily: { date: string; spend: number; results: number }[] }) {
+const tooltipStyle = { background: "#161616", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }
+
+// Evolução diária: gasto (área) + resultados (linha), eixos duplos.
+function DailyChart({ daily, resultLabel }: { daily: { date: string; spend: number; results: number }[]; resultLabel: string }) {
   if (!daily.length) return null
-  const max = Math.max(...daily.map((d) => d.spend), 1)
-  const W = 600, H = 80, gap = 2
-  const bw = (W - gap * (daily.length - 1)) / daily.length
+  const data = daily.map((d) => ({ dia: d.date.slice(8, 10), Gasto: Math.round(d.spend), [resultLabel]: d.results }))
   return (
     <div className="rounded-xl border border-white/8 bg-black/20 p-4">
-      <p className="text-[11px] text-zinc-500">Evolução do gasto (diário)</p>
-      <svg viewBox={`0 0 ${W} ${H}`} className="mt-2 w-full" preserveAspectRatio="none" style={{ height: 80 }}>
-        {daily.map((d, i) => {
-          const h = (d.spend / max) * (H - 4)
-          return <rect key={d.date} x={i * (bw + gap)} y={H - h} width={bw} height={h} rx={1} fill="#FF8F50" opacity={0.85} />
-        })}
-      </svg>
+      <p className="mb-2 text-[11px] text-zinc-500">Evolução diária</p>
+      <ResponsiveContainer width="100%" height={200}>
+        <ComposedChart data={data} margin={{ top: 5, right: 8, left: -8, bottom: 0 }}>
+          <defs>
+            <linearGradient id="gSpend" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#FF8F50" stopOpacity={0.4} />
+              <stop offset="100%" stopColor="#FF8F50" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+          <XAxis dataKey="dia" tick={{ fill: "#71717a", fontSize: 10 }} tickLine={false} axisLine={false} />
+          <YAxis yAxisId="l" tick={{ fill: "#71717a", fontSize: 10 }} tickLine={false} axisLine={false} width={44} />
+          <YAxis yAxisId="r" orientation="right" tick={{ fill: "#71717a", fontSize: 10 }} tickLine={false} axisLine={false} width={30} />
+          <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "#a1a1aa" }} />
+          <Area yAxisId="l" type="monotone" dataKey="Gasto" stroke="#FF8F50" strokeWidth={2} fill="url(#gSpend)" />
+          <Line yAxisId="r" type="monotone" dataKey={resultLabel} stroke="#38bdf8" strokeWidth={2} dot={false} />
+        </ComposedChart>
+      </ResponsiveContainer>
     </div>
   )
 }
 
+// Histórico mensal: barras de resultados + linha de CPA.
+function HistoryChart({ history, resultLabel }: { history: { month: string; spend: number; results: number; cpa: number | null }[]; resultLabel: string }) {
+  if (history.length < 2) return null
+  const names = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
+  const data = history.map((h) => ({ mes: `${names[Number(h.month.slice(5)) - 1]}`, [resultLabel]: h.results, CPA: h.cpa ? Math.round(h.cpa) : 0 }))
+  return (
+    <div className="rounded-xl border border-white/8 bg-black/20 p-4">
+      <p className="mb-2 text-[11px] text-zinc-500">Histórico mensal</p>
+      <ResponsiveContainer width="100%" height={180}>
+        <ComposedChart data={data} margin={{ top: 5, right: 8, left: -8, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+          <XAxis dataKey="mes" tick={{ fill: "#71717a", fontSize: 10 }} tickLine={false} axisLine={false} />
+          <YAxis yAxisId="l" tick={{ fill: "#71717a", fontSize: 10 }} tickLine={false} axisLine={false} width={36} />
+          <YAxis yAxisId="r" orientation="right" tick={{ fill: "#71717a", fontSize: 10 }} tickLine={false} axisLine={false} width={36} />
+          <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "#a1a1aa" }} />
+          <Bar yAxisId="l" dataKey={resultLabel} fill="#FF8F50" radius={[3, 3, 0, 0]} />
+          <Line yAxisId="r" type="monotone" dataKey="CPA" stroke="#38bdf8" strokeWidth={2} dot={{ r: 2 }} />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+// Funil visual: barras decrescentes com taxa de conversão entre etapas.
+function VisualFunnel({ steps }: { steps: { label: string; value: number; display: string }[] }) {
+  const max = Math.max(...steps.map((s) => s.value), 1)
+  return (
+    <div className="rounded-xl border border-white/8 bg-black/20 p-4">
+      <p className="mb-3 text-[11px] text-zinc-500">Funil</p>
+      <div className="space-y-2">
+        {steps.map((s, i) => {
+          const conv = i > 0 && steps[i - 1].value > 0 ? ((s.value / steps[i - 1].value) * 100) : null
+          return (
+            <div key={s.label}>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-zinc-400">{s.label}</span>
+                <span className="font-semibold text-zinc-100">{s.display}{conv != null && <span className="ml-2 text-[10px] text-zinc-600">{conv < 1 ? conv.toFixed(2) : conv.toFixed(0)}%</span>}</span>
+              </div>
+              <div className="mt-1 h-2.5 w-full overflow-hidden rounded-full bg-white/5">
+                <div className="h-full rounded-full bg-gradient-to-r from-[#FF8F50] to-[#FFB185]" style={{ width: `${Math.max(2, (s.value / max) * 100)}%` }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+type History = { month: string; spend: number; results: number; cpa: number | null }[]
 function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Plan[] }) {
   const [month, setMonth] = useState(currentMonth())
   const [perf, setPerf] = useState<Perf | null>(null)
+  const [history, setHistory] = useState<History>([])
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [err, setErr] = useState("")
   const [reading, setReading] = useState("")
   const [readingBusy, setReadingBusy] = useState(false)
@@ -263,9 +329,20 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
     const payload = await res.json()
     setLoading(false)
     if (!res.ok) { setErr(payload.error ?? "Falha ao carregar performance."); setPerf(null); return }
-    setPerf(payload.performance)
+    setPerf(payload.performance); setHistory(payload.history ?? []); setFetchedAt(payload.fetchedAt ?? null)
   }, [clientId, month])
   useEffect(() => { void load() }, [load])
+
+  async function refresh() {
+    setRefreshing(true); setErr("")
+    const res = await fetch(`/api/clients/${clientId}/performance`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month }),
+    })
+    const data = await res.json()
+    setRefreshing(false)
+    if (!res.ok) { setErr(data.error ?? "Falha ao atualizar."); return }
+    setPerf(data.performance); setFetchedAt(data.fetchedAt)
+  }
 
   async function genReading() {
     setReadingBusy(true)
@@ -280,12 +357,25 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
   const plan = plans.find((p) => p.month === month && p.platform === "TOTAL") ?? plans.find((p) => p.month === month)
   const t = perf?.current.total
   const pct = (real: number, target: number | null | undefined) => (target && target > 0 ? Math.round((real / target) * 100) : null)
+  const resultLabel = perf && perf.current.breakdown.length === 1 ? OBJ_LABEL[perf.current.breakdown[0].objective] ?? "Resultados" : "Resultados"
+
+  // Status de saúde de resultado (simples, explicável).
+  let status: { label: string; tone: string; why: string } | null = null
+  if (t) {
+    if (plan?.targetCpa && t.cpa && t.cpa > plan.targetCpa * 1.1) status = { label: "Atenção", tone: "text-amber-300", why: `CPA acima da meta (${brl(t.cpa)} vs ${brl(plan.targetCpa)})` }
+    else if (plan?.targetRoas && t.roas != null && t.roas < plan.targetRoas) status = { label: "Atenção", tone: "text-amber-300", why: `ROAS abaixo da meta (${t.roas.toFixed(2)}x vs ${plan.targetRoas}x)` }
+    else if (plan?.targetCpa || plan?.targetRoas) status = { label: "Saudável", tone: "text-emerald-300", why: "Dentro das metas" }
+  }
 
   return (
     <Panel className="p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-white"><Target size={15} className="text-[#FF8F50]" /> Painel de performance</h2>
-        <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="min-h-9 w-40 [color-scheme:dark]" />
+        <div className="flex items-center gap-2">
+          {fetchedAt && <span className="text-[10px] text-zinc-600">atualizado {new Date(fetchedAt).toLocaleString("pt-BR")}</span>}
+          <Button variant="secondary" className="min-h-9 px-3 py-1.5 text-xs" onClick={refresh} disabled={refreshing || loading}>{refreshing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Atualizar</Button>
+          <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="min-h-9 w-40 [color-scheme:dark]" />
+        </div>
       </div>
 
       {loading ? (
@@ -296,10 +386,12 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
         <p className="mt-4 text-sm text-zinc-500">Configure uma conta de Ads acima para ver a performance.</p>
       ) : (
         <div className="mt-4 space-y-4">
+          {status && <p className="text-sm"><span className="text-zinc-500">Saúde de resultado: </span><span className={`font-semibold ${status.tone}`}>{status.label}</span> <span className="text-zinc-600">· {status.why}</span></p>}
+
           {/* KPIs */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <KpiCard label="Investimento" value={brl(t.spend)} pct={pct(t.spend, plan?.budget)} trend={<Trend cur={t.spend} prev={perf.previous.spend} />} />
-            <KpiCard label={perf.current.breakdown.length === 1 ? OBJ_LABEL[perf.current.breakdown[0].objective] ?? "Resultados" : "Resultados"} value={String(t.results)} pct={pct(t.results, plan?.targetLeads)} trend={<Trend cur={t.results} prev={perf.previous.results} />} />
+            <KpiCard label={resultLabel} value={String(t.results)} pct={pct(t.results, plan?.targetLeads)} trend={<Trend cur={t.results} prev={perf.previous.results} />} />
             <KpiCard label="CPA" value={brl(t.cpa)} trend={<Trend cur={t.cpa} prev={perf.previous.cpa} goodWhenUp={false} />} />
             {perf.current.trackRevenue
               ? <KpiCard label="ROAS" value={t.roas != null ? `${t.roas.toFixed(2)}x` : "—"} trend={<Trend cur={t.roas} prev={perf.previous.roas} />} />
@@ -313,34 +405,25 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
             <KpiCard label="CPM" value={brl(t.cpm)} />
           </div>
 
-          {/* Funil */}
-          <div className="rounded-xl border border-white/8 bg-black/20 p-4">
-            <p className="text-[11px] text-zinc-500">Funil</p>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-              <FunnelStep label="Impressões" value={t.impressions.toLocaleString("pt-BR")} />
-              <span className="text-zinc-600">▸</span>
-              <FunnelStep label="Cliques" value={t.clicks.toLocaleString("pt-BR")} />
-              <span className="text-zinc-600">▸</span>
-              <FunnelStep label="Resultados" value={String(t.results)} />
-              {perf.current.trackRevenue && <><span className="text-zinc-600">▸</span><FunnelStep label="Receita" value={brl(t.revenue)} /></>}
-            </div>
-            {perf.current.breakdown.length > 1 && (
-              <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
-                {perf.current.breakdown.map((b) => <span key={b.objective} className="rounded bg-[#FF8F50]/10 px-2 py-0.5 text-[#FFB185]">{OBJ_LABEL[b.objective] ?? b.objective}: {b.count}</span>)}
-              </div>
-            )}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <DailyChart daily={perf.current.daily} resultLabel={resultLabel} />
+            <VisualFunnel steps={[
+              { label: "Impressões", value: t.impressions, display: t.impressions.toLocaleString("pt-BR") },
+              { label: "Cliques", value: t.clicks, display: t.clicks.toLocaleString("pt-BR") },
+              { label: resultLabel, value: t.results, display: String(t.results) },
+              ...(perf.current.trackRevenue && t.revenue != null ? [{ label: "Receita", value: t.revenue, display: brl(t.revenue) }] : []),
+            ]} />
           </div>
 
-          <DailyChart daily={perf.current.daily} />
+          <HistoryChart history={history} resultLabel={resultLabel} />
 
           {/* Fontes */}
           <div className="flex flex-wrap gap-2 text-[11px] text-zinc-500">
             {perf.current.byProvider.map((p) => (
-              <span key={p.provider} className="rounded bg-white/5 px-2 py-1">{p.provider}: {p.error ? `erro` : `${brl(p.spend ?? 0)} · ${p.results} result.`}</span>
+              <span key={p.provider} className="rounded bg-white/5 px-2 py-1">{p.provider}: {p.error ? `erro` : `${brl(p.spend ?? 0)} · ${p.results} ${resultLabel.toLowerCase()}`}</span>
             ))}
           </div>
 
-          {/* Destaques: melhores campanhas / públicos / criativos (Meta) */}
           <Destaques clientId={clientId} month={month} />
 
           {/* Leitura de IA */}
