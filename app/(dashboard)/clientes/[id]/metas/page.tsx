@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Loader2, Plug, Plus, RefreshCw, Target, Trash2, X } from "lucide-react"
+import { ArrowLeft, Loader2, Plug, Plus, Target, Trash2, X } from "lucide-react"
 import { Button, Input, PageHeader, Panel } from "@/components/ui/primitives"
 
 type Plan = {
@@ -108,7 +108,6 @@ export default function MetasPage() {
                 <Metric label="Ticket" value={brl(plan.targetTicket)} />
               </div>
               {plan.notes && <p className="mt-3 text-xs leading-5 text-zinc-500">{plan.notes}</p>}
-              <RealizadoBlock clientId={clientId} plan={plan} />
             </Panel>
           ))}
         </div>
@@ -536,84 +535,6 @@ function AdIntegrations({ clientId, onError }: { clientId: string; onError: (m: 
         </>
       )}
     </Panel>
-  )
-}
-
-// === Realizado vs meta — funil (gasto → cliques → resultado → ROAS) ===
-type ProviderRow = { provider: string; spend?: number; results?: number; cpa?: number | null; revenue?: number | null; roas?: number | null; error?: string }
-type Realizado = {
-  byProvider: ProviderRow[]
-  total: { spend: number; impressions: number; clicks: number; results: number; cpa: number | null; revenue: number | null; roas: number | null }
-  breakdown: { objective: string; count: number }[]
-  trackRevenue: boolean
-  configured: boolean
-}
-const OBJ_RESULT_LABEL: Record<string, string> = { LEAD: "Leads", WHATSAPP: "Conversas", ECOMMERCE: "Compras", CUSTOM: "Resultados" }
-function RealizadoBlock({ clientId, plan }: { clientId: string; plan: Plan }) {
-  const [data, setData] = useState<Realizado | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [err, setErr] = useState("")
-
-  async function fetchRealizado() {
-    setLoading(true); setErr("")
-    const res = await fetch(`/api/clients/${clientId}/realizado?month=${plan.month}`)
-    const payload = await res.json()
-    setLoading(false)
-    if (!res.ok) { setErr(payload.error ?? "Falha ao ler Ads."); return }
-    setData(payload.realizado)
-  }
-
-  const pct = (real: number, target: number | null) => (target && target > 0 ? Math.round((real / target) * 100) : null)
-  const resultLabel = data && data.breakdown.length === 1 ? OBJ_RESULT_LABEL[data.breakdown[0].objective] ?? "Resultados" : "Resultados"
-
-  return (
-    <div className="mt-4 border-t border-white/8 pt-3">
-      {!data ? (
-        <>
-          <Button variant="secondary" className="min-h-8 px-3 py-1 text-xs" onClick={fetchRealizado} disabled={loading}>
-            {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Ver realizado do mês
-          </Button>
-          {err && <p className="mt-2 text-xs text-red-400">{err}</p>}
-        </>
-      ) : (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#FFB185]">Realizado (funil)</span>
-            <button onClick={fetchRealizado} className="text-xs text-zinc-500 hover:text-zinc-300" disabled={loading}>{loading ? "..." : "atualizar"}</button>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Metric label={`Gasto${plan.budget ? ` (${pct(data.total.spend, plan.budget)}%)` : ""}`} value={brl(data.total.spend)} />
-            <Metric label="Cliques" value={data.total.clicks.toLocaleString("pt-BR")} />
-            <Metric label={`${resultLabel}${plan.targetLeads ? ` (${pct(data.total.results, plan.targetLeads)}%)` : ""}`} value={String(data.total.results)} />
-            <Metric label={`CPA${plan.targetCpa ? (data.total.cpa && data.total.cpa <= plan.targetCpa ? " ✓" : " ⚠") : ""}`} value={brl(data.total.cpa)} />
-          </div>
-          {data.trackRevenue && (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Metric label="Receita" value={brl(data.total.revenue)} />
-              <Metric label={`ROAS${plan.targetRoas ? (data.total.roas && data.total.roas >= plan.targetRoas ? " ✓" : " ⚠") : ""}`} value={data.total.roas != null ? `${data.total.roas.toFixed(2)}x` : "—"} />
-            </div>
-          )}
-          {data.breakdown.length > 1 && (
-            <div className="flex flex-wrap gap-2 text-[11px]">
-              {data.breakdown.map((b) => (
-                <span key={b.objective} className="rounded bg-[#FF8F50]/10 px-2 py-0.5 text-[#FFB185]">
-                  {OBJ_RESULT_LABEL[b.objective] ?? b.objective}: {b.count}
-                </span>
-              ))}
-            </div>
-          )}
-          <div className="flex flex-wrap gap-2 text-[11px] text-zinc-600">
-            {data.byProvider.map((p) => (
-              <span key={p.provider} className="rounded bg-white/5 px-2 py-0.5">
-                {p.provider}: {p.error ? `erro (${p.error})` : `${brl(p.spend ?? 0)} · ${p.results} result.`}
-              </span>
-            ))}
-            {!data.configured && <span className="text-amber-300/70">Nenhuma conta de Ads configurada acima.</span>}
-          </div>
-          {err && <p className="text-xs text-red-400">{err}</p>}
-        </div>
-      )}
-    </div>
   )
 }
 
