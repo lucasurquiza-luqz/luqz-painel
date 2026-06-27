@@ -39,7 +39,7 @@ export async function fetchGoogleInsights(customerId: string, month: string, con
   const { since, until } = monthRange(month)
   const token = await accessToken(env)
 
-  const query = `SELECT metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM customer WHERE segments.date BETWEEN '${since}' AND '${until}'`
+  const query = `SELECT segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM customer WHERE segments.date BETWEEN '${since}' AND '${until}'`
   const res = await fetch(`${ADS_API}/customers/${cid}/googleAds:searchStream`, {
     method: "POST",
     headers: {
@@ -57,29 +57,33 @@ export async function fetchGoogleInsights(customerId: string, month: string, con
   }
 
   let costMicros = 0, impressions = 0, clicks = 0, conversions = 0, convValue = 0
+  const perDay = new Map<string, { spend: number; results: number }>()
   const batches = Array.isArray(body) ? body : [body]
   for (const batch of batches) {
     for (const row of batch.results ?? []) {
+      const c = Number(row.metrics?.costMicros ?? 0) / 1_000_000
+      const conv = Number(row.metrics?.conversions ?? 0)
       costMicros += Number(row.metrics?.costMicros ?? 0)
       impressions += Number(row.metrics?.impressions ?? 0)
       clicks += Number(row.metrics?.clicks ?? 0)
-      conversions += Number(row.metrics?.conversions ?? 0)
+      conversions += conv
       convValue += Number(row.metrics?.conversionsValue ?? 0)
+      const date = String(row.segments?.date ?? "")
+      const prev = perDay.get(date) ?? { spend: 0, results: 0 }
+      perDay.set(date, { spend: prev.spend + c, results: prev.results + conv })
     }
   }
   const spend = costMicros / 1_000_000
   const results = Math.round(conversions)
-  // Google unifica conversões: atribui ao 1º objetivo configurado (ou CUSTOM).
   const objective = config.objectives[0] ?? "CUSTOM"
+  const daily = [...perDay.entries()].map(([date, v]) => ({ date, spend: v.spend, results: Math.round(v.results) })).sort((a, b) => a.date.localeCompare(b.date))
   return {
     provider: "GOOGLE",
-    spend,
-    impressions,
-    clicks,
-    results,
+    spend, impressions, clicks, results,
     breakdown: [{ objective, count: results }],
     cpa: results > 0 ? spend / results : null,
     revenue: config.trackRevenue ? convValue : null,
     roas: config.trackRevenue && spend > 0 ? convValue / spend : null,
+    daily,
   }
 }

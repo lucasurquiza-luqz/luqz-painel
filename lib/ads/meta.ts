@@ -1,4 +1,4 @@
-import { monthRange, META_DEFAULT_ACTIONS, META_PURCHASE_ACTIONS, type AdConfig, type AdMetrics, type ResultBreakdown } from "@/lib/ads/types"
+import { monthRange, META_DEFAULT_ACTIONS, META_PURCHASE_ACTIONS, type AdConfig, type AdMetrics, type AdObjective, type ResultBreakdown } from "@/lib/ads/types"
 
 const GRAPH = "https://graph.facebook.com/v21.0"
 type Action = { action_type: string; value: string }
@@ -6,42 +6,61 @@ type Action = { action_type: string; value: string }
 const sumActions = (arr: Action[] | undefined, keys: Set<string>) =>
   (arr ?? []).filter((a) => keys.has(a.action_type)).reduce((s, a) => s + Number(a.value ?? 0), 0)
 
-// Lê insights de uma conta Meta no mês, com o token DO CLIENTE, conforme a config (multi-objetivo).
+// Eventos de resultado conforme a config (custom override ou padrão dos objetivos).
+function resultKeys(config: AdConfig): Set<string> {
+  if (config.resultActions.length) return new Set(config.resultActions)
+  const keys = new Set<string>()
+  for (const obj of config.objectives) for (const k of META_DEFAULT_ACTIONS[obj]) keys.add(k)
+  return keys
+}
+
+// Lê insights de uma conta Meta no mês (com série DIÁRIA), token DO CLIENTE, conforme a config.
 export async function fetchMetaInsights(accountId: string, token: string, month: string, config: AdConfig): Promise<AdMetrics> {
   const { since, until } = monthRange(month)
   const acct = accountId.startsWith("act_") ? accountId : `act_${accountId}`
   const url =
-    `${GRAPH}/${acct}/insights?level=account&fields=spend,impressions,clicks,actions,action_values` +
-    `&time_range=${encodeURIComponent(JSON.stringify({ since, until }))}&access_token=${encodeURIComponent(token)}`
+    `${GRAPH}/${acct}/insights?level=account&time_increment=1&fields=spend,impressions,clicks,actions,action_values` +
+    `&time_range=${encodeURIComponent(JSON.stringify({ since, until }))}&limit=400&access_token=${encodeURIComponent(token)}`
 
   const res = await fetch(url)
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(`Meta Ads: ${body?.error?.message ?? `status ${res.status}`}`)
 
-  const row = Array.isArray(body.data) ? body.data[0] : null
-  const spend = row ? Number(row.spend ?? 0) : 0
+  const rows: Array<Record<string, unknown>> = Array.isArray(body.data) ? body.data : []
+  const wanted = resultKeys(config)
+  const purchaseKeys = config.objectives.includes("ECOMMERCE") || config.trackRevenue ? META_PURCHASE_ACTIONS : new Set<string>()
 
-  const breakdown: ResultBreakdown[] = []
-  if (config.resultActions.length) {
-    breakdown.push({ objective: "CUSTOM", count: sumActions(row?.actions, new Set(config.resultActions)) })
-  } else {
-    for (const obj of config.objectives) {
-      breakdown.push({ objective: obj, count: sumActions(row?.actions, new Set(META_DEFAULT_ACTIONS[obj])) })
+  let spend = 0, impressions = 0, clicks = 0, results = 0, revenue = 0
+  const perObjective = new Map<AdObjective, number>()
+  const daily: { date: string; spend: number; results: number }[] = []
+
+  for (const r of rows) {
+    const rSpend = Number(r.spend ?? 0)
+    const rResults = sumActions(r.actions as Action[], wanted)
+    spend += rSpend
+    impressions += Number(r.impressions ?? 0)
+    clicks += Number(r.clicks ?? 0)
+    results += rResults
+    if (config.trackRevenue) revenue += sumActions(r.action_values as Action[], purchaseKeys)
+    // breakdown por objetivo
+    if (config.resultActions.length) {
+      perObjective.set("CUSTOM", (perObjective.get("CUSTOM") ?? 0) + rResults)
+    } else {
+      for (const obj of config.objectives) {
+        perObjective.set(obj, (perObjective.get(obj) ?? 0) + sumActions(r.actions as Action[], new Set(META_DEFAULT_ACTIONS[obj])))
+      }
     }
+    daily.push({ date: String(r.date_start ?? ""), spend: rSpend, results: rResults })
   }
-  const results = breakdown.reduce((s, b) => s + b.count, 0)
-  const revenue = config.trackRevenue ? sumActions(row?.action_values, META_PURCHASE_ACTIONS) : 0
 
+  const breakdown: ResultBreakdown[] = [...perObjective.entries()].map(([objective, count]) => ({ objective, count }))
   return {
     provider: "META",
-    spend,
-    impressions: row ? Number(row.impressions ?? 0) : 0,
-    clicks: row ? Number(row.clicks ?? 0) : 0,
-    results,
-    breakdown,
+    spend, impressions, clicks, results, breakdown,
     cpa: results > 0 ? spend / results : null,
     revenue: config.trackRevenue ? revenue : null,
     roas: config.trackRevenue && spend > 0 ? revenue / spend : null,
+    daily,
   }
 }
 

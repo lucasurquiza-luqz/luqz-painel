@@ -1,6 +1,7 @@
 export type AdObjective = "LEAD" | "WHATSAPP" | "ECOMMERCE" | "CUSTOM"
 
 export type ResultBreakdown = { objective: AdObjective; count: number }
+export type DailyPoint = { date: string; spend: number; results: number }
 
 export type AdMetrics = {
   provider: "META" | "GOOGLE"
@@ -12,6 +13,7 @@ export type AdMetrics = {
   cpa: number | null
   revenue: number | null
   roas: number | null
+  daily: DailyPoint[]
 }
 
 export type AdConfig = {

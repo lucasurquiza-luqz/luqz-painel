@@ -70,7 +70,12 @@ export default function MetasPage() {
 
       <AdIntegrations clientId={clientId} onError={setError} />
 
-      <div className="flex justify-end"><Button onClick={() => setAdding((v) => !v)}><Plus size={16} /> Nova meta</Button></div>
+      <PerformanceDashboard clientId={clientId} plans={plans} />
+
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-white">Metas por mês</h2>
+        <Button onClick={() => setAdding((v) => !v)}><Plus size={16} /> Nova meta</Button>
+      </div>
 
       {error && <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}
 
@@ -184,6 +189,170 @@ function AddPlan({ clientId, onAdded, onCancel, onError }: { clientId: string; o
         <Button onClick={submit} disabled={busy}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Salvar meta</Button>
       </div>
     </Panel>
+  )
+}
+
+// === Painel Performance (visual + leitura de IA) ===
+type Perf = {
+  month: string
+  current: {
+    total: { spend: number; impressions: number; clicks: number; results: number; cpa: number | null; revenue: number | null; roas: number | null }
+    breakdown: { objective: string; count: number }[]
+    daily: { date: string; spend: number; results: number }[]
+    byProvider: { provider: string; spend?: number; results?: number; error?: string }[]
+    trackRevenue: boolean
+    configured: boolean
+  }
+  previous: { spend: number; results: number; cpa: number | null; roas: number | null }
+}
+const OBJ_LABEL: Record<string, string> = { LEAD: "Leads", WHATSAPP: "Conversas", ECOMMERCE: "Compras", CUSTOM: "Resultados" }
+
+function Trend({ cur, prev, goodWhenUp = true }: { cur: number | null; prev: number | null; goodWhenUp?: boolean }) {
+  if (cur == null || prev == null || prev === 0) return null
+  const delta = Math.round(((cur - prev) / prev) * 100)
+  if (delta === 0) return <span className="text-[10px] text-zinc-600">estável</span>
+  const up = delta > 0
+  const good = up === goodWhenUp
+  return <span className={`text-[10px] ${good ? "text-emerald-400" : "text-red-400"}`}>{up ? "▲" : "▼"} {Math.abs(delta)}% vs mês ant.</span>
+}
+
+function KpiCard({ label, value, pct, trend }: { label: string; value: string; pct?: number | null; trend?: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-white/8 bg-black/20 p-4">
+      <p className="text-[11px] text-zinc-500">{label}</p>
+      <p className="dash-display mt-1 text-2xl text-white">{value}</p>
+      {pct != null && (
+        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/8">
+          <div className="h-full rounded-full bg-[#FF8F50]" style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
+        </div>
+      )}
+      {pct != null && <p className="mt-1 text-[10px] text-zinc-600">{pct}% da meta</p>}
+      <div className="mt-1">{trend}</div>
+    </div>
+  )
+}
+
+function DailyChart({ daily }: { daily: { date: string; spend: number; results: number }[] }) {
+  if (!daily.length) return null
+  const max = Math.max(...daily.map((d) => d.spend), 1)
+  const W = 600, H = 80, gap = 2
+  const bw = (W - gap * (daily.length - 1)) / daily.length
+  return (
+    <div className="rounded-xl border border-white/8 bg-black/20 p-4">
+      <p className="text-[11px] text-zinc-500">Evolução do gasto (diário)</p>
+      <svg viewBox={`0 0 ${W} ${H}`} className="mt-2 w-full" preserveAspectRatio="none" style={{ height: 80 }}>
+        {daily.map((d, i) => {
+          const h = (d.spend / max) * (H - 4)
+          return <rect key={d.date} x={i * (bw + gap)} y={H - h} width={bw} height={h} rx={1} fill="#FF8F50" opacity={0.85} />
+        })}
+      </svg>
+    </div>
+  )
+}
+
+function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Plan[] }) {
+  const [month, setMonth] = useState(currentMonth())
+  const [perf, setPerf] = useState<Perf | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState("")
+  const [reading, setReading] = useState("")
+  const [readingBusy, setReadingBusy] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr(""); setReading("")
+    const res = await fetch(`/api/clients/${clientId}/performance?month=${month}`)
+    const payload = await res.json()
+    setLoading(false)
+    if (!res.ok) { setErr(payload.error ?? "Falha ao carregar performance."); setPerf(null); return }
+    setPerf(payload.performance)
+  }, [clientId, month])
+  useEffect(() => { void load() }, [load])
+
+  async function genReading() {
+    setReadingBusy(true)
+    const res = await fetch(`/api/clients/${clientId}/performance/insight`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month }),
+    })
+    const data = await res.json()
+    setReadingBusy(false)
+    setReading(res.ok ? data.reading : (data.error ?? "Falha na leitura."))
+  }
+
+  const plan = plans.find((p) => p.month === month && p.platform === "TOTAL") ?? plans.find((p) => p.month === month)
+  const t = perf?.current.total
+  const pct = (real: number, target: number | null | undefined) => (target && target > 0 ? Math.round((real / target) * 100) : null)
+
+  return (
+    <Panel className="p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-white"><Target size={15} className="text-[#FF8F50]" /> Painel de performance</h2>
+        <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="min-h-9 w-40 [color-scheme:dark]" />
+      </div>
+
+      {loading ? (
+        <div className="flex min-h-40 items-center justify-center"><Loader2 className="animate-spin text-[#FF8F50]" /></div>
+      ) : err ? (
+        <p className="mt-4 text-sm text-red-300">{err}</p>
+      ) : !perf || !t ? null : !perf.current.configured ? (
+        <p className="mt-4 text-sm text-zinc-500">Configure uma conta de Ads acima para ver a performance.</p>
+      ) : (
+        <div className="mt-4 space-y-4">
+          {/* KPIs */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <KpiCard label="Investimento" value={brl(t.spend)} pct={pct(t.spend, plan?.budget)} trend={<Trend cur={t.spend} prev={perf.previous.spend} />} />
+            <KpiCard label="Resultados" value={String(t.results)} pct={pct(t.results, plan?.targetLeads)} trend={<Trend cur={t.results} prev={perf.previous.results} />} />
+            <KpiCard label="CPA" value={brl(t.cpa)} trend={<Trend cur={t.cpa} prev={perf.previous.cpa} goodWhenUp={false} />} />
+            {perf.current.trackRevenue
+              ? <KpiCard label="ROAS" value={t.roas != null ? `${t.roas.toFixed(2)}x` : "—"} trend={<Trend cur={t.roas} prev={perf.previous.roas} />} />
+              : <KpiCard label="Cliques" value={t.clicks.toLocaleString("pt-BR")} />}
+          </div>
+
+          {/* Funil */}
+          <div className="rounded-xl border border-white/8 bg-black/20 p-4">
+            <p className="text-[11px] text-zinc-500">Funil</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+              <FunnelStep label="Impressões" value={t.impressions.toLocaleString("pt-BR")} />
+              <span className="text-zinc-600">▸</span>
+              <FunnelStep label="Cliques" value={t.clicks.toLocaleString("pt-BR")} />
+              <span className="text-zinc-600">▸</span>
+              <FunnelStep label="Resultados" value={String(t.results)} />
+              {perf.current.trackRevenue && <><span className="text-zinc-600">▸</span><FunnelStep label="Receita" value={brl(t.revenue)} /></>}
+            </div>
+            {perf.current.breakdown.length > 1 && (
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                {perf.current.breakdown.map((b) => <span key={b.objective} className="rounded bg-[#FF8F50]/10 px-2 py-0.5 text-[#FFB185]">{OBJ_LABEL[b.objective] ?? b.objective}: {b.count}</span>)}
+              </div>
+            )}
+          </div>
+
+          <DailyChart daily={perf.current.daily} />
+
+          {/* Fontes */}
+          <div className="flex flex-wrap gap-2 text-[11px] text-zinc-500">
+            {perf.current.byProvider.map((p) => (
+              <span key={p.provider} className="rounded bg-white/5 px-2 py-1">{p.provider}: {p.error ? `erro` : `${brl(p.spend ?? 0)} · ${p.results} result.`}</span>
+            ))}
+          </div>
+
+          {/* Leitura de IA */}
+          <div className="rounded-xl border border-[#FF8F50]/20 bg-[#FF8F50]/[0.05] p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-[#FFB185]">🤖 Leitura de performance</span>
+              <Button variant="secondary" className="min-h-8 px-3 py-1 text-xs" onClick={genReading} disabled={readingBusy}>{readingBusy ? <Loader2 size={13} className="animate-spin" /> : "Gerar leitura"}</Button>
+            </div>
+            {reading && <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-200">{reading}</p>}
+          </div>
+        </div>
+      )}
+    </Panel>
+  )
+}
+
+function FunnelStep({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-white/5 px-3 py-1.5">
+      <span className="text-zinc-500">{label}: </span><span className="font-semibold text-zinc-100">{value}</span>
+    </div>
   )
 }
 
