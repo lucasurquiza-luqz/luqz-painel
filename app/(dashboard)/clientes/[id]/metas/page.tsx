@@ -201,6 +201,7 @@ function AdIntegrations({ clientId, onError }: { clientId: string; onError: (m: 
   const [meta, setMeta] = useState({ accountId: "", token: "", objective: "LEAD", trackRevenue: false, resultActions: [] as string[] })
   const [google, setGoogle] = useState({ accountId: "", objective: "LEAD", trackRevenue: false })
   const [discovered, setDiscovered] = useState<{ actionType: string; count: number }[] | null>(null)
+  const [advanced, setAdvanced] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => {
@@ -260,20 +261,24 @@ function AdIntegrations({ clientId, onError }: { clientId: string; onError: (m: 
               {OBJECTIVES.map((o) => <option key={o.v} value={o.v}>Objetivo: {o.label}</option>)}
             </select>
             <label className="flex items-center gap-2 text-xs text-zinc-400"><input type="checkbox" checked={meta.trackRevenue} onChange={(e) => setMeta({ ...meta, trackRevenue: e.target.checked })} /> Acompanhar receita / ROAS</label>
-            <Button variant="secondary" className="min-h-8 px-3 py-1 text-xs" disabled={busy || !metaAcc} onClick={discover}>Descobrir eventos da conta</Button>
-            {discovered && (
+            <p className="text-[11px] text-zinc-600">O objetivo já usa os eventos padrão. Só ajuste se a conta usar um evento diferente.</p>
+            <Button variant="secondary" className="min-h-9 px-3 py-1.5 text-xs" disabled={busy || !meta.accountId} onClick={() => save("META", meta)}>Salvar Meta</Button>
+            <button type="button" onClick={() => { setAdvanced((v) => !v); if (!advanced && metaAcc) void discover() }} className="block text-[11px] text-zinc-500 hover:text-zinc-300">
+              {advanced ? "ocultar ajuste avançado" : "ajuste avançado (escolher evento)"}
+            </button>
+            {advanced && (
               <div className="max-h-40 space-y-1 overflow-y-auto rounded border border-white/8 bg-black/30 p-2">
-                {discovered.length === 0 && <p className="text-[11px] text-zinc-600">Nenhum evento nos últimos 90d.</p>}
-                {discovered.map((d) => (
+                {!discovered && <p className="text-[11px] text-zinc-600">Carregando eventos da conta…</p>}
+                {discovered?.length === 0 && <p className="text-[11px] text-zinc-600">Nenhum evento nos últimos 90d.</p>}
+                {discovered?.map((d) => (
                   <label key={d.actionType} className="flex items-center gap-2 text-[11px] text-zinc-400">
                     <input type="checkbox" checked={meta.resultActions.includes(d.actionType)} onChange={() => toggleAction(d.actionType)} />
                     <span className="truncate">{d.actionType}</span><span className="ml-auto text-zinc-600">{d.count}</span>
                   </label>
                 ))}
+                {meta.resultActions.length > 0 && <p className="text-[11px] text-[#FFB185]">{meta.resultActions.length} evento(s) marcado(s) — Salvar Meta para aplicar.</p>}
               </div>
             )}
-            {meta.resultActions.length > 0 && <p className="text-[11px] text-[#FFB185]">{meta.resultActions.length} evento(s) marcado(s) como resultado.</p>}
-            <Button variant="secondary" className="min-h-9 px-3 py-1.5 text-xs" disabled={busy || !meta.accountId} onClick={() => save("META", meta)}>Salvar Meta</Button>
           </div>
           {/* Google */}
           <div className="rounded-lg border border-white/8 bg-black/20 p-4 space-y-2">
