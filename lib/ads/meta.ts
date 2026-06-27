@@ -1,4 +1,4 @@
-import { monthRange, META_DEFAULT_ACTIONS, META_PURCHASE_ACTIONS, type AdConfig, type AdMetrics, type AdObjective, type ResultBreakdown } from "@/lib/ads/types"
+import { monthRange, META_DEFAULT_ACTIONS, META_PURCHASE_ACTIONS, type AdConfig, type AdMetrics, type AdObjective, type BreakdownLevel, type BreakdownRow, type ResultBreakdown } from "@/lib/ads/types"
 
 const GRAPH = "https://graph.facebook.com/v21.0"
 type Action = { action_type: string; value: string }
@@ -62,6 +62,36 @@ export async function fetchMetaInsights(accountId: string, token: string, month:
     roas: config.trackRevenue && spend > 0 ? revenue / spend : null,
     daily,
   }
+}
+
+// Quebra por campanha / público (adset) / criativo (ad) no mês — "melhores".
+export async function fetchMetaBreakdown(accountId: string, token: string, month: string, config: AdConfig, level: BreakdownLevel): Promise<BreakdownRow[]> {
+  const { since, until } = monthRange(month)
+  const acct = accountId.startsWith("act_") ? accountId : `act_${accountId}`
+  const nameField = level === "campaign" ? "campaign_name" : level === "adset" ? "adset_name" : "ad_name"
+  const url =
+    `${GRAPH}/${acct}/insights?level=${level}&fields=${nameField},spend,impressions,clicks,actions` +
+    `&time_range=${encodeURIComponent(JSON.stringify({ since, until }))}&limit=200&access_token=${encodeURIComponent(token)}`
+
+  const res = await fetch(url)
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(`Meta Ads: ${body?.error?.message ?? `status ${res.status}`}`)
+
+  const wanted = resultKeys(config)
+  const rows: BreakdownRow[] = (Array.isArray(body.data) ? body.data : []).map((r: Record<string, unknown>) => {
+    const spend = Number(r.spend ?? 0)
+    const impressions = Number(r.impressions ?? 0)
+    const clicks = Number(r.clicks ?? 0)
+    const results = sumActions(r.actions as Action[], wanted)
+    return {
+      name: String(r[nameField] ?? "—"),
+      spend, impressions, clicks, results,
+      cpa: results > 0 ? spend / results : null,
+      ctr: impressions > 0 ? (clicks / impressions) * 100 : null,
+    }
+  })
+  // Ordena por resultado desc, depois por gasto desc.
+  return rows.sort((a, b) => b.results - a.results || b.spend - a.spend)
 }
 
 // Lista os eventos (action_type) presentes na conta nos últimos 90d — pra IA/ajuste avançado.

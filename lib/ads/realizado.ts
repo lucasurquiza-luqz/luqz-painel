@@ -5,7 +5,7 @@ import { fetchGoogleInsights } from "@/lib/ads/google"
 import { effectiveObjectives, type AdConfig, type AdMetrics, type AdObjective, type DailyPoint, type ResultBreakdown } from "@/lib/ads/types"
 
 export type ProviderResult = (AdMetrics & { error?: undefined }) | { provider: "META" | "GOOGLE"; error: string }
-export type Totals = { spend: number; impressions: number; clicks: number; results: number; cpa: number | null; revenue: number | null; roas: number | null }
+export type Totals = { spend: number; impressions: number; clicks: number; results: number; cpa: number | null; revenue: number | null; roas: number | null; ctr: number | null; cpc: number | null; cpm: number | null }
 export type Realizado = {
   byProvider: ProviderResult[]
   total: Totals
@@ -76,17 +76,22 @@ export async function getClientRealizado(clientId: string, month: string): Promi
   }
   const daily: DailyPoint[] = [...byDay.entries()].map(([date, v]) => ({ date, ...v })).sort((a, b) => a.date.localeCompare(b.date))
 
+  const impressions = ok.reduce((s, r) => s + r.impressions, 0)
+  const clicks = ok.reduce((s, r) => s + r.clicks, 0)
   return {
     byProvider,
     daily,
     total: {
       spend,
-      impressions: ok.reduce((s, r) => s + r.impressions, 0),
-      clicks: ok.reduce((s, r) => s + r.clicks, 0),
+      impressions,
+      clicks,
       results,
       cpa: results > 0 ? spend / results : null,
       revenue,
       roas: revenue != null && spend > 0 ? revenue / spend : null,
+      ctr: impressions > 0 ? (clicks / impressions) * 100 : null,
+      cpc: clicks > 0 ? spend / clicks : null,
+      cpm: impressions > 0 ? (spend / impressions) * 1000 : null,
     },
     breakdown,
     trackRevenue: accounts.some((a) => a.trackRevenue),

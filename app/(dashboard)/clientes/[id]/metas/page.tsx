@@ -196,7 +196,7 @@ function AddPlan({ clientId, onAdded, onCancel, onError }: { clientId: string; o
 type Perf = {
   month: string
   current: {
-    total: { spend: number; impressions: number; clicks: number; results: number; cpa: number | null; revenue: number | null; roas: number | null }
+    total: { spend: number; impressions: number; clicks: number; results: number; cpa: number | null; revenue: number | null; roas: number | null; ctr: number | null; cpc: number | null; cpm: number | null }
     breakdown: { objective: string; count: number }[]
     daily: { date: string; spend: number; results: number }[]
     byProvider: { provider: string; spend?: number; results?: number; error?: string }[]
@@ -300,11 +300,18 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
           {/* KPIs */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <KpiCard label="Investimento" value={brl(t.spend)} pct={pct(t.spend, plan?.budget)} trend={<Trend cur={t.spend} prev={perf.previous.spend} />} />
-            <KpiCard label="Resultados" value={String(t.results)} pct={pct(t.results, plan?.targetLeads)} trend={<Trend cur={t.results} prev={perf.previous.results} />} />
+            <KpiCard label={perf.current.breakdown.length === 1 ? OBJ_LABEL[perf.current.breakdown[0].objective] ?? "Resultados" : "Resultados"} value={String(t.results)} pct={pct(t.results, plan?.targetLeads)} trend={<Trend cur={t.results} prev={perf.previous.results} />} />
             <KpiCard label="CPA" value={brl(t.cpa)} trend={<Trend cur={t.cpa} prev={perf.previous.cpa} goodWhenUp={false} />} />
             {perf.current.trackRevenue
               ? <KpiCard label="ROAS" value={t.roas != null ? `${t.roas.toFixed(2)}x` : "—"} trend={<Trend cur={t.roas} prev={perf.previous.roas} />} />
               : <KpiCard label="Cliques" value={t.clicks.toLocaleString("pt-BR")} />}
+          </div>
+
+          {/* Métricas de mídia */}
+          <div className="grid grid-cols-3 gap-3">
+            <KpiCard label="CTR" value={t.ctr != null ? `${t.ctr.toFixed(2)}%` : "—"} />
+            <KpiCard label="CPC" value={brl(t.cpc)} />
+            <KpiCard label="CPM" value={brl(t.cpm)} />
           </div>
 
           {/* Funil */}
@@ -334,6 +341,9 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
             ))}
           </div>
 
+          {/* Destaques: melhores campanhas / públicos / criativos (Meta) */}
+          <Destaques clientId={clientId} month={month} />
+
           {/* Leitura de IA */}
           <div className="rounded-xl border border-[#FF8F50]/20 bg-[#FF8F50]/[0.05] p-4">
             <div className="flex items-center justify-between">
@@ -345,6 +355,70 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
         </div>
       )}
     </Panel>
+  )
+}
+
+// Melhores campanhas / públicos / criativos (Meta) — sob demanda por aba.
+type BdRow = { name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null }
+const DEST_TABS: { level: string; label: string }[] = [
+  { level: "campaign", label: "Campanhas" },
+  { level: "adset", label: "Públicos" },
+  { level: "ad", label: "Criativos" },
+]
+function Destaques({ clientId, month }: { clientId: string; month: string }) {
+  const [level, setLevel] = useState("campaign")
+  const [rows, setRows] = useState<BdRow[] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState("")
+
+  const load = useCallback(async (lv: string) => {
+    setLoading(true); setErr(""); setRows(null)
+    const res = await fetch(`/api/clients/${clientId}/performance/breakdown?month=${month}&level=${lv}`)
+    const data = await res.json()
+    setLoading(false)
+    if (!res.ok) { setErr(data.error ?? "Falha ao carregar."); return }
+    setRows(data.rows)
+  }, [clientId, month])
+
+  useEffect(() => { void load(level) }, [load, level])
+
+  return (
+    <div className="rounded-xl border border-white/8 bg-black/20 p-4">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] text-zinc-500">Destaques (Meta)</p>
+        <div className="flex gap-1 rounded-lg border border-white/10 bg-black/30 p-0.5">
+          {DEST_TABS.map((t) => (
+            <button key={t.level} onClick={() => setLevel(t.level)} className={`rounded-md px-2.5 py-1 text-[11px] ${level === t.level ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300"}`}>{t.label}</button>
+          ))}
+        </div>
+      </div>
+      {loading ? (
+        <div className="flex min-h-20 items-center justify-center"><Loader2 size={16} className="animate-spin text-[#FF8F50]" /></div>
+      ) : err ? (
+        <p className="mt-3 text-xs text-red-300">{err}</p>
+      ) : !rows?.length ? (
+        <p className="mt-3 text-xs text-zinc-600">Sem dados neste nível para o mês.</p>
+      ) : (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="text-[10px] uppercase tracking-wide text-zinc-600">
+              <tr><th className="pb-1 pr-2">Nome</th><th className="pb-1 px-2 text-right">Gasto</th><th className="pb-1 px-2 text-right">Result.</th><th className="pb-1 px-2 text-right">CPA</th><th className="pb-1 pl-2 text-right">CTR</th></tr>
+            </thead>
+            <tbody>
+              {rows.slice(0, 10).map((r, i) => (
+                <tr key={i} className="border-t border-white/5">
+                  <td className="max-w-[200px] truncate py-1.5 pr-2 text-zinc-200" title={r.name}>{r.name}</td>
+                  <td className="px-2 py-1.5 text-right text-zinc-400">{brl(r.spend)}</td>
+                  <td className="px-2 py-1.5 text-right font-medium text-zinc-100">{r.results}</td>
+                  <td className="px-2 py-1.5 text-right text-zinc-400">{brl(r.cpa)}</td>
+                  <td className="pl-2 py-1.5 text-right text-zinc-400">{r.ctr != null ? `${r.ctr.toFixed(2)}%` : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   )
 }
 

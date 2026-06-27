@@ -2,6 +2,8 @@ export type AdObjective = "LEAD" | "WHATSAPP" | "ECOMMERCE" | "CUSTOM"
 
 export type ResultBreakdown = { objective: AdObjective; count: number }
 export type DailyPoint = { date: string; spend: number; results: number }
+export type BreakdownRow = { name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null }
+export type BreakdownLevel = "campaign" | "adset" | "ad"
 
 export type AdMetrics = {
   provider: "META" | "GOOGLE"
