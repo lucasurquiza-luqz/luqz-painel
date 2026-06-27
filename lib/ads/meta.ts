@@ -1,4 +1,4 @@
-import { monthRange, META_DEFAULT_ACTIONS, META_PURCHASE_ACTIONS, META_PAGEVIEW_ACTIONS, type AdConfig, type AdMetrics, type AdObjective, type AdNode, type AdsetNode, type BreakdownLevel, type BreakdownRow, type CampaignNode, type ResultBreakdown } from "@/lib/ads/types"
+import { monthRange, META_DEFAULT_ACTIONS, META_PURCHASE_ACTIONS, META_PAGEVIEW_ACTIONS, type AdConfig, type AdMetrics, type AdObjective, type AdNode, type CampaignNode, type ResultBreakdown } from "@/lib/ads/types"
 
 const GRAPH = "https://graph.facebook.com/v21.0"
 type Action = { action_type: string; value: string }
@@ -64,67 +64,6 @@ export async function fetchMetaInsights(accountId: string, token: string, month:
     roas: config.trackRevenue && spend > 0 ? revenue / spend : null,
     daily,
   }
-}
-
-// Quebra por campanha / público (adset) / criativo (ad) no mês — "melhores".
-// No nível de anúncio traz métricas de vídeo (hook/thruplay), taxa de conversão e o link do anúncio.
-export async function fetchMetaBreakdown(accountId: string, token: string, month: string, config: AdConfig, level: BreakdownLevel): Promise<BreakdownRow[]> {
-  const { since, until } = monthRange(month)
-  const acct = accountId.startsWith("act_") ? accountId : `act_${accountId}`
-  const nameField = level === "campaign" ? "campaign_name" : level === "adset" ? "adset_name" : "ad_name"
-  const extra = level === "ad" ? ",ad_id,video_thruplay_watched_actions" : ""
-  const url =
-    `${GRAPH}/${acct}/insights?level=${level}&fields=${nameField},spend,impressions,clicks,actions${extra}` +
-    `&time_range=${encodeURIComponent(JSON.stringify({ since, until }))}&limit=200&access_token=${encodeURIComponent(token)}`
-
-  const res = await fetch(url)
-  const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(`Meta Ads: ${body?.error?.message ?? `status ${res.status}`}`)
-
-  const wanted = resultKeys(config)
-  const raw = Array.isArray(body.data) ? body.data : []
-  const rows: (BreakdownRow & { adId?: string })[] = raw.map((r: Record<string, unknown>) => {
-    const spend = Number(r.spend ?? 0)
-    const impressions = Number(r.impressions ?? 0)
-    const clicks = Number(r.clicks ?? 0)
-    const results = sumActions(r.actions as Action[], wanted)
-    const row: BreakdownRow & { adId?: string } = {
-      name: String(r[nameField] ?? "—"),
-      spend, impressions, clicks, results,
-      cpa: results > 0 ? spend / results : null,
-      ctr: impressions > 0 ? (clicks / impressions) * 100 : null,
-    }
-    if (level === "ad") {
-      const views3s = sumActions(r.actions as Action[], new Set(["video_view"]))
-      const thruplay = sumActions(r.video_thruplay_watched_actions as Action[], new Set(["video_view"]))
-      row.hookRate = impressions > 0 ? (views3s / impressions) * 100 : null
-      row.thruplayRate = impressions > 0 ? (thruplay / impressions) * 100 : null
-      row.convRate = clicks > 0 ? (results / clicks) * 100 : null
-      row.adId = String(r.ad_id ?? "")
-    }
-    return row
-  })
-  rows.sort((a, b) => b.results - a.results || b.spend - a.spend)
-
-  // Permalink dos melhores anúncios (1 chamada em lote).
-  if (level === "ad") {
-    const top = rows.slice(0, 12).map((r) => r.adId).filter(Boolean)
-    if (top.length) {
-      try {
-        const u = `${GRAPH}/?ids=${top.join(",")}&fields=creative{instagram_permalink_url,effective_object_story_id,thumbnail_url,image_url}&access_token=${encodeURIComponent(token)}`
-        const pr = await fetch(u)
-        const pb = await pr.json().catch(() => ({}))
-        if (pr.ok) {
-          for (const r of rows) {
-            const c = r.adId ? pb?.[r.adId]?.creative : null
-            r.permalink = c?.instagram_permalink_url ?? (c?.effective_object_story_id ? `https://facebook.com/${c.effective_object_story_id}` : null)
-            r.thumbnail = c?.image_url ?? c?.thumbnail_url ?? null
-          }
-        }
-      } catch { /* segue sem permalink */ }
-    }
-  }
-  return rows
 }
 
 // Resumo legível do público (targeting) de um conjunto.

@@ -523,14 +523,6 @@ function Explorer({ clientId, month }: { clientId: string; month: string }) {
   )
 }
 
-function FunnelStep({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg bg-white/5 px-3 py-1.5">
-      <span className="text-zinc-500">{label}: </span><span className="font-semibold text-zinc-100">{value}</span>
-    </div>
-  )
-}
-
 // === Integrações de Ads + conversão por cliente (multi-objetivo + IA sugere) ===
 type AdAccount = { provider: "META" | "GOOGLE"; accountId: string; lastFour: string | null; objectives: string[]; resultActions: string[]; trackRevenue: boolean }
 const OBJECTIVES = [

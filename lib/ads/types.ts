@@ -2,22 +2,6 @@ export type AdObjective = "LEAD" | "WHATSAPP" | "ECOMMERCE" | "CUSTOM"
 
 export type ResultBreakdown = { objective: AdObjective; count: number }
 export type DailyPoint = { date: string; spend: number; results: number }
-export type BreakdownRow = {
-  name: string
-  spend: number
-  impressions: number
-  clicks: number
-  results: number
-  cpa: number | null
-  ctr: number | null
-  // Métricas de vídeo/criativo (nível anúncio):
-  hookRate?: number | null // visualizações de 3s ÷ impressões
-  thruplayRate?: number | null // thruplays ÷ impressões
-  convRate?: number | null // resultados ÷ cliques
-  permalink?: string | null // link do anúncio (Instagram/Facebook)
-  thumbnail?: string | null // preview/imagem do criativo
-}
-export type BreakdownLevel = "campaign" | "adset" | "ad"
 
 // Árvore de exploração: Campanha → Conjunto (com público) → Anúncio (com preview).
 export type AdNode = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; hookRate: number | null; convRate: number | null; thumbnail: string | null; permalink: string | null }
