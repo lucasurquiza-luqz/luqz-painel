@@ -15,6 +15,7 @@ export type BreakdownRow = {
   thruplayRate?: number | null // thruplays ÷ impressões
   convRate?: number | null // resultados ÷ cliques
   permalink?: string | null // link do anúncio (Instagram/Facebook)
+  thumbnail?: string | null // preview/imagem do criativo
 }
 export type BreakdownLevel = "campaign" | "adset" | "ad"
 

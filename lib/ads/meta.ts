@@ -43,9 +43,10 @@ export async function fetchMetaInsights(accountId: string, token: string, month:
     pageViews += sumActions(r.actions as Action[], META_PAGEVIEW_ACTIONS)
     results += rResults
     if (config.trackRevenue) revenue += sumActions(r.action_values as Action[], purchaseKeys)
-    // breakdown por objetivo
+    // breakdown por objetivo (eventos custom ainda contam pro funil configurado)
     if (config.resultActions.length) {
-      perObjective.set("CUSTOM", (perObjective.get("CUSTOM") ?? 0) + rResults)
+      const tag: AdObjective = config.objectives[0] ?? "CUSTOM"
+      perObjective.set(tag, (perObjective.get(tag) ?? 0) + rResults)
     } else {
       for (const obj of config.objectives) {
         perObjective.set(obj, (perObjective.get(obj) ?? 0) + sumActions(r.actions as Action[], new Set(META_DEFAULT_ACTIONS[obj])))
@@ -110,13 +111,14 @@ export async function fetchMetaBreakdown(accountId: string, token: string, month
     const top = rows.slice(0, 12).map((r) => r.adId).filter(Boolean)
     if (top.length) {
       try {
-        const u = `${GRAPH}/?ids=${top.join(",")}&fields=creative{instagram_permalink_url,effective_object_story_id}&access_token=${encodeURIComponent(token)}`
+        const u = `${GRAPH}/?ids=${top.join(",")}&fields=creative{instagram_permalink_url,effective_object_story_id,thumbnail_url,image_url}&access_token=${encodeURIComponent(token)}`
         const pr = await fetch(u)
         const pb = await pr.json().catch(() => ({}))
         if (pr.ok) {
           for (const r of rows) {
             const c = r.adId ? pb?.[r.adId]?.creative : null
             r.permalink = c?.instagram_permalink_url ?? (c?.effective_object_story_id ? `https://facebook.com/${c.effective_object_story_id}` : null)
+            r.thumbnail = c?.image_url ?? c?.thumbnail_url ?? null
           }
         }
       } catch { /* segue sem permalink */ }

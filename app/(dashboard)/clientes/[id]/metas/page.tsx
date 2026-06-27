@@ -442,7 +442,7 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
 }
 
 // Melhores campanhas / públicos / criativos (Meta) — sob demanda por aba.
-type BdRow = { name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; hookRate?: number | null; thruplayRate?: number | null; convRate?: number | null; permalink?: string | null }
+type BdRow = { name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; hookRate?: number | null; thruplayRate?: number | null; convRate?: number | null; permalink?: string | null; thumbnail?: string | null }
 const DEST_TABS: { level: string; label: string }[] = [
   { level: "campaign", label: "Campanhas" },
   { level: "adset", label: "Públicos" },
@@ -497,7 +497,14 @@ function Destaques({ clientId, month }: { clientId: string; month: string }) {
             <tbody>
               {rows.slice(0, 10).map((r, i) => (
                 <tr key={i} className="border-t border-white/5">
-                  <td className="max-w-[180px] truncate py-1.5 pr-2 text-zinc-200" title={r.name}>{r.name}</td>
+                  <td className="max-w-[200px] py-1.5 pr-2 text-zinc-200" title={r.name}>
+                    <div className="flex items-center gap-2">
+                      {level === "ad" && (r.thumbnail
+                        ? <img src={r.thumbnail} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
+                        : <span className="h-8 w-8 shrink-0 rounded bg-white/5" />)}
+                      <span className="truncate">{r.name}</span>
+                    </div>
+                  </td>
                   <td className="px-2 py-1.5 text-right text-zinc-400">{brl(r.spend)}</td>
                   <td className="px-2 py-1.5 text-right font-medium text-zinc-100">{r.results}</td>
                   <td className="px-2 py-1.5 text-right text-zinc-400">{brl(r.cpa)}</td>
