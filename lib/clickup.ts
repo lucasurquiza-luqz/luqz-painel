@@ -142,6 +142,11 @@ export function mapCardToCadastro(task: ClickUpTask): MappedCadastro {
 
 // Normaliza nome para casar card do ClickUp com cliente do Dash.
 export function normalizeName(name: string): string {
-  // remove acentos (combining diacritics U+0300–U+036F)
-  return name.normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "").trim().toLowerCase()
+  // remove acentos + reduz qualquer não-alfanumérico (pontos, pipes, emoji) a espaço.
+  return name
+    .normalize("NFD")
+    .replace(new RegExp("[\\u0300-\\u036f]", "g"), "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
 }
