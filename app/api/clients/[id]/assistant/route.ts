@@ -20,6 +20,12 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   try {
     const grounding = await buildClientGrounding(id)
+    if (grounding.itemCount === 0) {
+      return NextResponse.json({
+        answer: "Este cliente ainda não tem contexto **aprovado**. Vá na aba Contexto, importe/aprove os itens (botão \"Aprovar propostas\") e volte aqui — eu só respondo com base no que está aprovado.",
+        itemCount: 0,
+      })
+    }
     const answer = await chatComplete("ASSISTANT", grounding.systemPrompt, messages)
     return NextResponse.json({ answer, itemCount: grounding.itemCount })
   } catch (error) {
