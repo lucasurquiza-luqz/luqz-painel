@@ -662,40 +662,130 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
 }
 
 // Explorador: Campanha → Conjunto (público) → Anúncio (preview). Drill-down.
-type AdNode = { id: string; name: string; spend: number; results: number; cpa: number | null; ctr: number | null; hookRate: number | null; convRate: number | null; thumbnail: string | null; permalink: string | null }
-type AdsetNode = { id: string; name: string; spend: number; results: number; cpa: number | null; ctr: number | null; audience: string | null; ads: AdNode[] }
-type CampaignNode = { id: string; name: string; spend: number; results: number; cpa: number | null; ctr: number | null; adsets: AdsetNode[] }
-// Colunas de métrica alinhadas à direita (rótulo em cima, valor em destaque).
-function MetricCols({ items }: { items: { label: string; value: string; tone?: string }[] }) {
+type AdNode = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; hookRate: number | null; convRate: number | null; thumbnail: string | null; permalink: string | null }
+type AdsetNode = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; audience: string | null; ads: AdNode[] }
+type CampaignNode = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; adsets: AdsetNode[] }
+const chevron = (on: boolean) => <span className={`inline-block text-zinc-500 transition-transform ${on ? "rotate-90" : ""}`}>▸</span>
+
+// === Tabela de métricas em árvore (campanha ▸ filho ▸ neto), ordenável, com detalhes ao clicar ===
+type TNode = {
+  id: string; name: string
+  spend: number; impressions: number; clicks: number; results: number
+  cpa: number | null; ctr: number | null
+  subtitle?: string | null; thumbnail?: string | null; permalink?: string | null
+  hookRate?: number | null; convRate?: number | null; matchType?: string | null
+  children?: TNode[]
+}
+type ColKey = "spend" | "impressions" | "clicks" | "ctr" | "cpc" | "cpm" | "results" | "cpa"
+const cpcOf = (n: TNode) => (n.clicks > 0 ? n.spend / n.clicks : null)
+const cpmOf = (n: TNode) => (n.impressions > 0 ? (n.spend / n.impressions) * 1000 : null)
+const TREE_COLS: { key: ColKey; label: string; fmt: (n: TNode) => string; tone?: string }[] = [
+  { key: "spend", label: "Gasto", fmt: (n) => brl(n.spend) },
+  { key: "impressions", label: "Impr.", fmt: (n) => n.impressions.toLocaleString("pt-BR") },
+  { key: "clicks", label: "Cliques", fmt: (n) => n.clicks.toLocaleString("pt-BR") },
+  { key: "ctr", label: "CTR", fmt: (n) => (n.ctr != null ? `${n.ctr.toFixed(2)}%` : "—") },
+  { key: "cpc", label: "CPC", fmt: (n) => brl(cpcOf(n)) },
+  { key: "cpm", label: "CPM", fmt: (n) => brl(cpmOf(n)) },
+  { key: "results", label: "Result.", fmt: (n) => String(n.results), tone: "text-sky-300" },
+  { key: "cpa", label: "CPA", fmt: (n) => brl(n.cpa), tone: "text-emerald-300" },
+]
+const colValue = (n: TNode, k: ColKey): number => {
+  if (k === "cpc") return cpcOf(n) ?? -Infinity
+  if (k === "cpm") return cpmOf(n) ?? -Infinity
+  if (k === "ctr") return n.ctr ?? -Infinity
+  if (k === "cpa") return n.cpa ?? -Infinity
+  return n[k] ?? 0
+}
+const GRID_COLS = "minmax(180px,1fr) repeat(8, minmax(58px,0.6fr))"
+
+function MetricTree({ nodes, title, levels }: { nodes: TNode[]; title: string; levels: string[] }) {
+  const [open, setOpen] = useState<Record<string, boolean>>({})
+  const [detail, setDetail] = useState<string | null>(null)
+  const [expandAll, setExpandAll] = useState(false)
+  const [sort, setSort] = useState<{ key: ColKey; dir: 1 | -1 }>({ key: "spend", dir: -1 })
+  const isOpen = (id: string) => open[id] ?? expandAll
+
+  const sortTree = (arr: TNode[]): TNode[] =>
+    [...arr].sort((a, b) => (colValue(a, sort.key) - colValue(b, sort.key)) * sort.dir)
+      .map((n) => (n.children?.length ? { ...n, children: sortTree(n.children) } : n))
+  const rows: { n: TNode; depth: number }[] = []
+  const walk = (arr: TNode[], depth: number) => { for (const n of arr) { rows.push({ n, depth }); if (n.children?.length && isOpen(n.id)) walk(n.children, depth + 1) } }
+  walk(sortTree(nodes), 0)
+  const total = nodes.reduce((s, n) => s + n.spend, 0) || 1
+
+  const clickRow = (n: TNode) => { if (n.children?.length) setOpen((o) => ({ ...o, [n.id]: !(o[n.id] ?? expandAll) })); else setDetail((d) => (d === n.id ? null : n.id)) }
+
   return (
-    <div className="flex shrink-0 items-center gap-3 sm:gap-5">
-      {items.map((m) => (
-        <div key={m.label} className="text-right">
-          <p className="text-[9px] uppercase tracking-wide text-zinc-600">{m.label}</p>
-          <p className={`text-[13px] font-semibold tabular-nums ${m.tone ?? "text-zinc-100"}`}>{m.value}</p>
+    <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="text-xs font-medium text-zinc-400">{title} <span className="text-zinc-600">· {levels.join(" ▸ ")}</span></p>
+        {!!nodes.length && <button onClick={() => { setExpandAll((v) => !v); setOpen({}) }} className="text-[11px] text-zinc-500 hover:text-zinc-300">{expandAll ? "Recolher tudo" : "Expandir tudo"}</button>}
+      </div>
+      {!nodes.length ? (
+        <p className="text-xs text-zinc-600">Sem dados com veiculação no período.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <div className="min-w-[680px]">
+            {/* Cabeçalho ordenável */}
+            <div className="grid items-center gap-2 border-b border-white/8 pb-2 text-[10px] uppercase tracking-wide text-zinc-600" style={{ gridTemplateColumns: GRID_COLS }}>
+              <span>Nome</span>
+              {TREE_COLS.map((c) => (
+                <button key={c.key} onClick={() => setSort((s) => ({ key: c.key, dir: s.key === c.key ? (s.dir === 1 ? -1 : 1) : -1 }))}
+                  className={`flex items-center justify-end gap-0.5 text-right hover:text-zinc-300 ${sort.key === c.key ? "text-[#FFB185]" : ""}`}>
+                  {c.label}{sort.key === c.key && <span>{sort.dir === -1 ? "↓" : "↑"}</span>}
+                </button>
+              ))}
+            </div>
+            {rows.map(({ n, depth }) => (
+              <div key={n.id} className={depth === 0 ? "border-b border-white/5" : ""}>
+                <div className="grid items-center gap-2 py-2 text-[13px] hover:bg-white/[0.02]" style={{ gridTemplateColumns: GRID_COLS }}>
+                  <button onClick={() => clickRow(n)} className="flex min-w-0 items-center gap-2 text-left" style={{ paddingLeft: depth * 16 }}>
+                    {n.children?.length ? chevron(isOpen(n.id)) : n.thumbnail ? <img src={n.thumbnail} alt="" className="h-7 w-7 shrink-0 rounded object-cover" /> : <span className="inline-block w-[10px] text-center text-zinc-700">·</span>}
+                    <span className="min-w-0">
+                      <span className={`block truncate ${depth === 0 ? "font-semibold text-zinc-50" : "text-zinc-200"}`} title={n.name}>{n.name}</span>
+                      {n.subtitle && <span className="block truncate text-[10px] text-sky-300/70">{n.subtitle}</span>}
+                    </span>
+                  </button>
+                  {TREE_COLS.map((c) => <span key={c.key} className={`text-right tabular-nums ${c.tone ?? "text-zinc-300"}`}>{c.fmt(n)}</span>)}
+                </div>
+                {depth === 0 && (
+                  <div className="mb-1 ml-4 flex items-center gap-2"><div className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/5"><div className="h-full rounded-full bg-[#FF8F50]/60" style={{ width: `${Math.max(1, (n.spend / total) * 100)}%` }} /></div><span className="shrink-0 text-[9px] text-zinc-600">{Math.round((n.spend / total) * 100)}%</span></div>
+                )}
+                {detail === n.id && (
+                  <div className="mb-2 flex gap-3 rounded-lg bg-black/40 p-3" style={{ marginLeft: depth * 16 + 16 }}>
+                    {n.thumbnail && <img src={n.thumbnail} alt="" className="h-20 w-20 shrink-0 rounded-lg object-cover" />}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[12px] font-medium text-zinc-100">{n.name}</p>
+                      <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] sm:grid-cols-3">
+                        <span className="text-zinc-500">Gasto <span className="text-zinc-200">{brl(n.spend)}</span></span>
+                        <span className="text-zinc-500">Impr. <span className="text-zinc-200">{n.impressions.toLocaleString("pt-BR")}</span></span>
+                        <span className="text-zinc-500">Cliques <span className="text-zinc-200">{n.clicks.toLocaleString("pt-BR")}</span></span>
+                        <span className="text-zinc-500">CTR <span className="text-zinc-200">{n.ctr != null ? `${n.ctr.toFixed(2)}%` : "—"}</span></span>
+                        <span className="text-zinc-500">CPC <span className="text-zinc-200">{brl(cpcOf(n))}</span></span>
+                        <span className="text-zinc-500">CPM <span className="text-zinc-200">{brl(cpmOf(n))}</span></span>
+                        <span className="text-zinc-500">Result. <span className="text-sky-300">{n.results}</span></span>
+                        <span className="text-zinc-500">CPA <span className="text-emerald-300">{brl(n.cpa)}</span></span>
+                        {n.hookRate != null && <span className="text-zinc-500">Hook <span className="text-zinc-200">{n.hookRate.toFixed(0)}%</span></span>}
+                        {n.convRate != null && <span className="text-zinc-500">Conv <span className="text-zinc-200">{n.convRate.toFixed(0)}%</span></span>}
+                        {n.matchType && <span className="text-zinc-500">Correspond. <span className="text-zinc-200">{n.matchType}</span></span>}
+                      </div>
+                      {n.permalink && <a href={n.permalink} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-[11px] text-[#FFB185] hover:underline">ver anúncio ↗</a>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
-      ))}
+      )}
     </div>
   )
 }
-// Barra fina de participação no gasto (share do total).
-function ShareBar({ share }: { share: number }) {
-  return (
-    <div className="h-1 w-full overflow-hidden rounded-full bg-white/5">
-      <div className="h-full rounded-full bg-gradient-to-r from-[#FF8F50]/70 to-[#FFB185]/70" style={{ width: `${Math.max(1, share * 100)}%` }} />
-    </div>
-  )
-}
-const chevron = (on: boolean) => <span className={`text-zinc-500 transition-transform ${on ? "rotate-90" : ""}`}>▸</span>
 
 function Explorer({ clientId, since, until }: { clientId: string; since: string; until: string }) {
   const [campaigns, setCampaigns] = useState<CampaignNode[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState("")
-  const [open, setOpen] = useState<Record<string, boolean>>({})
-  const [expandAll, setExpandAll] = useState(false)
-  const isOpen = (id: string) => open[id] ?? expandAll
-  const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !(o[id] ?? expandAll) }))
 
   const load = useCallback(async () => {
     setLoading(true); setErr(""); setCampaigns(null)
@@ -707,85 +797,21 @@ function Explorer({ clientId, since, until }: { clientId: string; since: string;
   }, [clientId, since, until])
   useEffect(() => { void load() }, [load])
 
-  const totalSpend = (campaigns ?? []).reduce((s, c) => s + c.spend, 0) || 1
+  if (loading) return <div className="flex min-h-24 items-center justify-center rounded-2xl border border-white/8 bg-black/20"><Loader2 size={18} className="animate-spin text-[#FF8F50]" /></div>
+  if (err) return <p className="rounded-2xl border border-white/8 bg-black/20 p-4 text-xs text-red-300">{err}</p>
 
-  return (
-    <div className="rounded-2xl border border-white/8 bg-black/20 p-5">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <p className="text-xs font-medium text-zinc-400">Explorador — Campanha ▸ Conjunto ▸ Anúncio <span className="text-zinc-600">(Meta)</span></p>
-        {!!campaigns?.length && <button onClick={() => { setExpandAll((v) => !v); setOpen({}) }} className="text-[11px] text-zinc-500 hover:text-zinc-300">{expandAll ? "Recolher tudo" : "Expandir tudo"}</button>}
-      </div>
-      {loading ? (
-        <div className="flex min-h-24 items-center justify-center"><Loader2 size={18} className="animate-spin text-[#FF8F50]" /></div>
-      ) : err ? (
-        <p className="text-xs text-red-300">{err}</p>
-      ) : !campaigns?.length ? (
-        <p className="text-xs text-zinc-600">Sem campanhas com veiculação no período.</p>
-      ) : (
-        <div className="space-y-2">
-          {campaigns.map((c) => (
-            <div key={c.id} className="overflow-hidden rounded-xl border border-white/8 bg-white/[0.015]">
-              <button onClick={() => toggle(c.id)} className="w-full px-4 py-3 text-left hover:bg-white/[0.02]">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="flex min-w-0 items-center gap-2.5">
-                    {chevron(isOpen(c.id))}
-                    <span className="truncate text-[15px] font-semibold text-zinc-50" title={c.name}>{c.name}</span>
-                  </span>
-                  <MetricCols items={[
-                    { label: "Gasto", value: brl(c.spend) },
-                    { label: "Result.", value: String(c.results), tone: "text-sky-300" },
-                    { label: "CPA", value: brl(c.cpa), tone: "text-emerald-300" },
-                  ]} />
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <ShareBar share={c.spend / totalSpend} />
-                  <span className="shrink-0 text-[10px] text-zinc-600">{Math.round((c.spend / totalSpend) * 100)}% do gasto</span>
-                </div>
-              </button>
-              {isOpen(c.id) && (
-                <div className="space-y-1.5 border-t border-white/5 bg-black/20 p-2">
-                  {c.adsets.map((s) => (
-                    <div key={s.id} className="rounded-lg bg-white/[0.02]">
-                      <button onClick={() => toggle(s.id)} className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-white/[0.02]">
-                        <span className="flex min-w-0 flex-col gap-1">
-                          <span className="flex min-w-0 items-center gap-2 text-[13px]">
-                            {chevron(isOpen(s.id))}
-                            <span className="truncate font-medium text-zinc-200" title={s.name}>{s.name}</span>
-                          </span>
-                          {s.audience && <span className="ml-5 truncate text-[11px] text-sky-300/70">👥 {s.audience}</span>}
-                        </span>
-                        <MetricCols items={[
-                          { label: "Gasto", value: brl(s.spend) },
-                          { label: "Result.", value: String(s.results), tone: "text-sky-300" },
-                          { label: "CPA", value: brl(s.cpa), tone: "text-emerald-300" },
-                        ]} />
-                      </button>
-                      {isOpen(s.id) && (
-                        <div className="grid grid-cols-1 gap-2 p-2 xl:grid-cols-2">
-                          {s.ads.map((ad) => (
-                            <div key={ad.id} className="flex items-center gap-3 rounded-lg bg-black/30 p-2.5">
-                              {ad.thumbnail ? <img src={ad.thumbnail} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" /> : <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[9px] text-zinc-600">sem<br />preview</span>}
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-[13px] font-medium text-zinc-100" title={ad.name}>{ad.name}</p>
-                                <p className="mt-0.5 text-[11px] text-zinc-400">{brl(ad.spend)} · <span className="text-sky-300">{ad.results} result.</span> · CPA {brl(ad.cpa)}</p>
-                                <p className="mt-0.5 text-[10px] text-zinc-500">CTR {ad.ctr != null ? `${ad.ctr.toFixed(1)}%` : "—"} · Hook {ad.hookRate != null ? `${ad.hookRate.toFixed(0)}%` : "—"} · Conv {ad.convRate != null ? `${ad.convRate.toFixed(0)}%` : "—"}</p>
-                              </div>
-                              {ad.permalink && <a href={ad.permalink} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-md bg-white/5 px-2 py-1 text-[10px] text-[#FFB185] hover:bg-white/10">abrir ↗</a>}
-                            </div>
-                          ))}
-                          {!s.ads.length && <p className="px-2 text-[11px] text-zinc-600">Sem anúncios com veiculação.</p>}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
+  const nodes: TNode[] = (campaigns ?? []).map((c) => ({
+    id: c.id, name: c.name, spend: c.spend, impressions: c.impressions, clicks: c.clicks, results: c.results, cpa: c.cpa, ctr: c.ctr,
+    children: c.adsets.map((s) => ({
+      id: s.id, name: s.name, spend: s.spend, impressions: s.impressions, clicks: s.clicks, results: s.results, cpa: s.cpa, ctr: s.ctr,
+      subtitle: s.audience ? `👥 ${s.audience}` : null,
+      children: s.ads.map((ad) => ({
+        id: ad.id, name: ad.name, spend: ad.spend, impressions: ad.impressions, clicks: ad.clicks, results: ad.results, cpa: ad.cpa, ctr: ad.ctr,
+        thumbnail: ad.thumbnail, permalink: ad.permalink, hookRate: ad.hookRate, convRate: ad.convRate,
+      })),
+    })),
+  }))
+  return <MetricTree nodes={nodes} title="Explorador (Meta)" levels={["Campanha", "Conjunto", "Anúncio"]} />
 }
 
 // Criativos (Meta): todos os anúncios achatados, ordenados por gasto, com preview grande.
@@ -835,18 +861,14 @@ function CreativesGrid({ clientId, since, until }: { clientId: string; since: st
 
 // Explorador Google: Campanha → Grupo de anúncios → Palavra-chave.
 type GKeyword = { text: string; matchType: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null }
-type GAdGroup = { id: string; name: string; spend: number; results: number; cpa: number | null; ctr: number | null; keywords: GKeyword[] }
-type GCampaign = { id: string; name: string; spend: number; results: number; cpa: number | null; ctr: number | null; adGroups: GAdGroup[] }
+type GAdGroup = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; keywords: GKeyword[] }
+type GCampaign = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; adGroups: GAdGroup[] }
 const MATCH_LABEL: Record<string, string> = { EXACT: "exata", PHRASE: "frase", BROAD: "ampla" }
 
 function GoogleExplorer({ clientId, since, until }: { clientId: string; since: string; until: string }) {
   const [campaigns, setCampaigns] = useState<GCampaign[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState("")
-  const [open, setOpen] = useState<Record<string, boolean>>({})
-  const [expandAll, setExpandAll] = useState(false)
-  const isOpen = (id: string) => open[id] ?? expandAll
-  const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !(o[id] ?? expandAll) }))
 
   const load = useCallback(async () => {
     setLoading(true); setErr(""); setCampaigns(null)
@@ -858,82 +880,21 @@ function GoogleExplorer({ clientId, since, until }: { clientId: string; since: s
   }, [clientId, since, until])
   useEffect(() => { void load() }, [load])
 
-  const totalSpend = (campaigns ?? []).reduce((s, c) => s + c.spend, 0) || 1
+  if (loading) return <div className="flex min-h-24 items-center justify-center rounded-2xl border border-white/8 bg-black/20"><Loader2 size={18} className="animate-spin text-[#FF8F50]" /></div>
+  if (err) return <p className="rounded-2xl border border-white/8 bg-black/20 p-4 text-xs text-red-300">{err}</p>
 
-  return (
-    <div className="rounded-2xl border border-white/8 bg-black/20 p-5">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <p className="text-xs font-medium text-zinc-400">Explorador — Campanha ▸ Grupo ▸ Palavra-chave <span className="text-zinc-600">(Google)</span></p>
-        {!!campaigns?.length && <button onClick={() => { setExpandAll((v) => !v); setOpen({}) }} className="text-[11px] text-zinc-500 hover:text-zinc-300">{expandAll ? "Recolher tudo" : "Expandir tudo"}</button>}
-      </div>
-      {loading ? (
-        <div className="flex min-h-24 items-center justify-center"><Loader2 size={18} className="animate-spin text-[#FF8F50]" /></div>
-      ) : err ? (
-        <p className="text-xs text-red-300">{err}</p>
-      ) : !campaigns?.length ? (
-        <p className="text-xs text-zinc-600">Sem campanhas com veiculação no período.</p>
-      ) : (
-        <div className="space-y-2">
-          {campaigns.map((c) => (
-            <div key={c.id} className="overflow-hidden rounded-xl border border-white/8 bg-white/[0.015]">
-              <button onClick={() => toggle(c.id)} className="w-full px-4 py-3 text-left hover:bg-white/[0.02]">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="flex min-w-0 items-center gap-2.5">
-                    {chevron(isOpen(c.id))}
-                    <span className="truncate text-[15px] font-semibold text-zinc-50" title={c.name}>{c.name}</span>
-                  </span>
-                  <MetricCols items={[
-                    { label: "Gasto", value: brl(c.spend) },
-                    { label: "Result.", value: String(c.results), tone: "text-sky-300" },
-                    { label: "CPA", value: brl(c.cpa), tone: "text-emerald-300" },
-                  ]} />
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <ShareBar share={c.spend / totalSpend} />
-                  <span className="shrink-0 text-[10px] text-zinc-600">{Math.round((c.spend / totalSpend) * 100)}% do gasto</span>
-                </div>
-              </button>
-              {isOpen(c.id) && (
-                <div className="space-y-1.5 border-t border-white/5 bg-black/20 p-2">
-                  {c.adGroups.map((g) => (
-                    <div key={g.id} className="rounded-lg bg-white/[0.02]">
-                      <button onClick={() => toggle(g.id)} className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-white/[0.02]">
-                        <span className="flex min-w-0 items-center gap-2 text-[13px]">
-                          {chevron(isOpen(g.id))}
-                          <span className="truncate font-medium text-zinc-200" title={g.name}>{g.name}</span>
-                        </span>
-                        <MetricCols items={[
-                          { label: "Gasto", value: brl(g.spend) },
-                          { label: "Result.", value: String(g.results), tone: "text-sky-300" },
-                          { label: "CPA", value: brl(g.cpa), tone: "text-emerald-300" },
-                        ]} />
-                      </button>
-                      {isOpen(g.id) && (
-                        <div className="space-y-1 p-2">
-                          {g.keywords.map((k, i) => (
-                            <div key={i} className="flex items-center justify-between gap-3 rounded-lg bg-black/30 px-3 py-2">
-                              <p className="min-w-0 flex-1 truncate text-[13px] text-zinc-100" title={k.text}>{k.text} <span className="text-[10px] text-zinc-600">[{MATCH_LABEL[k.matchType] ?? k.matchType.toLowerCase()}]</span></p>
-                              <MetricCols items={[
-                                { label: "Gasto", value: brl(k.spend) },
-                                { label: "CTR", value: k.ctr != null ? `${k.ctr.toFixed(1)}%` : "—" },
-                                { label: "Result.", value: String(k.results), tone: "text-sky-300" },
-                                { label: "CPA", value: brl(k.cpa), tone: "text-emerald-300" },
-                              ]} />
-                            </div>
-                          ))}
-                          {!g.keywords.length && <p className="px-2 text-[11px] text-zinc-600">Sem palavras-chave (campanha PMAX/Display?).</p>}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
+  let kwIdx = 0
+  const nodes: TNode[] = (campaigns ?? []).map((c) => ({
+    id: c.id, name: c.name, spend: c.spend, impressions: c.impressions, clicks: c.clicks, results: c.results, cpa: c.cpa, ctr: c.ctr,
+    children: c.adGroups.map((g) => ({
+      id: g.id, name: g.name, spend: g.spend, impressions: g.impressions, clicks: g.clicks, results: g.results, cpa: g.cpa, ctr: g.ctr,
+      children: g.keywords.map((k) => ({
+        id: `kw-${kwIdx++}`, name: k.text, spend: k.spend, impressions: k.impressions, clicks: k.clicks, results: k.results, cpa: k.cpa, ctr: k.ctr,
+        matchType: MATCH_LABEL[k.matchType] ?? k.matchType.toLowerCase(),
+      })),
+    })),
+  }))
+  return <MetricTree nodes={nodes} title="Explorador (Google)" levels={["Campanha", "Grupo", "Palavra-chave"]} />
 }
 
 // === Análises profundas Meta (posicionamentos, demografia, alcance, vídeo) ===
