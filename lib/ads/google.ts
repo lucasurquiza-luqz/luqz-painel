@@ -120,6 +120,18 @@ export async function fetchGoogleSearchTerms(customerId: string, { since, until 
     .slice(0, 60)
 }
 
+// Ações de conversão que alimentam metrics.conversions, com contagem (revisão de conversões).
+export async function fetchGoogleConversionActions(customerId: string, { since, until }: DateRange): Promise<{ name: string; conversions: number }[]> {
+  const cid = customerId.replace(/-/g, "")
+  const rows = await gaql(cid, `SELECT segments.conversion_action_name, metrics.conversions, metrics.all_conversions FROM customer WHERE segments.date BETWEEN '${since}' AND '${until}'`)
+  const m = new Map<string, number>()
+  for (const row of rows) {
+    const name = String(row.segments?.conversionActionName ?? "—")
+    m.set(name, (m.get(name) ?? 0) + Number(row.metrics?.conversions ?? 0))
+  }
+  return [...m.entries()].map(([name, conversions]) => ({ name, conversions: Math.round(conversions * 100) / 100 })).sort((a, b) => b.conversions - a.conversions)
+}
+
 // Lista as contas gerenciadas pelo MCC (id + nome) — para auto-mapear aos clientes.
 export async function listMccAccounts(): Promise<{ customerId: string; name: string }[]> {
   const env = googleEnv()

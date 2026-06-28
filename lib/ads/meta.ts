@@ -13,6 +13,8 @@ function resultKeys(config: AdConfig): Set<string> {
   for (const obj of config.objectives) for (const k of META_DEFAULT_ACTIONS[obj]) keys.add(k)
   return keys
 }
+// Quais eventos estão sendo contados como "resultado" (para revisão de conversões).
+export const metaResultKeys = (config: AdConfig): string[] => [...resultKeys(config)]
 
 // Lê insights de uma conta Meta no mês (com série DIÁRIA), token DO CLIENTE, conforme a config.
 export async function fetchMetaInsights(accountId: string, token: string, { since, until }: DateRange, config: AdConfig): Promise<AdMetrics> {
