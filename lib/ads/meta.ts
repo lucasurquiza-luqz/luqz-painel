@@ -32,17 +32,21 @@ export async function fetchMetaInsights(accountId: string, token: string, month:
 
   let spend = 0, impressions = 0, clicks = 0, pageViews = 0, results = 0, revenue = 0
   const perObjective = new Map<AdObjective, number>()
-  const daily: { date: string; spend: number; results: number }[] = []
+  const daily: import("@/lib/ads/types").DailyPoint[] = []
 
   for (const r of rows) {
     const rSpend = Number(r.spend ?? 0)
+    const rImpr = Number(r.impressions ?? 0)
+    const rClicks = Number(r.clicks ?? 0)
+    const rPv = sumActions(r.actions as Action[], META_PAGEVIEW_ACTIONS)
     const rResults = sumActions(r.actions as Action[], wanted)
+    const rRev = config.trackRevenue ? sumActions(r.action_values as Action[], purchaseKeys) : 0
     spend += rSpend
-    impressions += Number(r.impressions ?? 0)
-    clicks += Number(r.clicks ?? 0)
-    pageViews += sumActions(r.actions as Action[], META_PAGEVIEW_ACTIONS)
+    impressions += rImpr
+    clicks += rClicks
+    pageViews += rPv
     results += rResults
-    if (config.trackRevenue) revenue += sumActions(r.action_values as Action[], purchaseKeys)
+    revenue += rRev
     // breakdown por objetivo (eventos custom ainda contam pro funil configurado)
     if (config.resultActions.length) {
       const tag: AdObjective = config.objectives[0] ?? "CUSTOM"
@@ -52,7 +56,7 @@ export async function fetchMetaInsights(accountId: string, token: string, month:
         perObjective.set(obj, (perObjective.get(obj) ?? 0) + sumActions(r.actions as Action[], new Set(META_DEFAULT_ACTIONS[obj])))
       }
     }
-    daily.push({ date: String(r.date_start ?? ""), spend: rSpend, results: rResults })
+    daily.push({ date: String(r.date_start ?? ""), spend: rSpend, results: rResults, impressions: rImpr, clicks: rClicks, pageViews: rPv, revenue: rRev })
   }
 
   const breakdown: ResultBreakdown[] = [...perObjective.entries()].map(([objective, count]) => ({ objective, count }))

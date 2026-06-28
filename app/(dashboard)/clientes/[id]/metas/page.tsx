@@ -195,7 +195,8 @@ function AddPlan({ clientId, onAdded, onCancel, onError }: { clientId: string; o
 // === Painel Performance (visual + leitura de IA) ===
 type Totals = { spend: number; impressions: number; clicks: number; pageViews: number; results: number; cpa: number | null; revenue: number | null; roas: number | null; ctr: number | null; cpc: number | null; cpm: number | null }
 type Bd = { objective: string; count: number }[]
-type Dly = { date: string; spend: number; results: number }[]
+type DlyPoint = { date: string; spend: number; results: number; impressions: number; clicks: number; pageViews: number; revenue: number }
+type Dly = DlyPoint[]
 type ProviderMetrics = { provider: string; error?: string; spend?: number; impressions?: number; clicks?: number; pageViews?: number; results?: number; cpa?: number | null; revenue?: number | null; roas?: number | null; breakdown?: Bd; daily?: Dly }
 type Perf = {
   month: string
@@ -238,28 +239,82 @@ function KpiCard({ label, value, pct, trend }: { label: string; value: string; p
 
 const tooltipStyle = { background: "#161616", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }
 
-// Evolução diária: gasto (área) + resultados (linha), eixos duplos.
-function DailyChart({ daily, resultLabel }: { daily: { date: string; spend: number; results: number }[]; resultLabel: string }) {
+// Registro de métricas plotáveis na evolução diária.
+type MetricKey = "spend" | "results" | "impressions" | "clicks" | "pageViews" | "ctr" | "cpc" | "revenue"
+type MetricDef = { label: string; color: string; fmt: (v: number) => string }
+const fmtInt = (v: number) => Math.round(v).toLocaleString("pt-BR")
+
+// Evolução diária: até 2 métricas selecionáveis (área no eixo esq. + linha no eixo dir.).
+function DailyChart({ daily, resultLabel, trackRevenue }: { daily: DlyPoint[]; resultLabel: string; trackRevenue: boolean }) {
+  const METRICS: Record<MetricKey, MetricDef> = {
+    spend: { label: "Investimento", color: "#FF8F50", fmt: brl },
+    results: { label: resultLabel, color: "#38bdf8", fmt: fmtInt },
+    impressions: { label: "Impressões", color: "#a78bfa", fmt: fmtInt },
+    clicks: { label: "Cliques", color: "#34d399", fmt: fmtInt },
+    pageViews: { label: "Page views", color: "#fbbf24", fmt: fmtInt },
+    ctr: { label: "CTR", color: "#f472b6", fmt: (v) => `${v.toFixed(2)}%` },
+    cpc: { label: "CPC", color: "#22d3ee", fmt: brl },
+    revenue: { label: "Receita", color: "#4ade80", fmt: brl },
+  }
+  const [sel, setSel] = useState<MetricKey[]>(["spend", "results"])
+  const toggle = (k: MetricKey) =>
+    setSel((cur) => (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k].slice(-2)))
+
+  // Chips disponíveis conforme a presença de dados.
+  const hasPv = daily.some((d) => d.pageViews > 0)
+  const chips = (["spend", "results", "impressions", "clicks", "ctr", "cpc"] as MetricKey[])
+    .concat(hasPv ? (["pageViews"] as MetricKey[]) : [])
+    .concat(trackRevenue ? (["revenue"] as MetricKey[]) : [])
+
   if (!daily.length) return null
-  const data = daily.map((d) => ({ dia: d.date.slice(8, 10), Gasto: Math.round(d.spend), [resultLabel]: d.results }))
+  const data = daily.map((d) => {
+    const impressions = d.impressions ?? 0, clicks = d.clicks ?? 0, spend = d.spend ?? 0
+    return {
+      dia: d.date.slice(8, 10),
+      spend: Math.round(spend), results: d.results ?? 0, impressions, clicks,
+      pageViews: d.pageViews ?? 0, revenue: Math.round(d.revenue ?? 0),
+      ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+      cpc: clicks > 0 ? spend / clicks : 0,
+    }
+  })
+  const primary = sel[0], secondary = sel[1]
+
   return (
     <div className="rounded-xl border border-white/8 bg-black/20 p-4">
-      <p className="mb-2 text-[11px] text-zinc-500">Evolução diária</p>
-      <ResponsiveContainer width="100%" height={200}>
-        <ComposedChart data={data} margin={{ top: 5, right: 8, left: -8, bottom: 0 }}>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[11px] text-zinc-500">Evolução diária</p>
+        <div className="flex flex-wrap gap-1.5">
+          {chips.map((k) => {
+            const on = sel.includes(k)
+            return (
+              <button key={k} onClick={() => toggle(k)}
+                className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium transition ${on ? "bg-white/10 text-white" : "bg-white/[0.03] text-zinc-500 hover:text-zinc-300"}`}>
+                <span className="h-2 w-2 rounded-full" style={{ background: on ? METRICS[k].color : "#52525b" }} />
+                {METRICS[k].label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={320}>
+        <ComposedChart data={data} margin={{ top: 5, right: 8, left: -4, bottom: 0 }}>
           <defs>
-            <linearGradient id="gSpend" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#FF8F50" stopOpacity={0.4} />
-              <stop offset="100%" stopColor="#FF8F50" stopOpacity={0} />
+            <linearGradient id="gPrimary" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={primary ? METRICS[primary].color : "#FF8F50"} stopOpacity={0.35} />
+              <stop offset="100%" stopColor={primary ? METRICS[primary].color : "#FF8F50"} stopOpacity={0} />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-          <XAxis dataKey="dia" tick={{ fill: "#71717a", fontSize: 10 }} tickLine={false} axisLine={false} />
-          <YAxis yAxisId="l" tick={{ fill: "#71717a", fontSize: 10 }} tickLine={false} axisLine={false} width={44} />
-          <YAxis yAxisId="r" orientation="right" tick={{ fill: "#71717a", fontSize: 10 }} tickLine={false} axisLine={false} width={30} />
-          <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "#a1a1aa" }} />
-          <Area yAxisId="l" type="monotone" dataKey="Gasto" stroke="#FF8F50" strokeWidth={2} fill="url(#gSpend)" />
-          <Line yAxisId="r" type="monotone" dataKey={resultLabel} stroke="#38bdf8" strokeWidth={2} dot={false} />
+          <XAxis dataKey="dia" tick={{ fill: "#71717a", fontSize: 11 }} tickLine={false} axisLine={false} />
+          <YAxis yAxisId="l" tick={{ fill: "#71717a", fontSize: 11 }} tickLine={false} axisLine={false} width={48} />
+          {secondary && <YAxis yAxisId="r" orientation="right" tick={{ fill: "#71717a", fontSize: 11 }} tickLine={false} axisLine={false} width={40} />}
+          <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "#a1a1aa" }}
+            formatter={(value, name) => {
+              const k = (Object.keys(METRICS) as MetricKey[]).find((m) => METRICS[m].label === name)
+              return [k ? METRICS[k].fmt(Number(value)) : String(value), name as string]
+            }} />
+          {primary && <Area yAxisId="l" type="monotone" dataKey={primary} name={METRICS[primary].label} stroke={METRICS[primary].color} strokeWidth={2} fill="url(#gPrimary)" />}
+          {secondary && <Line yAxisId="r" type="monotone" dataKey={secondary} name={METRICS[secondary].label} stroke={METRICS[secondary].color} strokeWidth={2} dot={false} />}
         </ComposedChart>
       </ResponsiveContainer>
     </div>
@@ -449,16 +504,14 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
             <KpiCard label="CPM" value={brl(view.cpm)} />
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <DailyChart daily={view.daily} resultLabel={resultLabel} />
-            <VisualFunnel steps={[
-              { label: "Impressões", value: view.impressions, display: view.impressions.toLocaleString("pt-BR") },
-              { label: "Cliques", value: view.clicks, display: view.clicks.toLocaleString("pt-BR") },
-              ...(view.pageViews > 0 ? [{ label: "Visualizações de página", value: view.pageViews, display: view.pageViews.toLocaleString("pt-BR") }] : []),
-              { label: resultLabel, value: view.results, display: String(view.results) },
-              ...(perf.current.trackRevenue && view.revenue != null ? [{ label: "Receita", value: view.revenue, display: brl(view.revenue) }] : []),
-            ]} />
-          </div>
+          <DailyChart daily={view.daily} resultLabel={resultLabel} trackRevenue={perf.current.trackRevenue} />
+          <VisualFunnel steps={[
+            { label: "Impressões", value: view.impressions, display: view.impressions.toLocaleString("pt-BR") },
+            { label: "Cliques", value: view.clicks, display: view.clicks.toLocaleString("pt-BR") },
+            ...(view.pageViews > 0 ? [{ label: "Visualizações de página", value: view.pageViews, display: view.pageViews.toLocaleString("pt-BR") }] : []),
+            { label: resultLabel, value: view.results, display: String(view.results) },
+            ...(perf.current.trackRevenue && view.revenue != null ? [{ label: "Receita", value: view.revenue, display: brl(view.revenue) }] : []),
+          ]} />
           </>
           )}
 
@@ -473,8 +526,9 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
             </div>
           )}
 
-          {/* Explorador é Meta-only (árvore Campanha/Conjunto/Anúncio) */}
+          {/* Exploradores: Meta (Conjunto/Anúncio) e Google (Grupo/Palavra-chave) */}
           {(isAll || source === "META") && okProviders.some((p) => p.provider === "META") && <Explorer clientId={clientId} month={month} />}
+          {(isAll || source === "GOOGLE") && okProviders.some((p) => p.provider === "GOOGLE") && <GoogleExplorer clientId={clientId} month={month} />}
 
           {/* Leitura de IA */}
           <div className="rounded-xl border border-[#FF8F50]/20 bg-[#FF8F50]/[0.05] p-4">
@@ -558,6 +612,85 @@ function Explorer({ clientId, month }: { clientId: string; month: string }) {
                             </div>
                           ))}
                           {!s.ads.length && <p className="px-2 text-[10px] text-zinc-600">Sem anúncios com veiculação.</p>}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Explorador Google: Campanha → Grupo de anúncios → Palavra-chave.
+type GKeyword = { text: string; matchType: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null }
+type GAdGroup = { id: string; name: string; spend: number; results: number; cpa: number | null; ctr: number | null; keywords: GKeyword[] }
+type GCampaign = { id: string; name: string; spend: number; results: number; cpa: number | null; ctr: number | null; adGroups: GAdGroup[] }
+const MATCH_LABEL: Record<string, string> = { EXACT: "exata", PHRASE: "frase", BROAD: "ampla" }
+
+function GoogleExplorer({ clientId, month }: { clientId: string; month: string }) {
+  const [campaigns, setCampaigns] = useState<GCampaign[] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState("")
+  const [open, setOpen] = useState<Record<string, boolean>>({})
+  const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }))
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr(""); setCampaigns(null)
+    const res = await fetch(`/api/clients/${clientId}/performance/explore?provider=GOOGLE&month=${month}`)
+    const data = await res.json()
+    setLoading(false)
+    if (!res.ok) { setErr(data.error ?? "Falha ao explorar."); return }
+    setCampaigns(data.campaigns)
+  }, [clientId, month])
+  useEffect(() => { void load() }, [load])
+
+  return (
+    <div className="rounded-xl border border-white/8 bg-black/20 p-4">
+      <p className="mb-2 text-[11px] text-zinc-500">Explorador — Campanha ▸ Grupo ▸ Palavra-chave (Google)</p>
+      {loading ? (
+        <div className="flex min-h-20 items-center justify-center"><Loader2 size={16} className="animate-spin text-[#FF8F50]" /></div>
+      ) : err ? (
+        <p className="text-xs text-red-300">{err}</p>
+      ) : !campaigns?.length ? (
+        <p className="text-xs text-zinc-600">Sem campanhas com veiculação no mês.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {campaigns.map((c) => (
+            <div key={c.id} className="rounded-lg border border-white/8 bg-black/20">
+              <button onClick={() => toggle(c.id)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left">
+                <span className="flex min-w-0 items-center gap-2 text-sm">
+                  <span className="text-zinc-600">{open[c.id] ? "▾" : "▸"}</span>
+                  <span className="truncate font-medium text-zinc-100">{c.name}</span>
+                </span>
+                <span className="shrink-0 text-[11px] text-zinc-500">{mini(c.spend, c.results, c.cpa)}</span>
+              </button>
+              {open[c.id] && (
+                <div className="space-y-1 border-t border-white/5 px-2 py-2">
+                  {c.adGroups.map((g) => (
+                    <div key={g.id} className="rounded-lg bg-white/[0.02]">
+                      <button onClick={() => toggle(g.id)} className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left">
+                        <span className="flex min-w-0 items-center gap-2 text-xs">
+                          <span className="text-zinc-600">{open[g.id] ? "▾" : "▸"}</span>
+                          <span className="truncate text-zinc-300">{g.name}</span>
+                        </span>
+                        <span className="shrink-0 text-[10px] text-zinc-500">{mini(g.spend, g.results, g.cpa)}</span>
+                      </button>
+                      {open[g.id] && (
+                        <div className="space-y-1 px-2 pb-2">
+                          {g.keywords.map((k, i) => (
+                            <div key={i} className="flex items-center justify-between gap-2 rounded-md bg-black/30 px-2 py-1.5">
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-[11px] text-zinc-200" title={k.text}>{k.text} <span className="text-[9px] text-zinc-600">[{MATCH_LABEL[k.matchType] ?? k.matchType.toLowerCase()}]</span></p>
+                                <p className="text-[10px] text-zinc-500">{brl(k.spend)} · {k.results} result. · CTR {k.ctr != null ? `${k.ctr.toFixed(1)}%` : "—"} · CPA {brl(k.cpa)}</p>
+                              </div>
+                            </div>
+                          ))}
+                          {!g.keywords.length && <p className="px-2 text-[10px] text-zinc-600">Sem palavras-chave (campanha PMAX/Display?).</p>}
                         </div>
                       )}
                     </div>

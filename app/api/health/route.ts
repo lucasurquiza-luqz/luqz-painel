@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic"
 
 // Marcador de build: bumpado a cada release para confirmar, sem login, qual
 // versao esta efetivamente no ar (o middleware bloqueia as demais rotas /api).
-const BUILD_MARKER = "painel-por-fonte-2026-06-27"
+const BUILD_MARKER = "grafico-metricas-google-explorer-2026-06-27"
 
 export async function GET() {
   try {

@@ -69,10 +69,14 @@ export async function getClientRealizado(clientId: string, month: string): Promi
   const revenue = revenueVals.length ? revenueVals.reduce((s, v) => s + v, 0) : null
 
   // Série diária mesclada (soma entre providers por data).
-  const byDay = new Map<string, { spend: number; results: number }>()
+  const byDay = new Map<string, Omit<DailyPoint, "date">>()
   for (const r of ok) for (const d of r.daily) {
-    const prev = byDay.get(d.date) ?? { spend: 0, results: 0 }
-    byDay.set(d.date, { spend: prev.spend + d.spend, results: prev.results + d.results })
+    const prev = byDay.get(d.date) ?? { spend: 0, results: 0, impressions: 0, clicks: 0, pageViews: 0, revenue: 0 }
+    byDay.set(d.date, {
+      spend: prev.spend + d.spend, results: prev.results + d.results,
+      impressions: prev.impressions + d.impressions, clicks: prev.clicks + d.clicks,
+      pageViews: prev.pageViews + d.pageViews, revenue: prev.revenue + d.revenue,
+    })
   }
   const daily: DailyPoint[] = [...byDay.entries()].map(([date, v]) => ({ date, ...v })).sort((a, b) => a.date.localeCompare(b.date))
 
