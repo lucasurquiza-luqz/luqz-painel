@@ -53,6 +53,11 @@ function lastDaysSel(n: number): RangeSel {
   since.setDate(since.getDate() - (n - 1))
   return { since: isoDay(since), until: isoDay(until), month: null, label: `Últimos ${n} dias` }
 }
+function daySel(offsetDays: number, label: string): RangeSel {
+  const d = new Date(); d.setDate(d.getDate() - offsetDays)
+  const iso = isoDay(d)
+  return { since: iso, until: iso, month: null, label }
+}
 
 export default function MetasPage() {
   const { id: clientId } = useParams<{ id: string }>()
@@ -398,11 +403,13 @@ function VisualFunnel({ steps }: { steps: { label: string; value: number; displa
 function DateRangeControl({ value, onChange }: { value: RangeSel; onChange: (r: RangeSel) => void }) {
   const [custom, setCustom] = useState(value.month === null)
   const presets = [
-    { key: "month", label: "Este mês", make: () => monthSel(currentMonth()) },
-    { key: "prev", label: "Mês passado", make: prevMonthSel },
+    { key: "today", label: "Hoje", make: () => daySel(0, "Hoje") },
+    { key: "yesterday", label: "Ontem", make: () => daySel(1, "Ontem") },
     { key: "7", label: "7 dias", make: () => lastDaysSel(7) },
     { key: "14", label: "14 dias", make: () => lastDaysSel(14) },
     { key: "30", label: "30 dias", make: () => lastDaysSel(30) },
+    { key: "month", label: "Este mês", make: () => monthSel(currentMonth()) },
+    { key: "prev", label: "Mês passado", make: prevMonthSel },
   ]
   const chip = (on: boolean) => `rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${on ? "bg-[#FF8F50] text-black" : "bg-white/5 text-zinc-400 hover:bg-white/10"}`
   const dateInput = "min-h-9 rounded-lg border border-white/10 bg-black/30 px-2 text-xs text-zinc-200 [color-scheme:dark]"
@@ -609,14 +616,37 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
 type AdNode = { id: string; name: string; spend: number; results: number; cpa: number | null; ctr: number | null; hookRate: number | null; convRate: number | null; thumbnail: string | null; permalink: string | null }
 type AdsetNode = { id: string; name: string; spend: number; results: number; cpa: number | null; ctr: number | null; audience: string | null; ads: AdNode[] }
 type CampaignNode = { id: string; name: string; spend: number; results: number; cpa: number | null; ctr: number | null; adsets: AdsetNode[] }
-const mini = (spend: number, results: number, cpa: number | null) => `${brl(spend)} · ${results} result. · CPA ${brl(cpa)}`
+// Colunas de métrica alinhadas à direita (rótulo em cima, valor em destaque).
+function MetricCols({ items }: { items: { label: string; value: string; tone?: string }[] }) {
+  return (
+    <div className="flex shrink-0 items-center gap-3 sm:gap-5">
+      {items.map((m) => (
+        <div key={m.label} className="text-right">
+          <p className="text-[9px] uppercase tracking-wide text-zinc-600">{m.label}</p>
+          <p className={`text-[13px] font-semibold tabular-nums ${m.tone ?? "text-zinc-100"}`}>{m.value}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+// Barra fina de participação no gasto (share do total).
+function ShareBar({ share }: { share: number }) {
+  return (
+    <div className="h-1 w-full overflow-hidden rounded-full bg-white/5">
+      <div className="h-full rounded-full bg-gradient-to-r from-[#FF8F50]/70 to-[#FFB185]/70" style={{ width: `${Math.max(1, share * 100)}%` }} />
+    </div>
+  )
+}
+const chevron = (on: boolean) => <span className={`text-zinc-500 transition-transform ${on ? "rotate-90" : ""}`}>▸</span>
 
 function Explorer({ clientId, since, until }: { clientId: string; since: string; until: string }) {
   const [campaigns, setCampaigns] = useState<CampaignNode[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState("")
   const [open, setOpen] = useState<Record<string, boolean>>({})
-  const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }))
+  const [expandAll, setExpandAll] = useState(false)
+  const isOpen = (id: string) => open[id] ?? expandAll
+  const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !(o[id] ?? expandAll) }))
 
   const load = useCallback(async () => {
     setLoading(true); setErr(""); setCampaigns(null)
@@ -628,51 +658,73 @@ function Explorer({ clientId, since, until }: { clientId: string; since: string;
   }, [clientId, since, until])
   useEffect(() => { void load() }, [load])
 
+  const totalSpend = (campaigns ?? []).reduce((s, c) => s + c.spend, 0) || 1
+
   return (
-    <div className="rounded-xl border border-white/8 bg-black/20 p-4">
-      <p className="mb-2 text-[11px] text-zinc-500">Explorador — Campanha ▸ Conjunto (público) ▸ Anúncio (Meta)</p>
+    <div className="rounded-2xl border border-white/8 bg-black/20 p-5">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="text-xs font-medium text-zinc-400">Explorador — Campanha ▸ Conjunto ▸ Anúncio <span className="text-zinc-600">(Meta)</span></p>
+        {!!campaigns?.length && <button onClick={() => { setExpandAll((v) => !v); setOpen({}) }} className="text-[11px] text-zinc-500 hover:text-zinc-300">{expandAll ? "Recolher tudo" : "Expandir tudo"}</button>}
+      </div>
       {loading ? (
-        <div className="flex min-h-20 items-center justify-center"><Loader2 size={16} className="animate-spin text-[#FF8F50]" /></div>
+        <div className="flex min-h-24 items-center justify-center"><Loader2 size={18} className="animate-spin text-[#FF8F50]" /></div>
       ) : err ? (
         <p className="text-xs text-red-300">{err}</p>
       ) : !campaigns?.length ? (
-        <p className="text-xs text-zinc-600">Sem campanhas com veiculação no mês.</p>
+        <p className="text-xs text-zinc-600">Sem campanhas com veiculação no período.</p>
       ) : (
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           {campaigns.map((c) => (
-            <div key={c.id} className="rounded-lg border border-white/8 bg-black/20">
-              <button onClick={() => toggle(c.id)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left">
-                <span className="flex min-w-0 items-center gap-2 text-sm">
-                  <span className="text-zinc-600">{open[c.id] ? "▾" : "▸"}</span>
-                  <span className="truncate font-medium text-zinc-100">{c.name}</span>
-                </span>
-                <span className="shrink-0 text-[11px] text-zinc-500">{mini(c.spend, c.results, c.cpa)}</span>
+            <div key={c.id} className="overflow-hidden rounded-xl border border-white/8 bg-white/[0.015]">
+              <button onClick={() => toggle(c.id)} className="w-full px-4 py-3 text-left hover:bg-white/[0.02]">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    {chevron(isOpen(c.id))}
+                    <span className="truncate text-[15px] font-semibold text-zinc-50" title={c.name}>{c.name}</span>
+                  </span>
+                  <MetricCols items={[
+                    { label: "Gasto", value: brl(c.spend) },
+                    { label: "Result.", value: String(c.results), tone: "text-sky-300" },
+                    { label: "CPA", value: brl(c.cpa), tone: "text-emerald-300" },
+                  ]} />
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <ShareBar share={c.spend / totalSpend} />
+                  <span className="shrink-0 text-[10px] text-zinc-600">{Math.round((c.spend / totalSpend) * 100)}% do gasto</span>
+                </div>
               </button>
-              {open[c.id] && (
-                <div className="space-y-1 border-t border-white/5 px-2 py-2">
+              {isOpen(c.id) && (
+                <div className="space-y-1.5 border-t border-white/5 bg-black/20 p-2">
                   {c.adsets.map((s) => (
                     <div key={s.id} className="rounded-lg bg-white/[0.02]">
-                      <button onClick={() => toggle(s.id)} className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left">
-                        <span className="flex min-w-0 items-center gap-2 text-xs">
-                          <span className="text-zinc-600">{open[s.id] ? "▾" : "▸"}</span>
-                          <span className="truncate text-zinc-300">{s.name}</span>
+                      <button onClick={() => toggle(s.id)} className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-white/[0.02]">
+                        <span className="flex min-w-0 flex-col gap-1">
+                          <span className="flex min-w-0 items-center gap-2 text-[13px]">
+                            {chevron(isOpen(s.id))}
+                            <span className="truncate font-medium text-zinc-200" title={s.name}>{s.name}</span>
+                          </span>
+                          {s.audience && <span className="ml-5 truncate text-[11px] text-sky-300/70">👥 {s.audience}</span>}
                         </span>
-                        <span className="shrink-0 text-[10px] text-zinc-500">{mini(s.spend, s.results, s.cpa)}</span>
+                        <MetricCols items={[
+                          { label: "Gasto", value: brl(s.spend) },
+                          { label: "Result.", value: String(s.results), tone: "text-sky-300" },
+                          { label: "CPA", value: brl(s.cpa), tone: "text-emerald-300" },
+                        ]} />
                       </button>
-                      {s.audience && <p className="px-3 pb-1 text-[10px] text-sky-300/70">👥 {s.audience}</p>}
-                      {open[s.id] && (
-                        <div className="space-y-1 px-2 pb-2">
+                      {isOpen(s.id) && (
+                        <div className="grid grid-cols-1 gap-2 p-2 xl:grid-cols-2">
                           {s.ads.map((ad) => (
-                            <div key={ad.id} className="flex items-center gap-2 rounded-md bg-black/30 px-2 py-1.5">
-                              {ad.thumbnail ? <img src={ad.thumbnail} alt="" className="h-9 w-9 shrink-0 rounded object-cover" /> : <span className="h-9 w-9 shrink-0 rounded bg-white/5" />}
+                            <div key={ad.id} className="flex items-center gap-3 rounded-lg bg-black/30 p-2.5">
+                              {ad.thumbnail ? <img src={ad.thumbnail} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" /> : <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[9px] text-zinc-600">sem<br />preview</span>}
                               <div className="min-w-0 flex-1">
-                                <p className="truncate text-[11px] text-zinc-200" title={ad.name}>{ad.name}</p>
-                                <p className="text-[10px] text-zinc-500">{brl(ad.spend)} · {ad.results} result. · CTR {ad.ctr != null ? `${ad.ctr.toFixed(1)}%` : "—"} · Hook {ad.hookRate != null ? `${ad.hookRate.toFixed(0)}%` : "—"} · Conv {ad.convRate != null ? `${ad.convRate.toFixed(0)}%` : "—"}</p>
+                                <p className="truncate text-[13px] font-medium text-zinc-100" title={ad.name}>{ad.name}</p>
+                                <p className="mt-0.5 text-[11px] text-zinc-400">{brl(ad.spend)} · <span className="text-sky-300">{ad.results} result.</span> · CPA {brl(ad.cpa)}</p>
+                                <p className="mt-0.5 text-[10px] text-zinc-500">CTR {ad.ctr != null ? `${ad.ctr.toFixed(1)}%` : "—"} · Hook {ad.hookRate != null ? `${ad.hookRate.toFixed(0)}%` : "—"} · Conv {ad.convRate != null ? `${ad.convRate.toFixed(0)}%` : "—"}</p>
                               </div>
-                              {ad.permalink && <a href={ad.permalink} target="_blank" rel="noopener noreferrer" className="shrink-0 text-[10px] text-[#FFB185] hover:underline">abrir ↗</a>}
+                              {ad.permalink && <a href={ad.permalink} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-md bg-white/5 px-2 py-1 text-[10px] text-[#FFB185] hover:bg-white/10">abrir ↗</a>}
                             </div>
                           ))}
-                          {!s.ads.length && <p className="px-2 text-[10px] text-zinc-600">Sem anúncios com veiculação.</p>}
+                          {!s.ads.length && <p className="px-2 text-[11px] text-zinc-600">Sem anúncios com veiculação.</p>}
                         </div>
                       )}
                     </div>
@@ -698,7 +750,9 @@ function GoogleExplorer({ clientId, since, until }: { clientId: string; since: s
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState("")
   const [open, setOpen] = useState<Record<string, boolean>>({})
-  const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }))
+  const [expandAll, setExpandAll] = useState(false)
+  const isOpen = (id: string) => open[id] ?? expandAll
+  const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !(o[id] ?? expandAll) }))
 
   const load = useCallback(async () => {
     setLoading(true); setErr(""); setCampaigns(null)
@@ -710,48 +764,70 @@ function GoogleExplorer({ clientId, since, until }: { clientId: string; since: s
   }, [clientId, since, until])
   useEffect(() => { void load() }, [load])
 
+  const totalSpend = (campaigns ?? []).reduce((s, c) => s + c.spend, 0) || 1
+
   return (
-    <div className="rounded-xl border border-white/8 bg-black/20 p-4">
-      <p className="mb-2 text-[11px] text-zinc-500">Explorador — Campanha ▸ Grupo ▸ Palavra-chave (Google)</p>
+    <div className="rounded-2xl border border-white/8 bg-black/20 p-5">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="text-xs font-medium text-zinc-400">Explorador — Campanha ▸ Grupo ▸ Palavra-chave <span className="text-zinc-600">(Google)</span></p>
+        {!!campaigns?.length && <button onClick={() => { setExpandAll((v) => !v); setOpen({}) }} className="text-[11px] text-zinc-500 hover:text-zinc-300">{expandAll ? "Recolher tudo" : "Expandir tudo"}</button>}
+      </div>
       {loading ? (
-        <div className="flex min-h-20 items-center justify-center"><Loader2 size={16} className="animate-spin text-[#FF8F50]" /></div>
+        <div className="flex min-h-24 items-center justify-center"><Loader2 size={18} className="animate-spin text-[#FF8F50]" /></div>
       ) : err ? (
         <p className="text-xs text-red-300">{err}</p>
       ) : !campaigns?.length ? (
-        <p className="text-xs text-zinc-600">Sem campanhas com veiculação no mês.</p>
+        <p className="text-xs text-zinc-600">Sem campanhas com veiculação no período.</p>
       ) : (
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           {campaigns.map((c) => (
-            <div key={c.id} className="rounded-lg border border-white/8 bg-black/20">
-              <button onClick={() => toggle(c.id)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left">
-                <span className="flex min-w-0 items-center gap-2 text-sm">
-                  <span className="text-zinc-600">{open[c.id] ? "▾" : "▸"}</span>
-                  <span className="truncate font-medium text-zinc-100">{c.name}</span>
-                </span>
-                <span className="shrink-0 text-[11px] text-zinc-500">{mini(c.spend, c.results, c.cpa)}</span>
+            <div key={c.id} className="overflow-hidden rounded-xl border border-white/8 bg-white/[0.015]">
+              <button onClick={() => toggle(c.id)} className="w-full px-4 py-3 text-left hover:bg-white/[0.02]">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    {chevron(isOpen(c.id))}
+                    <span className="truncate text-[15px] font-semibold text-zinc-50" title={c.name}>{c.name}</span>
+                  </span>
+                  <MetricCols items={[
+                    { label: "Gasto", value: brl(c.spend) },
+                    { label: "Result.", value: String(c.results), tone: "text-sky-300" },
+                    { label: "CPA", value: brl(c.cpa), tone: "text-emerald-300" },
+                  ]} />
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <ShareBar share={c.spend / totalSpend} />
+                  <span className="shrink-0 text-[10px] text-zinc-600">{Math.round((c.spend / totalSpend) * 100)}% do gasto</span>
+                </div>
               </button>
-              {open[c.id] && (
-                <div className="space-y-1 border-t border-white/5 px-2 py-2">
+              {isOpen(c.id) && (
+                <div className="space-y-1.5 border-t border-white/5 bg-black/20 p-2">
                   {c.adGroups.map((g) => (
                     <div key={g.id} className="rounded-lg bg-white/[0.02]">
-                      <button onClick={() => toggle(g.id)} className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left">
-                        <span className="flex min-w-0 items-center gap-2 text-xs">
-                          <span className="text-zinc-600">{open[g.id] ? "▾" : "▸"}</span>
-                          <span className="truncate text-zinc-300">{g.name}</span>
+                      <button onClick={() => toggle(g.id)} className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-white/[0.02]">
+                        <span className="flex min-w-0 items-center gap-2 text-[13px]">
+                          {chevron(isOpen(g.id))}
+                          <span className="truncate font-medium text-zinc-200" title={g.name}>{g.name}</span>
                         </span>
-                        <span className="shrink-0 text-[10px] text-zinc-500">{mini(g.spend, g.results, g.cpa)}</span>
+                        <MetricCols items={[
+                          { label: "Gasto", value: brl(g.spend) },
+                          { label: "Result.", value: String(g.results), tone: "text-sky-300" },
+                          { label: "CPA", value: brl(g.cpa), tone: "text-emerald-300" },
+                        ]} />
                       </button>
-                      {open[g.id] && (
-                        <div className="space-y-1 px-2 pb-2">
+                      {isOpen(g.id) && (
+                        <div className="space-y-1 p-2">
                           {g.keywords.map((k, i) => (
-                            <div key={i} className="flex items-center justify-between gap-2 rounded-md bg-black/30 px-2 py-1.5">
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-[11px] text-zinc-200" title={k.text}>{k.text} <span className="text-[9px] text-zinc-600">[{MATCH_LABEL[k.matchType] ?? k.matchType.toLowerCase()}]</span></p>
-                                <p className="text-[10px] text-zinc-500">{brl(k.spend)} · {k.results} result. · CTR {k.ctr != null ? `${k.ctr.toFixed(1)}%` : "—"} · CPA {brl(k.cpa)}</p>
-                              </div>
+                            <div key={i} className="flex items-center justify-between gap-3 rounded-lg bg-black/30 px-3 py-2">
+                              <p className="min-w-0 flex-1 truncate text-[13px] text-zinc-100" title={k.text}>{k.text} <span className="text-[10px] text-zinc-600">[{MATCH_LABEL[k.matchType] ?? k.matchType.toLowerCase()}]</span></p>
+                              <MetricCols items={[
+                                { label: "Gasto", value: brl(k.spend) },
+                                { label: "CTR", value: k.ctr != null ? `${k.ctr.toFixed(1)}%` : "—" },
+                                { label: "Result.", value: String(k.results), tone: "text-sky-300" },
+                                { label: "CPA", value: brl(k.cpa), tone: "text-emerald-300" },
+                              ]} />
                             </div>
                           ))}
-                          {!g.keywords.length && <p className="px-2 text-[10px] text-zinc-600">Sem palavras-chave (campanha PMAX/Display?).</p>}
+                          {!g.keywords.length && <p className="px-2 text-[11px] text-zinc-600">Sem palavras-chave (campanha PMAX/Display?).</p>}
                         </div>
                       )}
                     </div>
