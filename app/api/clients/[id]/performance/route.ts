@@ -1,26 +1,37 @@
 import { NextRequest, NextResponse } from "next/server"
 import { canAccessClient, denyClientAccess, requireApiUser } from "@/lib/api-auth"
-import { getCachedPerformance, getPerformanceHistory, refreshPerformanceSnapshot } from "@/lib/ads/snapshot"
+import { getCachedPerformance, getLivePerformance, getPerformanceHistory, refreshPerformanceSnapshot } from "@/lib/ads/snapshot"
 
 type Params = { params: Promise<{ id: string }> }
 
 function validMonth(m: string | null): m is string {
   return !!m && /^\d{4}-\d{2}$/.test(m)
 }
+function validDate(d: string | null): d is string {
+  return !!d && /^\d{4}-\d{2}-\d{2}$/.test(d)
+}
 
-// GET: lê do cache (snapshot). Se não existir, busca uma vez e grava.
+// GET: mês fechado → cache (snapshot); intervalo since/until → leitura ao vivo.
 export async function GET(req: NextRequest, { params }: Params) {
   const { id } = await params
   const auth = await requireApiUser(["ADMIN", "OPERADOR"])
   if (!auth.ok) return auth.response
   if (!canAccessClient(auth.user, id)) return denyClientAccess()
 
-  const month = req.nextUrl.searchParams.get("month")
-  if (!validMonth(month)) return NextResponse.json({ error: "Informe o mês no formato AAAA-MM." }, { status: 400 })
+  const sp = req.nextUrl.searchParams
+  const month = sp.get("month")
+  const since = sp.get("since"), until = sp.get("until")
 
   try {
-    const [cached, history] = await Promise.all([getCachedPerformance(id, month), getPerformanceHistory(id)])
-    return NextResponse.json({ ...cached, history })
+    if (validMonth(month)) {
+      const [cached, history] = await Promise.all([getCachedPerformance(id, month), getPerformanceHistory(id)])
+      return NextResponse.json({ ...cached, history })
+    }
+    if (validDate(since) && validDate(until)) {
+      const [live, history] = await Promise.all([getLivePerformance(id, { since, until }), getPerformanceHistory(id)])
+      return NextResponse.json({ ...live, history })
+    }
+    return NextResponse.json({ error: "Informe ?month=AAAA-MM ou ?since=&until= (AAAA-MM-DD)." }, { status: 400 })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao ler performance." }, { status: 502 })
   }

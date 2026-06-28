@@ -4,9 +4,10 @@ import { canAccessClient, denyClientAccess, requireApiUser } from "@/lib/api-aut
 import { decryptSecret } from "@/lib/crypto-secrets"
 import { fetchMetaTree } from "@/lib/ads/meta"
 import { fetchGoogleTree } from "@/lib/ads/google"
-import { effectiveObjectives, type AdConfig, type AdObjective } from "@/lib/ads/types"
+import { effectiveObjectives, monthRange, type AdConfig, type AdObjective, type DateRange } from "@/lib/ads/types"
 
 type Params = { params: Promise<{ id: string }> }
+const validDate = (d: string | null): d is string => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d)
 
 // Explorador: Meta (Campanha → Conjunto → Anúncio) ou Google (Campanha → Grupo → Palavra-chave).
 export async function GET(req: NextRequest, { params }: Params) {
@@ -15,16 +16,19 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (!auth.ok) return auth.response
   if (!canAccessClient(auth.user, id)) return denyClientAccess()
 
-  const month = req.nextUrl.searchParams.get("month")
-  if (!month || !/^\d{4}-\d{2}$/.test(month)) return NextResponse.json({ error: "Mês inválido." }, { status: 400 })
-  const provider = req.nextUrl.searchParams.get("provider") === "GOOGLE" ? "GOOGLE" : "META"
+  const sp = req.nextUrl.searchParams
+  const month = sp.get("month"), since = sp.get("since"), until = sp.get("until")
+  const range: DateRange | null =
+    validDate(since) && validDate(until) ? { since, until } : month && /^\d{4}-\d{2}$/.test(month) ? monthRange(month) : null
+  if (!range) return NextResponse.json({ error: "Informe month ou since/until." }, { status: 400 })
+  const provider = sp.get("provider") === "GOOGLE" ? "GOOGLE" : "META"
 
   const account = await prisma.clientAdAccount.findUnique({ where: { clientId_provider: { clientId: id, provider } } })
   if (!account) return NextResponse.json({ error: `Conta ${provider} não configurada.` }, { status: 400 })
 
   try {
     if (provider === "GOOGLE") {
-      const campaigns = await fetchGoogleTree(account.accountId, month)
+      const campaigns = await fetchGoogleTree(account.accountId, range)
       return NextResponse.json({ provider, campaigns })
     }
     if (!account.tokenEnc) return NextResponse.json({ error: "Conta Meta sem token cadastrado." }, { status: 400 })
@@ -33,7 +37,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       resultActions: account.resultActions,
       trackRevenue: account.trackRevenue,
     }
-    const campaigns = await fetchMetaTree(account.accountId, decryptSecret(account.tokenEnc), month, config)
+    const campaigns = await fetchMetaTree(account.accountId, decryptSecret(account.tokenEnc), range, config)
     return NextResponse.json({ provider, campaigns })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha ao explorar." }, { status: 502 })

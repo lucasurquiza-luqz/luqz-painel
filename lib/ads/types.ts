@@ -57,9 +57,21 @@ export function effectiveObjectives(objectives: AdObjective[], legacy: AdObjecti
   return objectives.length ? objectives : [legacy]
 }
 
+export type DateRange = { since: string; until: string }
+
 // "YYYY-MM" → primeiro e último dia do mês.
-export function monthRange(month: string): { since: string; until: string } {
+export function monthRange(month: string): DateRange {
   const [y, m] = month.split("-").map(Number)
   const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate()
   return { since: `${month}-01`, until: `${month}-${String(lastDay).padStart(2, "0")}` }
+}
+
+// Janela imediatamente anterior, de mesmo tamanho (comparação período-a-período).
+export function previousRange({ since, until }: DateRange): DateRange {
+  const s = new Date(`${since}T00:00:00Z`), u = new Date(`${until}T00:00:00Z`)
+  const days = Math.round((u.getTime() - s.getTime()) / 86_400_000) + 1
+  const prevUntil = new Date(s.getTime() - 86_400_000)
+  const prevSince = new Date(prevUntil.getTime() - (days - 1) * 86_400_000)
+  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  return { since: iso(prevSince), until: iso(prevUntil) }
 }

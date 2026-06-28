@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db"
 import { decryptSecret } from "@/lib/crypto-secrets"
 import { fetchMetaInsights } from "@/lib/ads/meta"
 import { fetchGoogleInsights } from "@/lib/ads/google"
-import { effectiveObjectives, type AdConfig, type AdMetrics, type AdObjective, type DailyPoint, type ResultBreakdown } from "@/lib/ads/types"
+import { effectiveObjectives, monthRange, type AdConfig, type AdMetrics, type AdObjective, type DailyPoint, type DateRange, type ResultBreakdown } from "@/lib/ads/types"
 
 export type ProviderResult = (AdMetrics & { error?: undefined }) | { provider: "META" | "GOOGLE"; error: string }
 export type Totals = { spend: number; impressions: number; clicks: number; pageViews: number; results: number; cpa: number | null; revenue: number | null; roas: number | null; ctr: number | null; cpc: number | null; cpm: number | null }
@@ -26,15 +26,21 @@ function prevMonth(month: string): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`
 }
 
-export async function getClientPerformance(clientId: string, month: string): Promise<Performance> {
+// Performance de um período arbitrário + janela anterior (para tendência).
+export async function getClientPerformance(clientId: string, range: DateRange, prevRange: DateRange): Promise<Performance> {
   const [current, previous] = await Promise.all([
-    getClientRealizado(clientId, month),
-    getClientRealizado(clientId, prevMonth(month)),
+    getClientRealizado(clientId, range),
+    getClientRealizado(clientId, prevRange),
   ])
-  return { month, current, previous: previous.total }
+  return { month: range.since.slice(0, 7), current, previous: previous.total }
 }
 
-export async function getClientRealizado(clientId: string, month: string): Promise<Realizado> {
+// Conveniência: mês fechado (usa o mês anterior como comparação).
+export function getClientPerformanceByMonth(clientId: string, month: string): Promise<Performance> {
+  return getClientPerformance(clientId, monthRange(month), monthRange(prevMonth(month)))
+}
+
+export async function getClientRealizado(clientId: string, range: DateRange): Promise<Realizado> {
   const accounts = await prisma.clientAdAccount.findMany({ where: { clientId } })
   const byProvider: ProviderResult[] = []
 
@@ -47,9 +53,9 @@ export async function getClientRealizado(clientId: string, month: string): Promi
     try {
       if (acc.provider === "META") {
         if (!acc.tokenEnc) { byProvider.push({ provider: "META", error: "Sem token cadastrado." }); continue }
-        byProvider.push(await fetchMetaInsights(acc.accountId, decryptSecret(acc.tokenEnc), month, config))
+        byProvider.push(await fetchMetaInsights(acc.accountId, decryptSecret(acc.tokenEnc), range, config))
       } else {
-        byProvider.push(await fetchGoogleInsights(acc.accountId, month, config))
+        byProvider.push(await fetchGoogleInsights(acc.accountId, range, config))
       }
     } catch (error) {
       byProvider.push({ provider: acc.provider, error: error instanceof Error ? error.message : "Falha ao ler." })

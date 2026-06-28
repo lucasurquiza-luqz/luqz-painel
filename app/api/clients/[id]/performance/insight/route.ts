@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { canAccessClient, denyClientAccess, requireApiUser } from "@/lib/api-auth"
-import { getClientPerformance } from "@/lib/ads/realizado"
+import { getClientPerformanceByMonth } from "@/lib/ads/realizado"
 import { chatComplete } from "@/lib/ai/provider"
 import { AiProviderNotConfiguredError } from "@/lib/ai/openai"
 
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const [client, perf, plans] = await Promise.all([
     prisma.client.findUnique({ where: { id }, select: { name: true, segment: true } }),
-    getClientPerformance(id, month),
+    getClientPerformanceByMonth(id, month),
     prisma.mediaPlan.findMany({ where: { clientId: id, month }, select: { platform: true, budget: true, targetLeads: true, targetCpa: true, targetRoas: true } }),
   ])
   if (!client) return NextResponse.json({ error: "Cliente não encontrado." }, { status: 404 })

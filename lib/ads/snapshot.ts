@@ -1,14 +1,21 @@
 import { formatInTimeZone } from "date-fns-tz"
 import { prisma } from "@/lib/db"
-import { getClientPerformance, type Performance } from "@/lib/ads/realizado"
+import { getClientPerformance, getClientPerformanceByMonth, type Performance } from "@/lib/ads/realizado"
+import { previousRange, type DateRange } from "@/lib/ads/types"
 
 const TZ = "America/Sao_Paulo"
 
 export type CachedPerformance = { performance: Performance; fetchedAt: string; cached: boolean }
 
+// Período arbitrário, sempre ao vivo (sem cache) — para intervalos custom/presets de dias.
+export async function getLivePerformance(clientId: string, range: DateRange): Promise<CachedPerformance> {
+  const performance = await getClientPerformance(clientId, range, previousRange(range))
+  return { performance, fetchedAt: new Date().toISOString(), cached: false }
+}
+
 // Refaz a leitura nas APIs de Ads e regrava o snapshot do mês.
 export async function refreshPerformanceSnapshot(clientId: string, month: string): Promise<Performance> {
-  const performance = await getClientPerformance(clientId, month)
+  const performance = await getClientPerformanceByMonth(clientId, month)
   await prisma.performanceSnapshot.upsert({
     where: { clientId_month: { clientId, month } },
     create: { clientId, month, data: performance as object },

@@ -1,4 +1,4 @@
-import { monthRange, AdsNotConfiguredError, type AdConfig, type AdMetrics, type GoogleCampaign, type GoogleAdGroup, type GoogleKeyword } from "@/lib/ads/types"
+import { AdsNotConfiguredError, type AdConfig, type AdMetrics, type GoogleCampaign, type GoogleKeyword, type DateRange } from "@/lib/ads/types"
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token"
 const ADS_API = "https://googleads.googleapis.com/v21"
@@ -53,9 +53,8 @@ const ratios = <T extends { spend: number; impressions: number; clicks: number; 
   ({ ...n, cpa: n.results > 0 ? n.spend / n.results : null, ctr: n.impressions > 0 ? (n.clicks / n.impressions) * 100 : null })
 
 // Árvore do mês: Campanha → Grupo de anúncios → Palavra-chave (via MCC central).
-export async function fetchGoogleTree(customerId: string, month: string): Promise<GoogleCampaign[]> {
+export async function fetchGoogleTree(customerId: string, { since, until }: DateRange): Promise<GoogleCampaign[]> {
   const cid = customerId.replace(/-/g, "")
-  const { since, until } = monthRange(month)
   const where = `WHERE segments.date BETWEEN '${since}' AND '${until}'`
   const M = "metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions"
 
@@ -127,10 +126,9 @@ export async function listMccAccounts(): Promise<{ customerId: string; name: str
 }
 
 // Lê métricas de um customer (sem traços) no mês, via MCC central.
-export async function fetchGoogleInsights(customerId: string, month: string, config: AdConfig): Promise<AdMetrics> {
+export async function fetchGoogleInsights(customerId: string, { since, until }: DateRange, config: AdConfig): Promise<AdMetrics> {
   const env = googleEnv()
   const cid = customerId.replace(/-/g, "")
-  const { since, until } = monthRange(month)
   const token = await accessToken(env)
 
   const query = `SELECT segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM customer WHERE segments.date BETWEEN '${since}' AND '${until}'`

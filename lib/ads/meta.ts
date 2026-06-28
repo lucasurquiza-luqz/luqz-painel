@@ -1,4 +1,4 @@
-import { monthRange, META_DEFAULT_ACTIONS, META_PURCHASE_ACTIONS, META_PAGEVIEW_ACTIONS, type AdConfig, type AdMetrics, type AdObjective, type AdNode, type CampaignNode, type ResultBreakdown } from "@/lib/ads/types"
+import { META_DEFAULT_ACTIONS, META_PURCHASE_ACTIONS, META_PAGEVIEW_ACTIONS, type AdConfig, type AdMetrics, type AdObjective, type AdNode, type CampaignNode, type ResultBreakdown, type DateRange } from "@/lib/ads/types"
 
 const GRAPH = "https://graph.facebook.com/v21.0"
 type Action = { action_type: string; value: string }
@@ -15,8 +15,7 @@ function resultKeys(config: AdConfig): Set<string> {
 }
 
 // Lê insights de uma conta Meta no mês (com série DIÁRIA), token DO CLIENTE, conforme a config.
-export async function fetchMetaInsights(accountId: string, token: string, month: string, config: AdConfig): Promise<AdMetrics> {
-  const { since, until } = monthRange(month)
+export async function fetchMetaInsights(accountId: string, token: string, { since, until }: DateRange, config: AdConfig): Promise<AdMetrics> {
   const acct = accountId.startsWith("act_") ? accountId : `act_${accountId}`
   const url =
     `${GRAPH}/${acct}/insights?level=account&time_increment=1&fields=spend,impressions,clicks,actions,action_values` +
@@ -89,8 +88,7 @@ function summarizeTargeting(t: Record<string, unknown> | null): string | null {
 }
 
 // Árvore completa do mês: Campanha → Conjunto (com público) → Anúncio (com preview).
-export async function fetchMetaTree(accountId: string, token: string, month: string, config: AdConfig): Promise<CampaignNode[]> {
-  const { since, until } = monthRange(month)
+export async function fetchMetaTree(accountId: string, token: string, { since, until }: DateRange, config: AdConfig): Promise<CampaignNode[]> {
   const acct = accountId.startsWith("act_") ? accountId : `act_${accountId}`
   const tr = encodeURIComponent(JSON.stringify({ since, until }))
   const url =

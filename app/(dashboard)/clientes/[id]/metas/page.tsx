@@ -36,6 +36,24 @@ function currentMonth(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
 }
 
+// Seleção de período: mês fechado (com cache) ou intervalo de dias (ao vivo).
+type RangeSel = { since: string; until: string; month: string | null; label: string }
+const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+function monthSel(ym: string): RangeSel {
+  const [y, m] = ym.split("-").map(Number)
+  const last = new Date(y, m, 0).getDate()
+  return { since: `${ym}-01`, until: `${ym}-${String(last).padStart(2, "0")}`, month: ym, label: fmtMonth(ym) }
+}
+function prevMonthSel(): RangeSel {
+  const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1)
+  return monthSel(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`)
+}
+function lastDaysSel(n: number): RangeSel {
+  const until = new Date(), since = new Date()
+  since.setDate(since.getDate() - (n - 1))
+  return { since: isoDay(since), until: isoDay(until), month: null, label: `Últimos ${n} dias` }
+}
+
 export default function MetasPage() {
   const { id: clientId } = useParams<{ id: string }>()
   const [plans, setPlans] = useState<Plan[]>([])
@@ -240,7 +258,7 @@ function KpiCard({ label, value, pct, trend }: { label: string; value: string; p
 const tooltipStyle = { background: "#161616", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }
 
 // Registro de métricas plotáveis na evolução diária.
-type MetricKey = "spend" | "results" | "impressions" | "clicks" | "pageViews" | "ctr" | "cpc" | "revenue"
+type MetricKey = "spend" | "results" | "cpa" | "impressions" | "clicks" | "pageViews" | "ctr" | "cpc" | "revenue"
 type MetricDef = { label: string; color: string; fmt: (v: number) => string }
 const fmtInt = (v: number) => Math.round(v).toLocaleString("pt-BR")
 
@@ -249,6 +267,7 @@ function DailyChart({ daily, resultLabel, trackRevenue }: { daily: DlyPoint[]; r
   const METRICS: Record<MetricKey, MetricDef> = {
     spend: { label: "Investimento", color: "#FF8F50", fmt: brl },
     results: { label: resultLabel, color: "#38bdf8", fmt: fmtInt },
+    cpa: { label: "CPA", color: "#fca5a5", fmt: brl },
     impressions: { label: "Impressões", color: "#a78bfa", fmt: fmtInt },
     clicks: { label: "Cliques", color: "#34d399", fmt: fmtInt },
     pageViews: { label: "Page views", color: "#fbbf24", fmt: fmtInt },
@@ -262,7 +281,7 @@ function DailyChart({ daily, resultLabel, trackRevenue }: { daily: DlyPoint[]; r
 
   // Chips disponíveis conforme a presença de dados.
   const hasPv = daily.some((d) => d.pageViews > 0)
-  const chips = (["spend", "results", "impressions", "clicks", "ctr", "cpc"] as MetricKey[])
+  const chips = (["spend", "results", "cpa", "impressions", "clicks", "ctr", "cpc"] as MetricKey[])
     .concat(hasPv ? (["pageViews"] as MetricKey[]) : [])
     .concat(trackRevenue ? (["revenue"] as MetricKey[]) : [])
 
@@ -273,6 +292,7 @@ function DailyChart({ daily, resultLabel, trackRevenue }: { daily: DlyPoint[]; r
       dia: d.date.slice(8, 10),
       spend: Math.round(spend), results: d.results ?? 0, impressions, clicks,
       pageViews: d.pageViews ?? 0, revenue: Math.round(d.revenue ?? 0),
+      cpa: (d.results ?? 0) > 0 ? spend / (d.results ?? 0) : 0,
       ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
       cpc: clicks > 0 ? spend / clicks : 0,
     }
@@ -344,15 +364,19 @@ function HistoryChart({ history, resultLabel }: { history: { month: string; spen
   )
 }
 
-// Funil visual: barras decrescentes com taxa de conversão entre etapas.
+// Funil visual: barras com taxa de conversão entre etapas.
+// Escala logarítmica nas barras — sem ela, impressões (ordens de grandeza maiores)
+// esmagam as demais etapas e elas viram fiapos. O log mantém a ordem e dá presença visual.
 function VisualFunnel({ steps }: { steps: { label: string; value: number; display: string }[] }) {
   const max = Math.max(...steps.map((s) => s.value), 1)
+  const logMax = Math.log(max + 1)
   return (
     <div className="rounded-xl border border-white/8 bg-black/20 p-4">
       <p className="mb-3 text-[11px] text-zinc-500">Funil</p>
       <div className="space-y-2">
         {steps.map((s, i) => {
           const conv = i > 0 && steps[i - 1].value > 0 ? ((s.value / steps[i - 1].value) * 100) : null
+          const width = s.value > 0 ? Math.max(4, (Math.log(s.value + 1) / logMax) * 100) : 0
           return (
             <div key={s.label}>
               <div className="flex items-center justify-between text-xs">
@@ -360,7 +384,7 @@ function VisualFunnel({ steps }: { steps: { label: string; value: number; displa
                 <span className="font-semibold text-zinc-100">{s.display}{conv != null && <span className="ml-2 text-[10px] text-zinc-600">{conv < 1 ? conv.toFixed(2) : conv.toFixed(0)}%</span>}</span>
               </div>
               <div className="mt-1 h-2.5 w-full overflow-hidden rounded-full bg-white/5">
-                <div className="h-full rounded-full bg-gradient-to-r from-[#FF8F50] to-[#FFB185]" style={{ width: `${Math.max(2, (s.value / max) * 100)}%` }} />
+                <div className="h-full rounded-full bg-gradient-to-r from-[#FF8F50] to-[#FFB185]" style={{ width: `${width}%` }} />
               </div>
             </div>
           )
@@ -370,9 +394,40 @@ function VisualFunnel({ steps }: { steps: { label: string; value: number; displa
   )
 }
 
+// Controle de período: presets rápidos + intervalo personalizado.
+function DateRangeControl({ value, onChange }: { value: RangeSel; onChange: (r: RangeSel) => void }) {
+  const [custom, setCustom] = useState(value.month === null)
+  const presets = [
+    { key: "month", label: "Este mês", make: () => monthSel(currentMonth()) },
+    { key: "prev", label: "Mês passado", make: prevMonthSel },
+    { key: "7", label: "7 dias", make: () => lastDaysSel(7) },
+    { key: "14", label: "14 dias", make: () => lastDaysSel(14) },
+    { key: "30", label: "30 dias", make: () => lastDaysSel(30) },
+  ]
+  const chip = (on: boolean) => `rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${on ? "bg-[#FF8F50] text-black" : "bg-white/5 text-zinc-400 hover:bg-white/10"}`
+  const dateInput = "min-h-9 rounded-lg border border-white/10 bg-black/30 px-2 text-xs text-zinc-200 [color-scheme:dark]"
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {presets.map((p) => {
+        const r = p.make()
+        const on = !custom && value.since === r.since && value.until === r.until
+        return <button key={p.key} onClick={() => { setCustom(false); onChange(r) }} className={chip(on)}>{p.label}</button>
+      })}
+      <button onClick={() => setCustom((c) => !c)} className={chip(custom)}>Personalizado</button>
+      {custom && (
+        <span className="flex items-center gap-1">
+          <input type="date" value={value.since} max={value.until} onChange={(e) => onChange({ ...value, since: e.target.value, month: null, label: "Personalizado" })} className={dateInput} />
+          <span className="text-zinc-600">→</span>
+          <input type="date" value={value.until} min={value.since} onChange={(e) => onChange({ ...value, until: e.target.value, month: null, label: "Personalizado" })} className={dateInput} />
+        </span>
+      )}
+    </div>
+  )
+}
+
 type History = { month: string; spend: number; results: number; cpa: number | null }[]
 function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Plan[] }) {
-  const [month, setMonth] = useState(currentMonth())
+  const [range, setRange] = useState<RangeSel>(() => monthSel(currentMonth()))
   const [perf, setPerf] = useState<Perf | null>(null)
   const [history, setHistory] = useState<History>([])
   const [fetchedAt, setFetchedAt] = useState<string | null>(null)
@@ -383,20 +438,24 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
   const [readingBusy, setReadingBusy] = useState(false)
   const [source, setSource] = useState<string>("all") // "all" | "META" | "GOOGLE"
 
+  const qs = range.month ? `month=${range.month}` : `since=${range.since}&until=${range.until}`
+
   const load = useCallback(async () => {
     setLoading(true); setErr(""); setReading("")
-    const res = await fetch(`/api/clients/${clientId}/performance?month=${month}`)
+    const res = await fetch(`/api/clients/${clientId}/performance?${qs}`)
     const payload = await res.json()
     setLoading(false)
     if (!res.ok) { setErr(payload.error ?? "Falha ao carregar performance."); setPerf(null); return }
     setPerf(payload.performance); setHistory(payload.history ?? []); setFetchedAt(payload.fetchedAt ?? null)
-  }, [clientId, month])
+  }, [clientId, qs])
   useEffect(() => { void load() }, [load])
 
   async function refresh() {
+    // Intervalo ao vivo não tem cache pra reescrever — só recarrega.
+    if (!range.month) { await load(); return }
     setRefreshing(true); setErr("")
     const res = await fetch(`/api/clients/${clientId}/performance`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month }),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month: range.month }),
     })
     const data = await res.json()
     setRefreshing(false)
@@ -407,14 +466,14 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
   async function genReading() {
     setReadingBusy(true)
     const res = await fetch(`/api/clients/${clientId}/performance/insight`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month }),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month: range.month }),
     })
     const data = await res.json()
     setReadingBusy(false)
     setReading(res.ok ? data.reading : (data.error ?? "Falha na leitura."))
   }
 
-  const plan = plans.find((p) => p.month === month && p.platform === "TOTAL") ?? plans.find((p) => p.month === month)
+  const plan = range.month ? (plans.find((p) => p.month === range.month && p.platform === "TOTAL") ?? plans.find((p) => p.month === range.month)) : undefined
   const t = perf?.current.total
   const pct = (real: number, target: number | null | undefined) => (target && target > 0 ? Math.round((real / target) * 100) : null)
 
@@ -453,9 +512,9 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
         <div className="flex items-center gap-2">
           {fetchedAt && <span className="text-[10px] text-zinc-600">atualizado {new Date(fetchedAt).toLocaleString("pt-BR")}</span>}
           <Button variant="secondary" className="min-h-9 px-3 py-1.5 text-xs" onClick={refresh} disabled={refreshing || loading}>{refreshing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Atualizar</Button>
-          <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="min-h-9 w-40 [color-scheme:dark]" />
         </div>
       </div>
+      <div className="mt-3"><DateRangeControl value={range} onChange={setRange} /></div>
 
       {loading ? (
         <div className="flex min-h-40 items-center justify-center"><Loader2 className="animate-spin text-[#FF8F50]" /></div>
@@ -527,17 +586,19 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
           )}
 
           {/* Exploradores: Meta (Conjunto/Anúncio) e Google (Grupo/Palavra-chave) */}
-          {(isAll || source === "META") && okProviders.some((p) => p.provider === "META") && <Explorer clientId={clientId} month={month} />}
-          {(isAll || source === "GOOGLE") && okProviders.some((p) => p.provider === "GOOGLE") && <GoogleExplorer clientId={clientId} month={month} />}
+          {(isAll || source === "META") && okProviders.some((p) => p.provider === "META") && <Explorer clientId={clientId} since={range.since} until={range.until} />}
+          {(isAll || source === "GOOGLE") && okProviders.some((p) => p.provider === "GOOGLE") && <GoogleExplorer clientId={clientId} since={range.since} until={range.until} />}
 
-          {/* Leitura de IA */}
-          <div className="rounded-xl border border-[#FF8F50]/20 bg-[#FF8F50]/[0.05] p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-[#FFB185]">🤖 Leitura de performance</span>
-              <Button variant="secondary" className="min-h-8 px-3 py-1 text-xs" onClick={genReading} disabled={readingBusy}>{readingBusy ? <Loader2 size={13} className="animate-spin" /> : "Gerar leitura"}</Button>
+          {/* Leitura de IA — só no modo mês (insight é mensal) */}
+          {isAll && range.month && (
+            <div className="rounded-xl border border-[#FF8F50]/20 bg-[#FF8F50]/[0.05] p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-[#FFB185]">🤖 Leitura de performance</span>
+                <Button variant="secondary" className="min-h-8 px-3 py-1 text-xs" onClick={genReading} disabled={readingBusy}>{readingBusy ? <Loader2 size={13} className="animate-spin" /> : "Gerar leitura"}</Button>
+              </div>
+              {reading && <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-200">{reading}</p>}
             </div>
-            {reading && <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-200">{reading}</p>}
-          </div>
+          )}
         </div>
       )}
     </Panel>
@@ -550,7 +611,7 @@ type AdsetNode = { id: string; name: string; spend: number; results: number; cpa
 type CampaignNode = { id: string; name: string; spend: number; results: number; cpa: number | null; ctr: number | null; adsets: AdsetNode[] }
 const mini = (spend: number, results: number, cpa: number | null) => `${brl(spend)} · ${results} result. · CPA ${brl(cpa)}`
 
-function Explorer({ clientId, month }: { clientId: string; month: string }) {
+function Explorer({ clientId, since, until }: { clientId: string; since: string; until: string }) {
   const [campaigns, setCampaigns] = useState<CampaignNode[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState("")
@@ -559,12 +620,12 @@ function Explorer({ clientId, month }: { clientId: string; month: string }) {
 
   const load = useCallback(async () => {
     setLoading(true); setErr(""); setCampaigns(null)
-    const res = await fetch(`/api/clients/${clientId}/performance/explore?month=${month}`)
+    const res = await fetch(`/api/clients/${clientId}/performance/explore?since=${since}&until=${until}`)
     const data = await res.json()
     setLoading(false)
     if (!res.ok) { setErr(data.error ?? "Falha ao explorar."); return }
     setCampaigns(data.campaigns)
-  }, [clientId, month])
+  }, [clientId, since, until])
   useEffect(() => { void load() }, [load])
 
   return (
@@ -632,7 +693,7 @@ type GAdGroup = { id: string; name: string; spend: number; results: number; cpa:
 type GCampaign = { id: string; name: string; spend: number; results: number; cpa: number | null; ctr: number | null; adGroups: GAdGroup[] }
 const MATCH_LABEL: Record<string, string> = { EXACT: "exata", PHRASE: "frase", BROAD: "ampla" }
 
-function GoogleExplorer({ clientId, month }: { clientId: string; month: string }) {
+function GoogleExplorer({ clientId, since, until }: { clientId: string; since: string; until: string }) {
   const [campaigns, setCampaigns] = useState<GCampaign[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState("")
@@ -641,12 +702,12 @@ function GoogleExplorer({ clientId, month }: { clientId: string; month: string }
 
   const load = useCallback(async () => {
     setLoading(true); setErr(""); setCampaigns(null)
-    const res = await fetch(`/api/clients/${clientId}/performance/explore?provider=GOOGLE&month=${month}`)
+    const res = await fetch(`/api/clients/${clientId}/performance/explore?provider=GOOGLE&since=${since}&until=${until}`)
     const data = await res.json()
     setLoading(false)
     if (!res.ok) { setErr(data.error ?? "Falha ao explorar."); return }
     setCampaigns(data.campaigns)
-  }, [clientId, month])
+  }, [clientId, since, until])
   useEffect(() => { void load() }, [load])
 
   return (
