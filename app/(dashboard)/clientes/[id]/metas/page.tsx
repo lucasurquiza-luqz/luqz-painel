@@ -467,6 +467,8 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
   const [reading, setReading] = useState("")
   const [readingBusy, setReadingBusy] = useState(false)
   const [source, setSource] = useState<string>("all") // "all" | "META" | "GOOGLE"
+  const [tab, setTab] = useState<string>("overview") // overview | campaigns | creatives | insights
+  const selectSource = (s: string) => { setSource(s); setTab("overview") }
 
   const qs = range.month ? `month=${range.month}` : `since=${range.since}&until=${range.until}`
 
@@ -556,13 +558,13 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
         <div className="mt-4 space-y-4">
           {status && <p className="text-sm"><span className="text-zinc-500">Saúde de resultado: </span><span className={`font-semibold ${status.tone}`}>{status.label}</span> <span className="text-zinc-600">· {status.why}</span></p>}
 
-          {/* Seletor de fonte de tráfego — só aparece quando há mais de uma fonte */}
+          {/* Navegação de plataforma — Consolidado / Meta / Google */}
           {okProviders.length > 1 && (
             <div className="flex flex-wrap gap-1.5">
               {["all", ...okProviders.map((p) => p.provider)].map((s) => (
                 <button
                   key={s}
-                  onClick={() => setSource(s)}
+                  onClick={() => selectSource(s)}
                   className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${source === s ? "bg-[#FF8F50] text-black" : "bg-white/5 text-zinc-400 hover:bg-white/10"}`}
                 >
                   {SOURCE_LABEL[s] ?? s}
@@ -572,11 +574,27 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
             </div>
           )}
 
-          {!view ? (
-            <p className="text-sm text-zinc-500">Sem dados para {SOURCE_LABEL[source] ?? source} neste mês.</p>
+          {/* Sub-abas da plataforma (a "tela" de cada fonte). Consolidado não tem sub-abas. */}
+          {!isAll && (
+            <div className="flex flex-wrap gap-4 border-b border-white/8 text-sm">
+              {(source === "META"
+                ? [["overview", "Visão Geral"], ["campaigns", "Campanhas"], ["creatives", "Criativos"], ["insights", "Análises"]]
+                : [["overview", "Visão Geral"], ["campaigns", "Campanhas"], ["insights", "Termos & análises"]]
+              ).map(([key, label]) => (
+                <button key={key} onClick={() => setTab(key)}
+                  className={`-mb-px border-b-2 pb-2 font-medium transition ${tab === key ? "border-[#FF8F50] text-white" : "border-transparent text-zinc-500 hover:text-zinc-300"}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* === VISÃO GERAL (KPIs + gráfico + funil) === */}
+          {(isAll || tab === "overview") && (!view ? (
+            <p className="text-sm text-zinc-500">Sem dados para {SOURCE_LABEL[source] ?? source} neste período.</p>
           ) : (
           <>
-          {/* KPIs — investimento/resultado/CPA/ROAS, com mini-tendência (overview rápido). Metas/trend só no consolidado. */}
+          {/* KPIs principais com mini-tendência. Metas/trend só no consolidado. */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <KpiCard label="Investimento" value={brl(view.spend)} pct={isAll ? pct(view.spend, plan?.budget) : null} trend={isAll ? <Trend cur={view.spend} prev={perf.previous.spend} /> : undefined} spark={view.daily.map((d) => d.spend ?? 0)} sparkColor="#FF8F50" />
             <KpiCard label={resultLabel} value={String(view.results)} pct={isAll ? pct(view.results, plan?.targetLeads) : null} trend={isAll ? <Trend cur={view.results} prev={perf.previous.results} /> : undefined} spark={view.daily.map((d) => d.results ?? 0)} sparkColor="#38bdf8" />
@@ -586,11 +604,15 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
               : <KpiCard label="Cliques" value={view.clicks.toLocaleString("pt-BR")} spark={view.daily.map((d) => d.clicks ?? 0)} sparkColor="#34d399" />}
           </div>
 
-          {/* Métricas de mídia */}
-          <div className="grid grid-cols-3 gap-3">
+          {/* Grid de métricas de mídia */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <KpiCard label="CTR" value={view.ctr != null ? `${view.ctr.toFixed(2)}%` : "—"} />
             <KpiCard label="CPC" value={brl(view.cpc)} />
             <KpiCard label="CPM" value={brl(view.cpm)} />
+            <KpiCard label="Impressões" value={view.impressions.toLocaleString("pt-BR")} />
+            <KpiCard label="Cliques" value={view.clicks.toLocaleString("pt-BR")} />
+            {view.pageViews > 0 && <KpiCard label="Visualizações de página" value={view.pageViews.toLocaleString("pt-BR")} />}
+            {perf.current.trackRevenue && <KpiCard label="Receita" value={brl(view.revenue)} />}
           </div>
 
           <DailyChart daily={view.daily} resultLabel={resultLabel} trackRevenue={perf.current.trackRevenue} />
@@ -601,12 +623,9 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
             { label: resultLabel, value: view.results, display: String(view.results) },
             ...(perf.current.trackRevenue && view.revenue != null ? [{ label: "Receita", value: view.revenue, display: brl(view.revenue) }] : []),
           ]} />
-          </>
-          )}
 
-          {/* Histórico e composição de fontes — sempre consolidado */}
+          {/* Histórico, composição de fontes e leitura de IA — só no Consolidado (Visão Geral) */}
           {isAll && <HistoryChart history={history} resultLabel={resultLabel} />}
-
           {isAll && perf.current.byProvider.length > 1 && (
             <div className="flex flex-wrap gap-2 text-[11px] text-zinc-500">
               {perf.current.byProvider.map((p) => (
@@ -614,15 +633,6 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
               ))}
             </div>
           )}
-
-          {/* Análises profundas Meta — só na aba Meta (a "tela da plataforma") */}
-          {source === "META" && okProviders.some((p) => p.provider === "META") && <MetaDeepPanel clientId={clientId} since={range.since} until={range.until} />}
-
-          {/* Exploradores: Meta (Conjunto/Anúncio) e Google (Grupo/Palavra-chave) */}
-          {(isAll || source === "META") && okProviders.some((p) => p.provider === "META") && <Explorer clientId={clientId} since={range.since} until={range.until} />}
-          {(isAll || source === "GOOGLE") && okProviders.some((p) => p.provider === "GOOGLE") && <GoogleExplorer clientId={clientId} since={range.since} until={range.until} />}
-
-          {/* Leitura de IA — só no modo mês (insight é mensal) */}
           {isAll && range.month && (
             <div className="rounded-xl border border-[#FF8F50]/20 bg-[#FF8F50]/[0.05] p-4">
               <div className="flex items-center justify-between">
@@ -632,6 +642,19 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
               {reading && <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-200">{reading}</p>}
             </div>
           )}
+          </>
+          ))}
+
+          {/* === CAMPANHAS === */}
+          {!isAll && tab === "campaigns" && source === "META" && <Explorer clientId={clientId} since={range.since} until={range.until} />}
+          {!isAll && tab === "campaigns" && source === "GOOGLE" && <GoogleExplorer clientId={clientId} since={range.since} until={range.until} />}
+
+          {/* === CRIATIVOS (Meta) === */}
+          {!isAll && tab === "creatives" && source === "META" && <CreativesGrid clientId={clientId} since={range.since} until={range.until} />}
+
+          {/* === ANÁLISES === */}
+          {!isAll && tab === "insights" && source === "META" && <MetaDeepPanel clientId={clientId} since={range.since} until={range.until} />}
+          {!isAll && tab === "insights" && source === "GOOGLE" && <GoogleExplorer clientId={clientId} since={range.since} until={range.until} />}
         </div>
       )}
     </Panel>
@@ -761,6 +784,51 @@ function Explorer({ clientId, since, until }: { clientId: string; since: string;
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// Criativos (Meta): todos os anúncios achatados, ordenados por gasto, com preview grande.
+function CreativesGrid({ clientId, since, until }: { clientId: string; since: string; until: string }) {
+  const [ads, setAds] = useState<AdNode[] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState("")
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr(""); setAds(null)
+    const res = await fetch(`/api/clients/${clientId}/performance/explore?since=${since}&until=${until}`)
+    const data = await res.json()
+    setLoading(false)
+    if (!res.ok) { setErr(data.error ?? "Falha ao carregar criativos."); return }
+    const flat: AdNode[] = (data.campaigns ?? []).flatMap((c: CampaignNode) => c.adsets.flatMap((s) => s.ads))
+    flat.sort((a, b) => b.spend - a.spend)
+    setAds(flat)
+  }, [clientId, since, until])
+  useEffect(() => { void load() }, [load])
+
+  if (loading) return <div className="flex min-h-24 items-center justify-center rounded-2xl border border-white/8 bg-black/20"><Loader2 size={18} className="animate-spin text-[#FF8F50]" /></div>
+  if (err) return <p className="rounded-2xl border border-white/8 bg-black/20 p-4 text-xs text-red-300">{err}</p>
+  if (!ads?.length) return <p className="rounded-2xl border border-white/8 bg-black/20 p-5 text-xs text-zinc-600">Sem criativos com veiculação no período.</p>
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      {ads.map((ad) => (
+        <div key={ad.id} className="overflow-hidden rounded-xl border border-white/8 bg-black/20">
+          {ad.thumbnail
+            ? <img src={ad.thumbnail} alt="" className="aspect-square w-full object-cover" />
+            : <div className="flex aspect-square w-full items-center justify-center bg-white/5 text-[10px] text-zinc-600">sem preview</div>}
+          <div className="p-3">
+            <p className="truncate text-[12px] font-medium text-zinc-100" title={ad.name}>{ad.name}</p>
+            <div className="mt-2 flex items-center justify-between">
+              <div><p className="text-[9px] uppercase tracking-wide text-zinc-600">Gasto</p><p className="text-[13px] font-semibold text-zinc-100">{brl(ad.spend)}</p></div>
+              <div className="text-right"><p className="text-[9px] uppercase tracking-wide text-zinc-600">Result.</p><p className="text-[13px] font-semibold text-sky-300">{ad.results}</p></div>
+              <div className="text-right"><p className="text-[9px] uppercase tracking-wide text-zinc-600">CPA</p><p className="text-[13px] font-semibold text-emerald-300">{brl(ad.cpa)}</p></div>
+            </div>
+            <p className="mt-2 text-[10px] text-zinc-500">CTR {ad.ctr != null ? `${ad.ctr.toFixed(1)}%` : "—"} · Hook {ad.hookRate != null ? `${ad.hookRate.toFixed(0)}%` : "—"} · Conv {ad.convRate != null ? `${ad.convRate.toFixed(0)}%` : "—"}</p>
+            {ad.permalink && <a href={ad.permalink} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-[10px] text-[#FFB185] hover:underline">ver no Instagram ↗</a>}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
