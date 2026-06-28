@@ -495,6 +495,22 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
   }, [clientId, qs])
   useEffect(() => { void load() }, [load])
 
+  // Prefetch em paralelo das abas pesadas (campanhas/criativos/análises) assim que o painel abre —
+  // quando o usuário clicar na aba, já está em cache. "Não pode demorar."
+  useEffect(() => {
+    if (!perf?.current.configured) return
+    const provs = perf.current.byProvider.filter((p) => !p.error).map((p) => p.provider)
+    const q = `since=${range.since}&until=${range.until}` // mesma chave de cache dos componentes
+    if (provs.includes("META")) {
+      void cachedJson(`/api/clients/${clientId}/performance/explore?${q}`)
+      void cachedJson(`/api/clients/${clientId}/performance/meta-insights?${q}`)
+    }
+    if (provs.includes("GOOGLE")) {
+      void cachedJson(`/api/clients/${clientId}/performance/explore?provider=GOOGLE&${q}`)
+      void cachedJson(`/api/clients/${clientId}/performance/explore?provider=GOOGLE&view=terms&${q}`)
+    }
+  }, [clientId, range, perf])
+
   async function refresh() {
     clearPerfCache()
     // Intervalo ao vivo não tem cache pra reescrever — só recarrega.
@@ -1009,25 +1025,44 @@ function MetaDeepPanel({ clientId, since, until }: { clientId: string; since: st
 
 // === Revisão de conversões: o que está sendo contado vs o que existe na conta ===
 type ConvReview = {
-  meta?: { counting?: string[]; custom?: boolean; objectives?: string[]; available?: { actionType: string; count: number }[]; error?: string } | null
+  meta?: { accountId?: string; counting?: string[]; custom?: boolean; objectives?: string[]; available?: { actionType: string; count: number }[]; error?: string } | null
   google?: { actions?: { name: string; conversions: number }[]; error?: string } | null
 }
 function ConversionsReview({ clientId }: { clientId: string }) {
   const [open, setOpen] = useState(false)
   const [data, setData] = useState<ConvReview | null>(null)
   const [loading, setLoading] = useState(false)
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState("")
 
-  async function load() {
-    if (data) return
+  const load = useCallback(async () => {
     setLoading(true)
     const res = await fetch(`/api/clients/${clientId}/performance/conversions`)
     const d = await res.json().catch(() => ({}))
     setLoading(false)
-    setData(res.ok ? d : { meta: { error: d.error ?? "Falha." } })
-  }
-  const onToggle = () => { setOpen((v) => !v); if (!open) void load() }
+    const review: ConvReview = res.ok ? d : { meta: { error: d.error ?? "Falha." } }
+    setData(review)
+    // pré-marca os eventos que já estão sendo contados
+    setSel(new Set(review.meta?.counting ?? []))
+  }, [clientId])
+  const onToggle = () => { setOpen((v) => !v); if (!open && !data) void load() }
+  const toggleEvent = (k: string) => setSel((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n })
 
-  const counting = new Set(data?.meta?.counting ?? [])
+  async function saveMeta() {
+    if (!data?.meta?.accountId) return
+    setSaving(true); setSaved("")
+    const res = await fetch(`/api/clients/${clientId}/ad-accounts`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "META", accountId: data.meta.accountId, resultActions: [...sel] }),
+    })
+    setSaving(false)
+    if (res.ok) { clearPerfCache(); setSaved("Salvo. Clique em Atualizar no painel pra recalcular."); await load() }
+    else setSaved("Falha ao salvar.")
+  }
+
+  const baseline = new Set(data?.meta?.counting ?? [])
+  const dirty = data?.meta && (sel.size !== baseline.size || [...sel].some((k) => !baseline.has(k)))
   return (
     <Panel className="p-5">
       <button onClick={onToggle} className="flex w-full items-center justify-between">
@@ -1037,38 +1072,41 @@ function ConversionsReview({ clientId }: { clientId: string }) {
       {open && (
         <div className="mt-4 space-y-4">
           {loading && <div className="flex min-h-16 items-center justify-center"><Loader2 size={16} className="animate-spin text-[#FF8F50]" /></div>}
-          {/* META */}
+          {/* META — com checkboxes pra escolher os eventos corretos */}
           {data?.meta && (
             <div className="rounded-xl border border-white/8 bg-black/20 p-4">
-              <p className="mb-2 text-xs font-semibold text-zinc-300">Meta — eventos contados como resultado</p>
+              <p className="mb-2 text-xs font-semibold text-zinc-300">Meta — marque os eventos que contam como resultado</p>
               {data.meta.error ? <p className="text-xs text-red-300">{data.meta.error}</p> : (
                 <>
-                  <p className="text-[11px] text-zinc-500">Contando agora ({data.meta.custom ? "evento custom definido" : `padrão dos funis: ${(data.meta.objectives ?? []).join(", ") || "—"}`}):</p>
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {(data.meta.counting ?? []).map((k) => <span key={k} className="rounded-md bg-[#FF8F50]/15 px-2 py-1 text-[11px] text-[#FFB185]">{k}</span>)}
-                    {!data.meta.counting?.length && <span className="text-[11px] text-amber-300">Nenhum evento definido — resultado virá 0.</span>}
-                  </div>
-                  <p className="mt-3 text-[11px] text-zinc-500">Eventos disponíveis na conta (últimos 90 dias) — os marcados ✓ são os contados:</p>
-                  <div className="mt-1.5 max-h-52 space-y-1 overflow-y-auto">
+                  <p className="text-[11px] text-zinc-500">{data.meta.custom ? "Evento custom definido." : `Hoje usando o padrão dos funis: ${(data.meta.objectives ?? []).join(", ") || "—"}. Marque abaixo pra fixar os corretos.`}</p>
+                  <div className="mt-2 max-h-60 space-y-0.5 overflow-y-auto">
                     {(data.meta.available ?? []).map((a) => (
-                      <div key={a.actionType} className={`flex items-center justify-between rounded px-2 py-1 text-[11px] ${counting.has(a.actionType) ? "bg-[#FF8F50]/10 text-[#FFB185]" : "text-zinc-400"}`}>
-                        <span className="truncate">{counting.has(a.actionType) ? "✓ " : ""}{a.actionType}</span>
+                      <label key={a.actionType} className={`flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 text-[11px] hover:bg-white/5 ${sel.has(a.actionType) ? "text-[#FFB185]" : "text-zinc-400"}`}>
+                        <span className="flex min-w-0 items-center gap-2">
+                          <input type="checkbox" checked={sel.has(a.actionType)} onChange={() => toggleEvent(a.actionType)} className="accent-[#FF8F50]" />
+                          <span className="truncate">{a.actionType}</span>
+                        </span>
                         <span className="shrink-0 tabular-nums">{a.count.toLocaleString("pt-BR")}</span>
-                      </div>
+                      </label>
                     ))}
                     {!data.meta.available?.length && <p className="text-[11px] text-zinc-600">Nenhum evento nos últimos 90 dias.</p>}
+                  </div>
+                  <div className="mt-3 flex items-center gap-3">
+                    <Button variant="secondary" className="min-h-8 px-3 py-1 text-xs" disabled={saving || !dirty} onClick={saveMeta}>{saving ? <Loader2 size={13} className="animate-spin" /> : "Salvar eventos"}</Button>
+                    {sel.size === 0 && <span className="text-[11px] text-zinc-600">vazio = volta ao padrão dos funis</span>}
+                    {saved && <span className="text-[11px] text-emerald-300">{saved}</span>}
                   </div>
                 </>
               )}
             </div>
           )}
-          {/* GOOGLE */}
+          {/* GOOGLE — leitura (config fica no Google Ads) */}
           {data?.google && (
             <div className="rounded-xl border border-white/8 bg-black/20 p-4">
-              <p className="mb-2 text-xs font-semibold text-zinc-300">Google — ações de conversão contadas (no período atual)</p>
+              <p className="mb-2 text-xs font-semibold text-zinc-300">Google — ações de conversão contadas (período atual)</p>
               {data.google.error ? <p className="text-xs text-red-300">{data.google.error}</p> : (
                 <>
-                  <p className="text-[11px] text-zinc-500">Tudo abaixo soma em &quot;Result.&quot; (metrics.conversions). Se algo não deveria contar (ex.: ligação, page view), ajuste no Google Ads.</p>
+                  <p className="text-[11px] text-zinc-500">Tudo abaixo soma em &quot;Result.&quot; (metrics.conversions). Se algo não deveria contar (ligação, page view…), ajuste em Conversões no Google Ads.</p>
                   <div className="mt-1.5 space-y-1">
                     {(data.google.actions ?? []).map((a) => (
                       <div key={a.name} className="flex items-center justify-between rounded px-2 py-1 text-[11px] text-zinc-300">

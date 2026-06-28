@@ -35,7 +35,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     }
     try {
       const available = await discoverMetaActions(metaAcc.accountId, decryptSecret(metaAcc.tokenEnc))
-      result.meta = { counting: metaResultKeys(config), custom: metaAcc.resultActions.length > 0, objectives: config.objectives, available }
+      result.meta = { accountId: metaAcc.accountId, counting: metaResultKeys(config), custom: metaAcc.resultActions.length > 0, objectives: config.objectives, available }
     } catch (e) {
       result.meta = { error: e instanceof Error ? e.message : "Falha ao ler eventos Meta." }
     }

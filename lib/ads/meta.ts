@@ -189,29 +189,21 @@ export async function fetchMetaTree(accountId: string, token: string, { since, u
     })
   }
 
-  // Público (targeting) dos conjuntos — em lote.
+  // Público (targeting) e preview/permalink — em lote e EM PARALELO (latência menor).
   const adsetIds = [...campaigns.values()].flatMap((c) => [...c.adsets.keys()]).filter(Boolean).slice(0, 100)
-  const audience = new Map<string, string | null>()
-  if (adsetIds.length) {
-    try {
-      const u = `${GRAPH}/?ids=${adsetIds.join(",")}&fields=targeting&access_token=${encodeURIComponent(token)}`
-      const pr = await fetch(u); const pb = await pr.json().catch(() => ({}))
-      if (pr.ok) for (const id of adsetIds) audience.set(id, summarizeTargeting(pb?.[id]?.targeting ?? null))
-    } catch { /* segue sem público */ }
-  }
-
-  // Preview/permalink dos anúncios — em lote (top por gasto).
   const allAds = [...campaigns.values()].flatMap((c) => [...c.adsets.values()].flatMap((s) => s.ads))
   const topAdIds = [...allAds].sort((a, b) => b.spend - a.spend).slice(0, 40).map((a) => a.id).filter(Boolean)
-  if (topAdIds.length) {
-    try {
-      const u = `${GRAPH}/?ids=${topAdIds.join(",")}&fields=creative{instagram_permalink_url,effective_object_story_id,thumbnail_url,image_url}&access_token=${encodeURIComponent(token)}`
-      const pr = await fetch(u); const pb = await pr.json().catch(() => ({}))
-      if (pr.ok) for (const ad of allAds) {
-        const cr = pb?.[ad.id]?.creative
-        if (cr) { ad.permalink = cr.instagram_permalink_url ?? (cr.effective_object_story_id ? `https://facebook.com/${cr.effective_object_story_id}` : null); ad.thumbnail = cr.image_url ?? cr.thumbnail_url ?? null }
-      }
-    } catch { /* segue sem preview */ }
+  const audience = new Map<string, string | null>()
+  const batch = (ids: string[], fields: string) =>
+    ids.length ? fetch(`${GRAPH}/?ids=${ids.join(",")}&fields=${fields}&access_token=${encodeURIComponent(token)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null) : Promise.resolve(null)
+  const [targetBody, creativeBody] = await Promise.all([
+    batch(adsetIds, "targeting"),
+    batch(topAdIds, "creative{instagram_permalink_url,effective_object_story_id,thumbnail_url,image_url}"),
+  ])
+  if (targetBody) for (const id of adsetIds) audience.set(id, summarizeTargeting(targetBody?.[id]?.targeting ?? null))
+  if (creativeBody) for (const ad of allAds) {
+    const cr = creativeBody?.[ad.id]?.creative
+    if (cr) { ad.permalink = cr.instagram_permalink_url ?? (cr.effective_object_story_id ? `https://facebook.com/${cr.effective_object_story_id}` : null); ad.thumbnail = cr.image_url ?? cr.thumbnail_url ?? null }
   }
 
   const finish = (a: Acc) => ({ ...a, cpa: a.results > 0 ? a.spend / a.results : null, ctr: a.impressions > 0 ? (a.clicks / a.impressions) * 100 : null })
