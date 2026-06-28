@@ -1,4 +1,4 @@
-import { META_DEFAULT_ACTIONS, META_PURCHASE_ACTIONS, META_PAGEVIEW_ACTIONS, type AdConfig, type AdMetrics, type AdObjective, type AdNode, type CampaignNode, type ResultBreakdown, type DateRange } from "@/lib/ads/types"
+import { META_DEFAULT_ACTIONS, META_PURCHASE_ACTIONS, META_PAGEVIEW_ACTIONS, type AdConfig, type AdMetrics, type AdObjective, type AdNode, type CampaignNode, type ResultBreakdown, type DateRange, type MetaBreakdownRow, type MetaDeep } from "@/lib/ads/types"
 
 const GRAPH = "https://graph.facebook.com/v21.0"
 type Action = { action_type: string; value: string }
@@ -66,6 +66,70 @@ export async function fetchMetaInsights(accountId: string, token: string, { sinc
     revenue: config.trackRevenue ? revenue : null,
     roas: config.trackRevenue && spend > 0 ? revenue / spend : null,
     daily,
+  }
+}
+
+// Soma os valores de um campo de ação-array do Meta (video_p25_watched_actions etc).
+const sumField = (arr: Action[] | undefined) => (arr ?? []).reduce((s, a) => s + Number(a.value ?? 0), 0)
+
+const GENDER_LABEL: Record<string, string> = { male: "Homens", female: "Mulheres", unknown: "Não informado" }
+
+// Análises profundas Meta: posicionamentos, demografia, alcance/frequência e retenção de vídeo.
+export async function fetchMetaDeep(accountId: string, token: string, { since, until }: DateRange, config: AdConfig): Promise<MetaDeep> {
+  const acct = accountId.startsWith("act_") ? accountId : `act_${accountId}`
+  const tr = encodeURIComponent(JSON.stringify({ since, until }))
+  const wanted = resultKeys(config)
+
+  const get = async (params: string) => {
+    const res = await fetch(`${GRAPH}/${acct}/insights?level=account&time_range=${tr}&limit=500&access_token=${encodeURIComponent(token)}&${params}`)
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(`Meta Ads: ${body?.error?.message ?? `status ${res.status}`}`)
+    return (Array.isArray(body.data) ? body.data : []) as Record<string, unknown>[]
+  }
+  const row = (key: string, r: Record<string, unknown>): MetaBreakdownRow => {
+    const spend = Number(r.spend ?? 0), impressions = Number(r.impressions ?? 0), clicks = Number(r.clicks ?? 0)
+    const results = sumActions(r.actions as Action[], wanted)
+    return { key, spend, impressions, clicks, results, cpa: results > 0 ? spend / results : null, ctr: impressions > 0 ? (clicks / impressions) * 100 : null }
+  }
+  // Agrega várias linhas (mesma chave) numa só.
+  const aggregate = (rows: Record<string, unknown>[], keyOf: (r: Record<string, unknown>) => string) => {
+    const m = new Map<string, MetaBreakdownRow>()
+    for (const r of rows) {
+      const k = keyOf(r)
+      const cur = m.get(k) ?? { key: k, spend: 0, impressions: 0, clicks: 0, results: 0, cpa: null, ctr: null }
+      const add = row(k, r)
+      cur.spend += add.spend; cur.impressions += add.impressions; cur.clicks += add.clicks; cur.results += add.results
+      m.set(k, cur)
+    }
+    return [...m.values()]
+      .map((v) => ({ ...v, cpa: v.results > 0 ? v.spend / v.results : null, ctr: v.impressions > 0 ? (v.clicks / v.impressions) * 100 : null }))
+      .sort((a, b) => b.spend - a.spend)
+  }
+
+  const [placeRows, demoRows, totalRows] = await Promise.all([
+    get("fields=spend,impressions,clicks,actions&breakdowns=publisher_platform,platform_position"),
+    get("fields=spend,impressions,clicks,actions&breakdowns=age,gender"),
+    get("fields=spend,reach,frequency,video_play_actions,video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,video_p100_watched_actions,video_thruplay_watched_actions"),
+  ])
+
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+  const placements = aggregate(placeRows, (r) => `${cap(String(r.publisher_platform ?? "—"))} · ${String(r.platform_position ?? "—").replace(/_/g, " ")}`)
+  const byAge = aggregate(demoRows, (r) => String(r.age ?? "—"))
+  const byGender = aggregate(demoRows, (r) => GENDER_LABEL[String(r.gender ?? "unknown")] ?? String(r.gender))
+
+  const tot = totalRows[0] ?? {}
+  return {
+    placements, byAge, byGender,
+    reach: Number(tot.reach ?? 0),
+    frequency: Number(tot.frequency ?? 0),
+    video: {
+      plays: sumField(tot.video_play_actions as Action[]),
+      p25: sumField(tot.video_p25_watched_actions as Action[]),
+      p50: sumField(tot.video_p50_watched_actions as Action[]),
+      p75: sumField(tot.video_p75_watched_actions as Action[]),
+      p100: sumField(tot.video_p100_watched_actions as Action[]),
+      thruplay: sumField(tot.video_thruplay_watched_actions as Action[]),
+    },
   }
 }
 

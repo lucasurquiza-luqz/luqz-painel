@@ -8,6 +8,17 @@ export type AdNode = { id: string; name: string; spend: number; impressions: num
 export type AdsetNode = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; audience: string | null; ads: AdNode[] }
 export type CampaignNode = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; adsets: AdsetNode[] }
 
+// Análises profundas do Meta (placements, demografia, alcance, vídeo).
+export type MetaBreakdownRow = { key: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null }
+export type MetaDeep = {
+  placements: MetaBreakdownRow[]
+  byAge: MetaBreakdownRow[]
+  byGender: MetaBreakdownRow[]
+  reach: number
+  frequency: number
+  video: { plays: number; p25: number; p50: number; p75: number; p100: number; thruplay: number }
+}
+
 // Árvore de exploração Google: Campanha → Grupo de anúncios → Palavra-chave.
 export type GoogleKeyword = { text: string; matchType: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null }
 export type GoogleAdGroup = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; keywords: GoogleKeyword[] }

@@ -244,7 +244,29 @@ function Trend({ cur, prev, goodWhenUp = true }: { cur: number | null; prev: num
   return <span className={`text-[10px] ${good ? "text-emerald-400" : "text-red-400"}`}>{up ? "▲" : "▼"} {Math.abs(delta)}% vs mês ant.</span>
 }
 
-function KpiCard({ label, value, pct, trend }: { label: string; value: string; pct?: number | null; trend?: React.ReactNode }) {
+// Mini-gráfico de tendência (SVG leve, sem dependência de chart).
+function Sparkline({ data, color = "#FF8F50" }: { data: number[]; color?: string }) {
+  if (data.length < 2) return null
+  const max = Math.max(...data), min = Math.min(...data)
+  const range = max - min || 1
+  const w = 100, h = 26
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * (h - 2) - 1}`).join(" ")
+  const gid = `spk-${color.replace("#", "")}`
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="mt-2 h-7 w-full">
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity={0.25} />
+          <stop offset="100%" stopColor={color} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <polygon points={`0,${h} ${pts} ${w},${h}`} fill={`url(#${gid})`} />
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function KpiCard({ label, value, pct, trend, spark, sparkColor }: { label: string; value: string; pct?: number | null; trend?: React.ReactNode; spark?: number[]; sparkColor?: string }) {
   return (
     <div className="rounded-xl border border-white/8 bg-black/20 p-4">
       <p className="text-[11px] text-zinc-500">{label}</p>
@@ -255,7 +277,8 @@ function KpiCard({ label, value, pct, trend }: { label: string; value: string; p
         </div>
       )}
       {pct != null && <p className="mt-1 text-[10px] text-zinc-600">{pct}% da meta</p>}
-      <div className="mt-1">{trend}</div>
+      {trend && <div className="mt-1">{trend}</div>}
+      {spark && spark.length > 1 && <Sparkline data={spark} color={sparkColor} />}
     </div>
   )
 }
@@ -372,12 +395,12 @@ function HistoryChart({ history, resultLabel }: { history: { month: string; spen
 // Funil visual: barras com taxa de conversão entre etapas.
 // Escala logarítmica nas barras — sem ela, impressões (ordens de grandeza maiores)
 // esmagam as demais etapas e elas viram fiapos. O log mantém a ordem e dá presença visual.
-function VisualFunnel({ steps }: { steps: { label: string; value: number; display: string }[] }) {
+function VisualFunnel({ steps, title = "Funil" }: { steps: { label: string; value: number; display: string }[]; title?: string }) {
   const max = Math.max(...steps.map((s) => s.value), 1)
   const logMax = Math.log(max + 1)
   return (
     <div className="rounded-xl border border-white/8 bg-black/20 p-4">
-      <p className="mb-3 text-[11px] text-zinc-500">Funil</p>
+      <p className="mb-3 text-[11px] text-zinc-500">{title}</p>
       <div className="space-y-2">
         {steps.map((s, i) => {
           const conv = i > 0 && steps[i - 1].value > 0 ? ((s.value / steps[i - 1].value) * 100) : null
@@ -553,14 +576,14 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
             <p className="text-sm text-zinc-500">Sem dados para {SOURCE_LABEL[source] ?? source} neste mês.</p>
           ) : (
           <>
-          {/* KPIs — investimento/resultado/CPA/ROAS. Metas e tendência só no consolidado. */}
+          {/* KPIs — investimento/resultado/CPA/ROAS, com mini-tendência (overview rápido). Metas/trend só no consolidado. */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <KpiCard label="Investimento" value={brl(view.spend)} pct={isAll ? pct(view.spend, plan?.budget) : null} trend={isAll ? <Trend cur={view.spend} prev={perf.previous.spend} /> : undefined} />
-            <KpiCard label={resultLabel} value={String(view.results)} pct={isAll ? pct(view.results, plan?.targetLeads) : null} trend={isAll ? <Trend cur={view.results} prev={perf.previous.results} /> : undefined} />
-            <KpiCard label="CPA" value={brl(view.cpa)} trend={isAll ? <Trend cur={view.cpa} prev={perf.previous.cpa} goodWhenUp={false} /> : undefined} />
+            <KpiCard label="Investimento" value={brl(view.spend)} pct={isAll ? pct(view.spend, plan?.budget) : null} trend={isAll ? <Trend cur={view.spend} prev={perf.previous.spend} /> : undefined} spark={view.daily.map((d) => d.spend ?? 0)} sparkColor="#FF8F50" />
+            <KpiCard label={resultLabel} value={String(view.results)} pct={isAll ? pct(view.results, plan?.targetLeads) : null} trend={isAll ? <Trend cur={view.results} prev={perf.previous.results} /> : undefined} spark={view.daily.map((d) => d.results ?? 0)} sparkColor="#38bdf8" />
+            <KpiCard label="CPA" value={brl(view.cpa)} trend={isAll ? <Trend cur={view.cpa} prev={perf.previous.cpa} goodWhenUp={false} /> : undefined} spark={view.daily.map((d) => ((d.results ?? 0) > 0 ? (d.spend ?? 0) / (d.results ?? 0) : 0))} sparkColor="#fca5a5" />
             {perf.current.trackRevenue
-              ? <KpiCard label="ROAS" value={view.roas != null ? `${view.roas.toFixed(2)}x` : "—"} trend={isAll ? <Trend cur={view.roas} prev={perf.previous.roas} /> : undefined} />
-              : <KpiCard label="Cliques" value={view.clicks.toLocaleString("pt-BR")} />}
+              ? <KpiCard label="ROAS" value={view.roas != null ? `${view.roas.toFixed(2)}x` : "—"} trend={isAll ? <Trend cur={view.roas} prev={perf.previous.roas} /> : undefined} spark={view.daily.map((d) => ((d.spend ?? 0) > 0 ? (d.revenue ?? 0) / (d.spend ?? 0) : 0))} sparkColor="#4ade80" />
+              : <KpiCard label="Cliques" value={view.clicks.toLocaleString("pt-BR")} spark={view.daily.map((d) => d.clicks ?? 0)} sparkColor="#34d399" />}
           </div>
 
           {/* Métricas de mídia */}
@@ -591,6 +614,9 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
               ))}
             </div>
           )}
+
+          {/* Análises profundas Meta — só na aba Meta (a "tela da plataforma") */}
+          {source === "META" && okProviders.some((p) => p.provider === "META") && <MetaDeepPanel clientId={clientId} since={range.since} until={range.until} />}
 
           {/* Exploradores: Meta (Conjunto/Anúncio) e Google (Grupo/Palavra-chave) */}
           {(isAll || source === "META") && okProviders.some((p) => p.provider === "META") && <Explorer clientId={clientId} since={range.since} until={range.until} />}
@@ -838,6 +864,81 @@ function GoogleExplorer({ clientId, since, until }: { clientId: string; since: s
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// === Análises profundas Meta (posicionamentos, demografia, alcance, vídeo) ===
+type MetaBdRow = { key: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null }
+type MetaDeepT = { placements: MetaBdRow[]; byAge: MetaBdRow[]; byGender: MetaBdRow[]; reach: number; frequency: number; video: { plays: number; p25: number; p50: number; p75: number; p100: number; thruplay: number } }
+
+// Lista de breakdown: nome + barra de share (gasto) + métricas.
+function BreakdownList({ title, rows }: { title: string; rows: MetaBdRow[] }) {
+  const max = Math.max(...rows.map((r) => r.spend), 1)
+  return (
+    <div className="rounded-xl border border-white/8 bg-black/20 p-4">
+      <p className="mb-3 text-[11px] text-zinc-500">{title}</p>
+      <div className="space-y-2.5">
+        {rows.slice(0, 8).map((r) => (
+          <div key={r.key}>
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="truncate text-zinc-300">{r.key}</span>
+              <span className="shrink-0 text-[11px] text-zinc-400">{brl(r.spend)} · <span className="text-sky-300">{r.results}</span> · CPA {brl(r.cpa)}</span>
+            </div>
+            <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+              <div className="h-full rounded-full bg-gradient-to-r from-[#FF8F50] to-[#FFB185]" style={{ width: `${Math.max(2, (r.spend / max) * 100)}%` }} />
+            </div>
+          </div>
+        ))}
+        {!rows.length && <p className="text-[11px] text-zinc-600">Sem dados no período.</p>}
+      </div>
+    </div>
+  )
+}
+
+function MetaDeepPanel({ clientId, since, until }: { clientId: string; since: string; until: string }) {
+  const [deep, setDeep] = useState<MetaDeepT | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState("")
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr(""); setDeep(null)
+    const res = await fetch(`/api/clients/${clientId}/performance/meta-insights?since=${since}&until=${until}`)
+    const data = await res.json()
+    setLoading(false)
+    if (!res.ok) { setErr(data.error ?? "Falha ao ler análises Meta."); return }
+    setDeep(data.deep)
+  }, [clientId, since, until])
+  useEffect(() => { void load() }, [load])
+
+  if (loading) return <div className="flex min-h-24 items-center justify-center rounded-xl border border-white/8 bg-black/20"><Loader2 size={18} className="animate-spin text-[#FF8F50]" /></div>
+  if (err) return <p className="rounded-xl border border-white/8 bg-black/20 p-4 text-xs text-red-300">{err}</p>
+  if (!deep) return null
+  const v = deep.video
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KpiCard label="Alcance" value={deep.reach.toLocaleString("pt-BR")} />
+        <KpiCard label="Frequência" value={deep.frequency ? deep.frequency.toFixed(2) : "—"} />
+        <KpiCard label="ThruPlay" value={v.thruplay.toLocaleString("pt-BR")} />
+        <KpiCard label="Reproduções de vídeo" value={v.plays.toLocaleString("pt-BR")} />
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <BreakdownList title="Posicionamentos (por gasto)" rows={deep.placements} />
+        {v.plays > 0 ? (
+          <VisualFunnel title="Retenção de vídeo" steps={[
+            { label: "Reproduções", value: v.plays, display: v.plays.toLocaleString("pt-BR") },
+            { label: "25%", value: v.p25, display: v.p25.toLocaleString("pt-BR") },
+            { label: "50%", value: v.p50, display: v.p50.toLocaleString("pt-BR") },
+            { label: "75%", value: v.p75, display: v.p75.toLocaleString("pt-BR") },
+            { label: "100%", value: v.p100, display: v.p100.toLocaleString("pt-BR") },
+          ]} />
+        ) : (
+          <div className="rounded-xl border border-white/8 bg-black/20 p-4"><p className="text-[11px] text-zinc-500">Retenção de vídeo</p><p className="mt-3 text-xs text-zinc-600">Sem vídeo veiculado no período.</p></div>
+        )}
+        <BreakdownList title="Por idade" rows={deep.byAge} />
+        <BreakdownList title="Por gênero" rows={deep.byGender} />
+      </div>
     </div>
   )
 }
