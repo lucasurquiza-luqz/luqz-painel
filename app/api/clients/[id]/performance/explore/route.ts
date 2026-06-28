@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db"
 import { canAccessClient, denyClientAccess, requireApiUser } from "@/lib/api-auth"
 import { decryptSecret } from "@/lib/crypto-secrets"
 import { fetchMetaTree } from "@/lib/ads/meta"
-import { fetchGoogleTree } from "@/lib/ads/google"
+import { fetchGoogleTree, fetchGoogleSearchTerms } from "@/lib/ads/google"
 import { effectiveObjectives, monthRange, type AdConfig, type AdObjective, type DateRange } from "@/lib/ads/types"
 
 type Params = { params: Promise<{ id: string }> }
@@ -28,6 +28,10 @@ export async function GET(req: NextRequest, { params }: Params) {
 
   try {
     if (provider === "GOOGLE") {
+      if (sp.get("view") === "terms") {
+        const terms = await fetchGoogleSearchTerms(account.accountId, range)
+        return NextResponse.json({ provider, terms })
+      }
       const campaigns = await fetchGoogleTree(account.accountId, range)
       return NextResponse.json({ provider, campaigns })
     }

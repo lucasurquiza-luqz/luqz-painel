@@ -23,6 +23,7 @@ export type MetaDeep = {
 export type GoogleKeyword = { text: string; matchType: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null }
 export type GoogleAdGroup = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; keywords: GoogleKeyword[] }
 export type GoogleCampaign = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; adGroups: GoogleAdGroup[] }
+export type GoogleSearchTerm = { term: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null }
 
 export type AdMetrics = {
   provider: "META" | "GOOGLE"

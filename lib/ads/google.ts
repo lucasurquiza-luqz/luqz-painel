@@ -1,4 +1,4 @@
-import { AdsNotConfiguredError, type AdConfig, type AdMetrics, type GoogleCampaign, type GoogleKeyword, type DateRange } from "@/lib/ads/types"
+import { AdsNotConfiguredError, type AdConfig, type AdMetrics, type GoogleCampaign, type GoogleKeyword, type GoogleSearchTerm, type DateRange } from "@/lib/ads/types"
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token"
 const ADS_API = "https://googleads.googleapis.com/v21"
@@ -97,6 +97,27 @@ export async function fetchGoogleTree(customerId: string, { since, until }: Date
     .filter((c) => c.impressions > 0)
     .map((c) => ({ ...ratios(c), adGroups: c.adGroups.filter((g) => g.impressions > 0).sort((a, b) => b.spend - a.spend) }))
     .sort((a, b) => b.spend - a.spend)
+}
+
+// Termos de busca reais (o que o usuário digitou) — valor específico do Google.
+export async function fetchGoogleSearchTerms(customerId: string, { since, until }: DateRange): Promise<GoogleSearchTerm[]> {
+  const cid = customerId.replace(/-/g, "")
+  const rows = await gaql(cid, `SELECT search_term_view.search_term, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions FROM search_term_view WHERE segments.date BETWEEN '${since}' AND '${until}'`)
+  const m = new Map<string, GoogleSearchTerm>()
+  for (const row of rows) {
+    const term = String(row.searchTermView?.searchTerm ?? "").trim()
+    if (!term) continue
+    const cur = m.get(term) ?? { term, spend: 0, impressions: 0, clicks: 0, results: 0, cpa: null, ctr: null }
+    cur.spend += Number(row.metrics?.costMicros ?? 0) / 1_000_000
+    cur.impressions += Number(row.metrics?.impressions ?? 0)
+    cur.clicks += Number(row.metrics?.clicks ?? 0)
+    cur.results += Number(row.metrics?.conversions ?? 0)
+    m.set(term, cur)
+  }
+  return [...m.values()]
+    .map((t) => ({ ...t, results: Math.round(t.results), cpa: t.results >= 1 ? t.spend / t.results : null, ctr: t.impressions > 0 ? (t.clicks / t.impressions) * 100 : null }))
+    .sort((a, b) => b.spend - a.spend)
+    .slice(0, 60)
 }
 
 // Lista as contas gerenciadas pelo MCC (id + nome) — para auto-mapear aos clientes.

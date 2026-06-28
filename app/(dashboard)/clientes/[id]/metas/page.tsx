@@ -36,6 +36,18 @@ function currentMonth(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
 }
 
+// Cache de GETs em memória (TTL 2min) — troca de aba/fonte no mesmo período não refaz a chamada.
+const _perfCache = new Map<string, { at: number; data: unknown }>()
+async function cachedJson(url: string): Promise<{ ok: boolean; data: { error?: string; [k: string]: unknown } }> {
+  const hit = _perfCache.get(url)
+  if (hit && Date.now() - hit.at < 120_000) return { ok: true, data: hit.data as Record<string, unknown> }
+  const res = await fetch(url)
+  const data = await res.json().catch(() => ({}))
+  if (res.ok) _perfCache.set(url, { at: Date.now(), data })
+  return { ok: res.ok, data }
+}
+const clearPerfCache = () => _perfCache.clear()
+
 // Seleção de período: mês fechado (com cache) ou intervalo de dias (ao vivo).
 type RangeSel = { since: string; until: string; month: string | null; label: string }
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
@@ -474,15 +486,15 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
 
   const load = useCallback(async () => {
     setLoading(true); setErr(""); setReading("")
-    const res = await fetch(`/api/clients/${clientId}/performance?${qs}`)
-    const payload = await res.json()
+    const { ok, data } = await cachedJson(`/api/clients/${clientId}/performance?${qs}`)
     setLoading(false)
-    if (!res.ok) { setErr(payload.error ?? "Falha ao carregar performance."); setPerf(null); return }
-    setPerf(payload.performance); setHistory(payload.history ?? []); setFetchedAt(payload.fetchedAt ?? null)
+    if (!ok) { setErr(data.error ?? "Falha ao carregar performance."); setPerf(null); return }
+    setPerf(data.performance as Perf); setHistory((data.history as History) ?? []); setFetchedAt((data.fetchedAt as string) ?? null)
   }, [clientId, qs])
   useEffect(() => { void load() }, [load])
 
   async function refresh() {
+    clearPerfCache()
     // Intervalo ao vivo não tem cache pra reescrever — só recarrega.
     if (!range.month) { await load(); return }
     setRefreshing(true); setErr("")
@@ -654,7 +666,7 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
 
           {/* === ANÁLISES === */}
           {!isAll && tab === "insights" && source === "META" && <MetaDeepPanel clientId={clientId} since={range.since} until={range.until} />}
-          {!isAll && tab === "insights" && source === "GOOGLE" && <GoogleExplorer clientId={clientId} since={range.since} until={range.until} />}
+          {!isAll && tab === "insights" && source === "GOOGLE" && <GoogleSearchTerms clientId={clientId} since={range.since} until={range.until} />}
         </div>
       )}
     </Panel>
@@ -789,11 +801,10 @@ function Explorer({ clientId, since, until }: { clientId: string; since: string;
 
   const load = useCallback(async () => {
     setLoading(true); setErr(""); setCampaigns(null)
-    const res = await fetch(`/api/clients/${clientId}/performance/explore?since=${since}&until=${until}`)
-    const data = await res.json()
+    const { ok, data } = await cachedJson(`/api/clients/${clientId}/performance/explore?since=${since}&until=${until}`)
     setLoading(false)
-    if (!res.ok) { setErr(data.error ?? "Falha ao explorar."); return }
-    setCampaigns(data.campaigns)
+    if (!ok) { setErr(data.error ?? "Falha ao explorar."); return }
+    setCampaigns((data.campaigns as CampaignNode[]) ?? [])
   }, [clientId, since, until])
   useEffect(() => { void load() }, [load])
 
@@ -822,11 +833,10 @@ function CreativesGrid({ clientId, since, until }: { clientId: string; since: st
 
   const load = useCallback(async () => {
     setLoading(true); setErr(""); setAds(null)
-    const res = await fetch(`/api/clients/${clientId}/performance/explore?since=${since}&until=${until}`)
-    const data = await res.json()
+    const { ok, data } = await cachedJson(`/api/clients/${clientId}/performance/explore?since=${since}&until=${until}`)
     setLoading(false)
-    if (!res.ok) { setErr(data.error ?? "Falha ao carregar criativos."); return }
-    const flat: AdNode[] = (data.campaigns ?? []).flatMap((c: CampaignNode) => c.adsets.flatMap((s) => s.ads))
+    if (!ok) { setErr(data.error ?? "Falha ao carregar criativos."); return }
+    const flat: AdNode[] = ((data.campaigns as CampaignNode[]) ?? []).flatMap((c) => c.adsets.flatMap((s) => s.ads))
     flat.sort((a, b) => b.spend - a.spend)
     setAds(flat)
   }, [clientId, since, until])
@@ -872,11 +882,10 @@ function GoogleExplorer({ clientId, since, until }: { clientId: string; since: s
 
   const load = useCallback(async () => {
     setLoading(true); setErr(""); setCampaigns(null)
-    const res = await fetch(`/api/clients/${clientId}/performance/explore?provider=GOOGLE&since=${since}&until=${until}`)
-    const data = await res.json()
+    const { ok, data } = await cachedJson(`/api/clients/${clientId}/performance/explore?provider=GOOGLE&since=${since}&until=${until}`)
     setLoading(false)
-    if (!res.ok) { setErr(data.error ?? "Falha ao explorar."); return }
-    setCampaigns(data.campaigns)
+    if (!ok) { setErr(data.error ?? "Falha ao explorar."); return }
+    setCampaigns((data.campaigns as GCampaign[]) ?? [])
   }, [clientId, since, until])
   useEffect(() => { void load() }, [load])
 
@@ -895,6 +904,31 @@ function GoogleExplorer({ clientId, since, until }: { clientId: string; since: s
     })),
   }))
   return <MetricTree nodes={nodes} title="Explorador (Google)" levels={["Campanha", "Grupo", "Palavra-chave"]} />
+}
+
+// Termos de busca reais do Google (o que o usuário digitou) — tabela ordenável.
+type GTerm = { term: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null }
+function GoogleSearchTerms({ clientId, since, until }: { clientId: string; since: string; until: string }) {
+  const [terms, setTerms] = useState<GTerm[] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState("")
+
+  const load = useCallback(async () => {
+    setLoading(true); setErr(""); setTerms(null)
+    const { ok, data } = await cachedJson(`/api/clients/${clientId}/performance/explore?provider=GOOGLE&view=terms&since=${since}&until=${until}`)
+    setLoading(false)
+    if (!ok) { setErr(data.error ?? "Falha ao carregar termos."); return }
+    setTerms((data.terms as GTerm[]) ?? [])
+  }, [clientId, since, until])
+  useEffect(() => { void load() }, [load])
+
+  if (loading) return <div className="flex min-h-24 items-center justify-center rounded-2xl border border-white/8 bg-black/20"><Loader2 size={18} className="animate-spin text-[#FF8F50]" /></div>
+  if (err) return <p className="rounded-2xl border border-white/8 bg-black/20 p-4 text-xs text-red-300">{err}</p>
+
+  const nodes: TNode[] = (terms ?? []).map((t, i) => ({
+    id: `t-${i}`, name: t.term, spend: t.spend, impressions: t.impressions, clicks: t.clicks, results: t.results, cpa: t.cpa, ctr: t.ctr,
+  }))
+  return <MetricTree nodes={nodes} title="Termos de busca (Google)" levels={["o que as pessoas pesquisaram"]} />
 }
 
 // === Análises profundas Meta (posicionamentos, demografia, alcance, vídeo) ===
@@ -932,11 +966,10 @@ function MetaDeepPanel({ clientId, since, until }: { clientId: string; since: st
 
   const load = useCallback(async () => {
     setLoading(true); setErr(""); setDeep(null)
-    const res = await fetch(`/api/clients/${clientId}/performance/meta-insights?since=${since}&until=${until}`)
-    const data = await res.json()
+    const { ok, data } = await cachedJson(`/api/clients/${clientId}/performance/meta-insights?since=${since}&until=${until}`)
     setLoading(false)
-    if (!res.ok) { setErr(data.error ?? "Falha ao ler análises Meta."); return }
-    setDeep(data.deep)
+    if (!ok) { setErr(data.error ?? "Falha ao ler análises Meta."); return }
+    setDeep(data.deep as MetaDeepT)
   }, [clientId, since, until])
   useEffect(() => { void load() }, [load])
 
