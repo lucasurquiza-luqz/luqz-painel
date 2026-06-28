@@ -608,8 +608,8 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
           {!isAll && (
             <div className="flex flex-wrap gap-4 border-b border-white/8 text-sm">
               {(source === "META"
-                ? [["overview", "Visão Geral"], ["campaigns", "Campanhas"], ["creatives", "Criativos"], ["insights", "Análises"]]
-                : [["overview", "Visão Geral"], ["campaigns", "Campanhas"], ["insights", "Termos & análises"]]
+                ? [["overview", "Visão Geral"], ["campaigns", "Campanhas"], ["funnels", "Funis"], ["creatives", "Criativos"], ["insights", "Análises"]]
+                : [["overview", "Visão Geral"], ["campaigns", "Campanhas"], ["funnels", "Funis"], ["insights", "Termos & análises"]]
               ).map(([key, label]) => (
                 <button key={key} onClick={() => setTab(key)}
                   className={`-mb-px border-b-2 pb-2 font-medium transition ${tab === key ? "border-[#FF8F50] text-white" : "border-transparent text-zinc-500 hover:text-zinc-300"}`}>
@@ -678,6 +678,9 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
           {/* === CAMPANHAS === */}
           {!isAll && tab === "campaigns" && source === "META" && <Explorer clientId={clientId} since={range.since} until={range.until} />}
           {!isAll && tab === "campaigns" && source === "GOOGLE" && <GoogleExplorer clientId={clientId} since={range.since} until={range.until} />}
+
+          {/* === FUNIS (agrupa campanhas por nome) === */}
+          {!isAll && tab === "funnels" && <FunnelView clientId={clientId} provider={source} since={range.since} until={range.until} />}
 
           {/* === CRIATIVOS (Meta) === */}
           {!isAll && tab === "creatives" && source === "META" && <CreativesGrid clientId={clientId} since={range.since} until={range.until} />}
@@ -829,18 +832,38 @@ function Explorer({ clientId, since, until }: { clientId: string; since: string;
   if (loading) return <div className="flex min-h-24 items-center justify-center rounded-2xl border border-white/8 bg-black/20"><Loader2 size={18} className="animate-spin text-[#FF8F50]" /></div>
   if (err) return <p className="rounded-2xl border border-white/8 bg-black/20 p-4 text-xs text-red-300">{err}</p>
 
-  const nodes: TNode[] = (campaigns ?? []).map((c) => ({
-    id: c.id, name: c.name, spend: c.spend, impressions: c.impressions, clicks: c.clicks, results: c.results, cpa: c.cpa, ctr: c.ctr,
-    children: c.adsets.map((s) => ({
-      id: s.id, name: s.name, spend: s.spend, impressions: s.impressions, clicks: s.clicks, results: s.results, cpa: s.cpa, ctr: s.ctr,
-      subtitle: s.audience ? `👥 ${s.audience}` : null,
-      children: s.ads.map((ad) => ({
-        id: ad.id, name: ad.name, spend: ad.spend, impressions: ad.impressions, clicks: ad.clicks, results: ad.results, cpa: ad.cpa, ctr: ad.ctr,
-        thumbnail: ad.thumbnail, permalink: ad.permalink, hookRate: ad.hookRate, convRate: ad.convRate,
-      })),
+  return <MetricTree nodes={metaToNodes(campaigns ?? [])} title="Explorador (Meta)" levels={["Campanha", "Conjunto", "Anúncio"]} />
+}
+
+// Converte a árvore Meta da API em TNode[] (reutilizado no explorador e nos funis).
+const metaToNodes = (campaigns: CampaignNode[]): TNode[] => campaigns.map((c) => ({
+  id: c.id, name: c.name, spend: c.spend, impressions: c.impressions, clicks: c.clicks, results: c.results, cpa: c.cpa, ctr: c.ctr,
+  children: c.adsets.map((s) => ({
+    id: s.id, name: s.name, spend: s.spend, impressions: s.impressions, clicks: s.clicks, results: s.results, cpa: s.cpa, ctr: s.ctr,
+    subtitle: s.audience ? `👥 ${s.audience}` : null,
+    children: s.ads.map((ad) => ({
+      id: ad.id, name: ad.name, spend: ad.spend, impressions: ad.impressions, clicks: ad.clicks, results: ad.results, cpa: ad.cpa, ctr: ad.ctr,
+      thumbnail: ad.thumbnail, permalink: ad.permalink, hookRate: ad.hookRate, convRate: ad.convRate,
     })),
-  }))
-  return <MetricTree nodes={nodes} title="Explorador (Meta)" levels={["Campanha", "Conjunto", "Anúncio"]} />
+  })),
+}))
+
+// Agrupa nós de campanha em funis por regra de nome (campanha entra no 1º funil cujo termo bate).
+function groupByFunnel(nodes: TNode[], funnels: { name: string; terms: string[] }[]): TNode[] {
+  const groups = funnels.map((f) => ({ funnel: f, terms: f.terms.map((t) => t.toLowerCase()), kids: [] as TNode[] }))
+  const none: TNode[] = []
+  for (const n of nodes) {
+    const nl = n.name.toLowerCase()
+    const g = groups.find((g) => g.terms.some((t) => nl.includes(t)))
+    if (g) g.kids.push(n); else none.push(n)
+  }
+  const agg = (id: string, name: string, kids: TNode[]): TNode => {
+    const t = kids.reduce((a, c) => ({ spend: a.spend + c.spend, impressions: a.impressions + c.impressions, clicks: a.clicks + c.clicks, results: a.results + c.results }), { spend: 0, impressions: 0, clicks: 0, results: 0 })
+    return { id, name, ...t, cpa: t.results > 0 ? t.spend / t.results : null, ctr: t.impressions > 0 ? (t.clicks / t.impressions) * 100 : null, children: kids }
+  }
+  const out = groups.filter((g) => g.kids.length).map((g) => agg(`f-${g.funnel.name}`, g.funnel.name, g.kids))
+  if (none.length) out.push(agg("f-none", "Sem funil", none))
+  return out.sort((a, b) => b.spend - a.spend)
 }
 
 // Criativos (Meta): todos os anúncios achatados, ordenados por gasto, com preview grande.
@@ -910,19 +933,21 @@ function GoogleExplorer({ clientId, since, until }: { clientId: string; since: s
   if (loading) return <div className="flex min-h-24 items-center justify-center rounded-2xl border border-white/8 bg-black/20"><Loader2 size={18} className="animate-spin text-[#FF8F50]" /></div>
   if (err) return <p className="rounded-2xl border border-white/8 bg-black/20 p-4 text-xs text-red-300">{err}</p>
 
-  let kwIdx = 0
-  const nodes: TNode[] = (campaigns ?? []).map((c) => ({
-    id: c.id, name: c.name, spend: c.spend, impressions: c.impressions, clicks: c.clicks, results: c.results, cpa: c.cpa, ctr: c.ctr,
-    children: c.adGroups.map((g) => ({
-      id: g.id, name: g.name, spend: g.spend, impressions: g.impressions, clicks: g.clicks, results: g.results, cpa: g.cpa, ctr: g.ctr,
-      children: g.keywords.map((k) => ({
-        id: `kw-${kwIdx++}`, name: k.text, spend: k.spend, impressions: k.impressions, clicks: k.clicks, results: k.results, cpa: k.cpa, ctr: k.ctr,
-        matchType: MATCH_LABEL[k.matchType] ?? k.matchType.toLowerCase(),
-      })),
-    })),
-  }))
-  return <MetricTree nodes={nodes} title="Explorador (Google)" levels={["Campanha", "Grupo", "Palavra-chave"]} />
+  return <MetricTree nodes={googleToNodes(campaigns ?? [])} title="Explorador (Google)" levels={["Campanha", "Grupo", "Palavra-chave"]} />
 }
+
+// Converte a árvore Google da API em TNode[] (reutilizado no explorador e nos funis).
+let _gkw = 0
+const googleToNodes = (campaigns: GCampaign[]): TNode[] => campaigns.map((c) => ({
+  id: c.id, name: c.name, spend: c.spend, impressions: c.impressions, clicks: c.clicks, results: c.results, cpa: c.cpa, ctr: c.ctr,
+  children: c.adGroups.map((g) => ({
+    id: g.id, name: g.name, spend: g.spend, impressions: g.impressions, clicks: g.clicks, results: g.results, cpa: g.cpa, ctr: g.ctr,
+    children: g.keywords.map((k) => ({
+      id: `kw-${_gkw++}`, name: k.text, spend: k.spend, impressions: k.impressions, clicks: k.clicks, results: k.results, cpa: k.cpa, ctr: k.ctr,
+      matchType: MATCH_LABEL[k.matchType] ?? k.matchType.toLowerCase(),
+    })),
+  })),
+}))
 
 // Termos de busca reais do Google (o que o usuário digitou) — tabela ordenável.
 type GTerm = { term: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null }
@@ -947,6 +972,86 @@ function GoogleSearchTerms({ clientId, since, until }: { clientId: string; since
     id: `t-${i}`, name: t.term, spend: t.spend, impressions: t.impressions, clicks: t.clicks, results: t.results, cpa: t.cpa, ctr: t.ctr,
   }))
   return <MetricTree nodes={nodes} title="Termos de busca (Google)" levels={["o que as pessoas pesquisaram"]} />
+}
+
+// === Funis: agrupa campanhas por regra de nome (1 funil → N campanhas) ===
+type FunnelDef = { name: string; terms: string[] }
+function FunnelEditor({ clientId, initial, onSaved }: { clientId: string; initial: FunnelDef[]; onSaved: (f: FunnelDef[]) => void }) {
+  const [rows, setRows] = useState<{ name: string; terms: string }[]>(initial.length ? initial.map((f) => ({ name: f.name, terms: f.terms.join(", ") })) : [{ name: "", terms: "" }])
+  const [saving, setSaving] = useState(false)
+  const set = (i: number, k: "name" | "terms", v: string) => setRows((r) => r.map((row, j) => (j === i ? { ...row, [k]: v } : row)))
+
+  async function save() {
+    setSaving(true)
+    const funnels = rows.map((r) => ({ name: r.name.trim(), terms: r.terms.split(",").map((t) => t.trim()).filter(Boolean) })).filter((f) => f.name)
+    const res = await fetch(`/api/clients/${clientId}/funnels`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ funnels }) })
+    const d = await res.json().catch(() => ({}))
+    setSaving(false)
+    if (res.ok) { clearPerfCache(); onSaved(d.funnels ?? funnels) }
+  }
+
+  return (
+    <div className="rounded-xl border border-white/8 bg-black/20 p-4">
+      <p className="mb-2 text-xs font-semibold text-zinc-300">Configurar funis — campanha entra no funil cujo termo aparece no nome</p>
+      <div className="space-y-2">
+        {rows.map((r, i) => (
+          <div key={i} className="flex flex-wrap items-center gap-2">
+            <Input value={r.name} onChange={(e) => set(i, "name", e.target.value)} placeholder="Nome do funil (ex: Vistos Temporários)" className="min-h-9 flex-1" />
+            <Input value={r.terms} onChange={(e) => set(i, "terms", e.target.value)} placeholder="termos no nome, separados por vírgula (ex: VISTOS TEMP, L1)" className="min-h-9 flex-[2]" />
+            <button onClick={() => setRows((rr) => rr.filter((_, j) => j !== i))} className="rounded-lg px-2 py-1 text-xs text-zinc-500 hover:text-red-300">remover</button>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex gap-2">
+        <Button variant="secondary" className="min-h-8 px-3 py-1 text-xs" onClick={() => setRows((r) => [...r, { name: "", terms: "" }])}>+ funil</Button>
+        <Button className="min-h-8 px-3 py-1 text-xs" disabled={saving} onClick={save}>{saving ? <Loader2 size={13} className="animate-spin" /> : "Salvar funis"}</Button>
+      </div>
+    </div>
+  )
+}
+
+function FunnelView({ clientId, provider, since, until }: { clientId: string; provider: string; since: string; until: string }) {
+  const [funnels, setFunnels] = useState<FunnelDef[] | null>(null)
+  const [nodes, setNodes] = useState<TNode[] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState("")
+  const [editing, setEditing] = useState(false)
+
+  const loadFunnels = useCallback(async () => {
+    const res = await fetch(`/api/clients/${clientId}/funnels`)
+    const d = await res.json().catch(() => ({}))
+    if (res.ok) setFunnels(d.funnels ?? [])
+  }, [clientId])
+
+  const loadCampaigns = useCallback(async () => {
+    setLoading(true); setErr("")
+    const url = provider === "GOOGLE"
+      ? `/api/clients/${clientId}/performance/explore?provider=GOOGLE&since=${since}&until=${until}`
+      : `/api/clients/${clientId}/performance/explore?since=${since}&until=${until}`
+    const { ok, data } = await cachedJson(url)
+    setLoading(false)
+    if (!ok) { setErr(data.error ?? "Falha ao carregar campanhas."); return }
+    setNodes(provider === "GOOGLE" ? googleToNodes((data.campaigns as GCampaign[]) ?? []) : metaToNodes((data.campaigns as CampaignNode[]) ?? []))
+  }, [clientId, provider, since, until])
+
+  useEffect(() => { void loadFunnels(); void loadCampaigns() }, [loadFunnels, loadCampaigns])
+
+  if (loading || !nodes) return <div className="flex min-h-24 items-center justify-center rounded-2xl border border-white/8 bg-black/20"><Loader2 size={18} className="animate-spin text-[#FF8F50]" /></div>
+  if (err) return <p className="rounded-2xl border border-white/8 bg-black/20 p-4 text-xs text-red-300">{err}</p>
+
+  const grouped = groupByFunnel(nodes, funnels ?? [])
+  const leaf = provider === "GOOGLE" ? "Grupo ▸ Palavra" : "Conjunto ▸ Anúncio"
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-zinc-500">Funis agrupam campanhas por regra de nome. 1 funil → várias campanhas.</p>
+        <button onClick={() => setEditing((v) => !v)} className="text-[11px] text-[#FFB185] hover:underline">{editing ? "fechar" : "Configurar funis"}</button>
+      </div>
+      {editing && <FunnelEditor clientId={clientId} initial={funnels ?? []} onSaved={(f) => { setFunnels(f); setEditing(false) }} />}
+      {!funnels?.length && !editing && <p className="rounded-xl border border-white/8 bg-black/20 p-4 text-xs text-zinc-500">Nenhum funil definido ainda. Clique em <span className="text-[#FFB185]">Configurar funis</span> pra criar (ex.: &quot;Consultoria&quot; = termos CONSULTORIA, SEGUIMENTAÇÃO).</p>}
+      <MetricTree nodes={grouped} title={`Funis (${provider === "GOOGLE" ? "Google" : "Meta"})`} levels={["Funil", "Campanha", leaf]} />
+    </div>
+  )
 }
 
 // === Análises profundas Meta (posicionamentos, demografia, alcance, vídeo) ===

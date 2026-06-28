@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic"
 
 // Marcador de build: bumpado a cada release para confirmar, sem login, qual
 // versao esta efetivamente no ar (o middleware bloqueia as demais rotas /api).
-const BUILD_MARKER = "prefetch-checkbox-conversoes-2026-06-28"
+const BUILD_MARKER = "funis-por-nome-2026-06-28"
 
 export async function GET() {
   try {

@@ -56,6 +56,7 @@ model Client {
   mediaPlans          MediaPlan[]
   adAccounts          ClientAdAccount[]
   perfSnapshots       PerformanceSnapshot[]
+  funnels             ClientFunnel[]
 }
 
 // Cache de performance por cliente/mês. O painel lê daqui (instantâneo); um cron
@@ -112,6 +113,21 @@ model ClientAdAccount {
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@unique([clientId, provider])
+}
+
+// Funil = agrupamento de campanhas por regra de nome (1 funil → N campanhas).
+model ClientFunnel {
+  id        String   @id @default(cuid())
+  clientId  String
+  name      String
+  terms     String[] @default([]) // campanha pertence se o nome contém QUALQUER termo (case-insensitive)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
 }
 
 // Plano de mídia / metas por cliente e período (mês). Guarda os ALVOS;
