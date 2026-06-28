@@ -59,8 +59,8 @@ export async function fetchGoogleTree(customerId: string, { since, until }: Date
   const M = "metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions"
 
   const [adGroupRows, kwRows] = await Promise.all([
-    gaql(cid, `SELECT campaign.id, campaign.name, ad_group.id, ad_group.name, ${M} FROM ad_group ${where}`),
-    gaql(cid, `SELECT ad_group.id, ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, ${M} FROM keyword_view ${where}`),
+    gaql(cid, `SELECT campaign.id, campaign.name, campaign.status, ad_group.id, ad_group.name, ad_group.status, ${M} FROM ad_group ${where}`),
+    gaql(cid, `SELECT ad_group.id, ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, ad_group_criterion.status, ${M} FROM keyword_view ${where}`),
   ])
 
   const mtr = (row: Record<string, any>) => ({
@@ -69,6 +69,7 @@ export async function fetchGoogleTree(customerId: string, { since, until }: Date
     clicks: Number(row.metrics?.clicks ?? 0),
     results: Math.round(Number(row.metrics?.conversions ?? 0)),
   })
+  const gStatus = (s: unknown): "active" | "paused" => (String(s ?? "") === "ENABLED" ? "active" : "paused")
 
   // Palavras-chave agrupadas por ad_group.
   const kwByGroup = new Map<string, GoogleKeyword[]>()
@@ -77,20 +78,21 @@ export async function fetchGoogleTree(customerId: string, { since, until }: Date
     const kw = row.adGroupCriterion?.keyword
     if (!gId || !kw?.text) continue
     const list = kwByGroup.get(gId) ?? []
-    list.push(ratios({ text: String(kw.text), matchType: String(kw.matchType ?? "—"), ...mtr(row) }))
+    list.push(ratios({ text: String(kw.text), matchType: String(kw.matchType ?? "—"), status: gStatus(row.adGroupCriterion?.status), ...mtr(row) }))
     kwByGroup.set(gId, list)
   }
 
-  // Campanhas → grupos.
+  // Campanhas → grupos. Status da campanha = mais "ativo" entre seus grupos (ENABLED se algum ativo).
   const campaigns = new Map<string, GoogleCampaign>()
   for (const row of adGroupRows) {
     const cId = String(row.campaign?.id ?? ""), gId = String(row.adGroup?.id ?? "")
     if (!cId || !gId) continue
     const m = mtr(row)
+    const campActive = gStatus(row.campaign?.status) === "active"
     let c = campaigns.get(cId)
-    if (!c) { c = { id: cId, name: String(row.campaign?.name ?? "—"), spend: 0, impressions: 0, clicks: 0, results: 0, cpa: null, ctr: null, adGroups: [] }; campaigns.set(cId, c) }
+    if (!c) { c = { id: cId, name: String(row.campaign?.name ?? "—"), status: campActive ? "active" : "paused", spend: 0, impressions: 0, clicks: 0, results: 0, cpa: null, ctr: null, adGroups: [] }; campaigns.set(cId, c) }
     c.spend += m.spend; c.impressions += m.impressions; c.clicks += m.clicks; c.results += m.results
-    c.adGroups.push(ratios({ id: gId, name: String(row.adGroup?.name ?? "—"), ...m, keywords: (kwByGroup.get(gId) ?? []).sort((a, b) => b.spend - a.spend) }))
+    c.adGroups.push(ratios({ id: gId, name: String(row.adGroup?.name ?? "—"), status: gStatus(row.adGroup?.status), ...m, keywords: (kwByGroup.get(gId) ?? []).sort((a, b) => b.spend - a.spend) }))
   }
 
   return [...campaigns.values()]

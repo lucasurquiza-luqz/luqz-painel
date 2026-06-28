@@ -1,4 +1,4 @@
-import { META_DEFAULT_ACTIONS, META_PURCHASE_ACTIONS, META_PAGEVIEW_ACTIONS, type AdConfig, type AdMetrics, type AdObjective, type AdNode, type CampaignNode, type ResultBreakdown, type DateRange, type MetaBreakdownRow, type MetaDeep } from "@/lib/ads/types"
+import { META_DEFAULT_ACTIONS, META_PURCHASE_ACTIONS, META_PAGEVIEW_ACTIONS, type AdConfig, type AdMetrics, type AdObjective, type AdNode, type AdStatus, type CampaignNode, type ResultBreakdown, type DateRange, type MetaBreakdownRow, type MetaDeep } from "@/lib/ads/types"
 
 const GRAPH = "https://graph.facebook.com/v21.0"
 type Action = { action_type: string; value: string }
@@ -180,7 +180,7 @@ export async function fetchMetaTree(accountId: string, token: string, { since, u
     if (!s) { s = { id: aId, name: String(r.adset_name ?? "—"), spend: 0, impressions: 0, clicks: 0, results: 0, ads: [] }; c.adsets.set(aId, s) }
     for (const node of [c, s]) { node.spend += spend; node.impressions += impressions; node.clicks += clicks; node.results += results }
     s.ads.push({
-      id: adId, name: String(r.ad_name ?? "—"), spend, impressions, clicks, results,
+      id: adId, name: String(r.ad_name ?? "—"), status: null, spend, impressions, clicks, results,
       cpa: results > 0 ? spend / results : null,
       ctr: impressions > 0 ? (clicks / impressions) * 100 : null,
       hookRate: impressions > 0 ? (views3s / impressions) * 100 : null,
@@ -189,21 +189,26 @@ export async function fetchMetaTree(accountId: string, token: string, { since, u
     })
   }
 
-  // Público (targeting) e preview/permalink — em lote e EM PARALELO (latência menor).
+  // Status (effective_status), público e preview — em lote e EM PARALELO (latência menor).
+  const campaignIds = [...campaigns.keys()].filter(Boolean)
   const adsetIds = [...campaigns.values()].flatMap((c) => [...c.adsets.keys()]).filter(Boolean).slice(0, 100)
   const allAds = [...campaigns.values()].flatMap((c) => [...c.adsets.values()].flatMap((s) => s.ads))
   const topAdIds = [...allAds].sort((a, b) => b.spend - a.spend).slice(0, 40).map((a) => a.id).filter(Boolean)
   const audience = new Map<string, string | null>()
+  const mStatus = (s: unknown): AdStatus => (s == null ? null : String(s) === "ACTIVE" ? "active" : "paused")
   const batch = (ids: string[], fields: string) =>
     ids.length ? fetch(`${GRAPH}/?ids=${ids.join(",")}&fields=${fields}&access_token=${encodeURIComponent(token)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null) : Promise.resolve(null)
-  const [targetBody, creativeBody] = await Promise.all([
-    batch(adsetIds, "targeting"),
-    batch(topAdIds, "creative{instagram_permalink_url,effective_object_story_id,thumbnail_url,image_url}"),
+  const [campBody, targetBody, creativeBody] = await Promise.all([
+    batch(campaignIds, "effective_status"),
+    batch(adsetIds, "effective_status,targeting"),
+    batch(topAdIds, "effective_status,creative{instagram_permalink_url,effective_object_story_id,thumbnail_url,image_url}"),
   ])
   if (targetBody) for (const id of adsetIds) audience.set(id, summarizeTargeting(targetBody?.[id]?.targeting ?? null))
+  const adStatus = new Map<string, AdStatus>()
   if (creativeBody) for (const ad of allAds) {
     const cr = creativeBody?.[ad.id]?.creative
     if (cr) { ad.permalink = cr.instagram_permalink_url ?? (cr.effective_object_story_id ? `https://facebook.com/${cr.effective_object_story_id}` : null); ad.thumbnail = cr.image_url ?? cr.thumbnail_url ?? null }
+    adStatus.set(ad.id, mStatus(creativeBody?.[ad.id]?.effective_status))
   }
 
   const finish = (a: Acc) => ({ ...a, cpa: a.results > 0 ? a.spend / a.results : null, ctr: a.impressions > 0 ? (a.clicks / a.impressions) * 100 : null })
@@ -212,10 +217,12 @@ export async function fetchMetaTree(accountId: string, token: string, { since, u
     .sort((a, b) => b.spend - a.spend)
     .map((c) => ({
       ...finish(c),
+      status: mStatus(campBody?.[c.id]?.effective_status),
       adsets: [...c.adsets.values()].filter((s) => s.impressions > 0).sort((a, b) => b.spend - a.spend).map((s) => ({
         ...finish(s),
+        status: mStatus(targetBody?.[s.id]?.effective_status),
         audience: audience.get(s.id) ?? null,
-        ads: s.ads.filter((ad) => ad.impressions > 0).sort((a, b) => b.spend - a.spend),
+        ads: s.ads.filter((ad) => ad.impressions > 0).sort((a, b) => b.spend - a.spend).map((ad) => ({ ...ad, status: adStatus.get(ad.id) ?? null })),
       })),
     }))
 }

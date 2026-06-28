@@ -3,10 +3,12 @@ export type AdObjective = "LEAD" | "WHATSAPP" | "ECOMMERCE" | "CUSTOM"
 export type ResultBreakdown = { objective: AdObjective; count: number }
 export type DailyPoint = { date: string; spend: number; results: number; impressions: number; clicks: number; pageViews: number; revenue: number }
 
+export type AdStatus = "active" | "paused" | null
+
 // Árvore de exploração: Campanha → Conjunto (com público) → Anúncio (com preview).
-export type AdNode = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; hookRate: number | null; convRate: number | null; thumbnail: string | null; permalink: string | null }
-export type AdsetNode = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; audience: string | null; ads: AdNode[] }
-export type CampaignNode = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; adsets: AdsetNode[] }
+export type AdNode = { id: string; name: string; status: AdStatus; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; hookRate: number | null; convRate: number | null; thumbnail: string | null; permalink: string | null }
+export type AdsetNode = { id: string; name: string; status: AdStatus; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; audience: string | null; ads: AdNode[] }
+export type CampaignNode = { id: string; name: string; status: AdStatus; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; adsets: AdsetNode[] }
 
 // Análises profundas do Meta (placements, demografia, alcance, vídeo).
 export type MetaBreakdownRow = { key: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null }
@@ -20,9 +22,9 @@ export type MetaDeep = {
 }
 
 // Árvore de exploração Google: Campanha → Grupo de anúncios → Palavra-chave.
-export type GoogleKeyword = { text: string; matchType: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null }
-export type GoogleAdGroup = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; keywords: GoogleKeyword[] }
-export type GoogleCampaign = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; adGroups: GoogleAdGroup[] }
+export type GoogleKeyword = { text: string; matchType: string; status: AdStatus; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null }
+export type GoogleAdGroup = { id: string; name: string; status: AdStatus; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; keywords: GoogleKeyword[] }
+export type GoogleCampaign = { id: string; name: string; status: AdStatus; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; adGroups: GoogleAdGroup[] }
 export type GoogleSearchTerm = { term: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null }
 
 export type AdMetrics = {

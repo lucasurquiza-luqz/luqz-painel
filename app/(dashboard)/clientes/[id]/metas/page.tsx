@@ -695,14 +695,15 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
 }
 
 // Explorador: Campanha → Conjunto (público) → Anúncio (preview). Drill-down.
-type AdNode = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; hookRate: number | null; convRate: number | null; thumbnail: string | null; permalink: string | null }
-type AdsetNode = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; audience: string | null; ads: AdNode[] }
-type CampaignNode = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; adsets: AdsetNode[] }
+type AdStatus = "active" | "paused" | null
+type AdNode = { id: string; name: string; status: AdStatus; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; hookRate: number | null; convRate: number | null; thumbnail: string | null; permalink: string | null }
+type AdsetNode = { id: string; name: string; status: AdStatus; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; audience: string | null; ads: AdNode[] }
+type CampaignNode = { id: string; name: string; status: AdStatus; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; adsets: AdsetNode[] }
 const chevron = (on: boolean) => <span className={`inline-block text-zinc-500 transition-transform ${on ? "rotate-90" : ""}`}>▸</span>
 
 // === Tabela de métricas em árvore (campanha ▸ filho ▸ neto), ordenável, com detalhes ao clicar ===
 type TNode = {
-  id: string; name: string
+  id: string; name: string; status?: AdStatus
   spend: number; impressions: number; clicks: number; results: number
   cpa: number | null; ctr: number | null
   subtitle?: string | null; thumbnail?: string | null; permalink?: string | null
@@ -735,16 +736,23 @@ function MetricTree({ nodes, title, levels }: { nodes: TNode[]; title: string; l
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [detail, setDetail] = useState<string | null>(null)
   const [expandAll, setExpandAll] = useState(false)
+  const [onlyActive, setOnlyActive] = useState(false)
   const [sort, setSort] = useState<{ key: ColKey; dir: 1 | -1 }>({ key: "spend", dir: -1 })
   const isOpen = (id: string) => open[id] ?? expandAll
+  const anyStatus = (arr: TNode[]): boolean => arr.some((n) => n.status != null || (n.children ? anyStatus(n.children) : false))
+  const hasStatus = anyStatus(nodes)
 
+  // Filtra pausados (mantém ativos e os sem status conhecido).
+  const prune = (arr: TNode[]): TNode[] =>
+    arr.filter((n) => !(onlyActive && n.status === "paused")).map((n) => (n.children?.length ? { ...n, children: prune(n.children) } : n))
   const sortTree = (arr: TNode[]): TNode[] =>
     [...arr].sort((a, b) => (colValue(a, sort.key) - colValue(b, sort.key)) * sort.dir)
       .map((n) => (n.children?.length ? { ...n, children: sortTree(n.children) } : n))
+  const visible = sortTree(prune(nodes))
   const rows: { n: TNode; depth: number }[] = []
   const walk = (arr: TNode[], depth: number) => { for (const n of arr) { rows.push({ n, depth }); if (n.children?.length && isOpen(n.id)) walk(n.children, depth + 1) } }
-  walk(sortTree(nodes), 0)
-  const total = nodes.reduce((s, n) => s + n.spend, 0) || 1
+  walk(visible, 0)
+  const total = visible.reduce((s, n) => s + n.spend, 0) || 1
 
   const clickRow = (n: TNode) => { if (n.children?.length) setOpen((o) => ({ ...o, [n.id]: !(o[n.id] ?? expandAll) })); else setDetail((d) => (d === n.id ? null : n.id)) }
 
@@ -752,7 +760,14 @@ function MetricTree({ nodes, title, levels }: { nodes: TNode[]; title: string; l
     <div className="rounded-2xl border border-white/8 bg-black/20 p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <p className="text-xs font-medium text-zinc-400">{title} <span className="text-zinc-600">· {levels.join(" ▸ ")}</span></p>
-        {!!nodes.length && <button onClick={() => { setExpandAll((v) => !v); setOpen({}) }} className="text-[11px] text-zinc-500 hover:text-zinc-300">{expandAll ? "Recolher tudo" : "Expandir tudo"}</button>}
+        <div className="flex items-center gap-3">
+          {hasStatus && (
+            <button onClick={() => setOnlyActive((v) => !v)} className={`flex items-center gap-1.5 text-[11px] ${onlyActive ? "text-emerald-300" : "text-zinc-500 hover:text-zinc-300"}`}>
+              <span className={`h-2 w-2 rounded-full ${onlyActive ? "bg-emerald-400" : "border border-zinc-600"}`} /> Só ativos
+            </button>
+          )}
+          {!!nodes.length && <button onClick={() => { setExpandAll((v) => !v); setOpen({}) }} className="text-[11px] text-zinc-500 hover:text-zinc-300">{expandAll ? "Recolher tudo" : "Expandir tudo"}</button>}
+        </div>
       </div>
       {!nodes.length ? (
         <p className="text-xs text-zinc-600">Sem dados com veiculação no período.</p>
@@ -775,7 +790,10 @@ function MetricTree({ nodes, title, levels }: { nodes: TNode[]; title: string; l
                   <button onClick={() => clickRow(n)} className="flex min-w-0 items-center gap-2 text-left" style={{ paddingLeft: depth * 16 }}>
                     {n.children?.length ? chevron(isOpen(n.id)) : n.thumbnail ? <img src={n.thumbnail} alt="" className="h-7 w-7 shrink-0 rounded object-cover" /> : <span className="inline-block w-[10px] text-center text-zinc-700">·</span>}
                     <span className="min-w-0">
-                      <span className={`block truncate ${depth === 0 ? "font-semibold text-zinc-50" : "text-zinc-200"}`} title={n.name}>{n.name}</span>
+                      <span className={`flex items-center gap-1.5 ${depth === 0 ? "font-semibold text-zinc-50" : "text-zinc-200"}`}>
+                        {n.status && <span title={n.status === "active" ? "Ativo" : "Pausado"} className={`h-1.5 w-1.5 shrink-0 rounded-full ${n.status === "active" ? "bg-emerald-400" : "bg-zinc-600"}`} />}
+                        <span className="truncate" title={n.name}>{n.name}</span>
+                      </span>
                       {n.subtitle && <span className="block truncate text-[10px] text-sky-300/70">{n.subtitle}</span>}
                     </span>
                   </button>
@@ -837,12 +855,12 @@ function Explorer({ clientId, since, until }: { clientId: string; since: string;
 
 // Converte a árvore Meta da API em TNode[] (reutilizado no explorador e nos funis).
 const metaToNodes = (campaigns: CampaignNode[]): TNode[] => campaigns.map((c) => ({
-  id: c.id, name: c.name, spend: c.spend, impressions: c.impressions, clicks: c.clicks, results: c.results, cpa: c.cpa, ctr: c.ctr,
+  id: c.id, name: c.name, status: c.status, spend: c.spend, impressions: c.impressions, clicks: c.clicks, results: c.results, cpa: c.cpa, ctr: c.ctr,
   children: c.adsets.map((s) => ({
-    id: s.id, name: s.name, spend: s.spend, impressions: s.impressions, clicks: s.clicks, results: s.results, cpa: s.cpa, ctr: s.ctr,
+    id: s.id, name: s.name, status: s.status, spend: s.spend, impressions: s.impressions, clicks: s.clicks, results: s.results, cpa: s.cpa, ctr: s.ctr,
     subtitle: s.audience ? `👥 ${s.audience}` : null,
     children: s.ads.map((ad) => ({
-      id: ad.id, name: ad.name, spend: ad.spend, impressions: ad.impressions, clicks: ad.clicks, results: ad.results, cpa: ad.cpa, ctr: ad.ctr,
+      id: ad.id, name: ad.name, status: ad.status, spend: ad.spend, impressions: ad.impressions, clicks: ad.clicks, results: ad.results, cpa: ad.cpa, ctr: ad.ctr,
       thumbnail: ad.thumbnail, permalink: ad.permalink, hookRate: ad.hookRate, convRate: ad.convRate,
     })),
   })),
@@ -911,9 +929,9 @@ function CreativesGrid({ clientId, since, until }: { clientId: string; since: st
 }
 
 // Explorador Google: Campanha → Grupo de anúncios → Palavra-chave.
-type GKeyword = { text: string; matchType: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null }
-type GAdGroup = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; keywords: GKeyword[] }
-type GCampaign = { id: string; name: string; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; adGroups: GAdGroup[] }
+type GKeyword = { text: string; matchType: string; status: AdStatus; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null }
+type GAdGroup = { id: string; name: string; status: AdStatus; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; keywords: GKeyword[] }
+type GCampaign = { id: string; name: string; status: AdStatus; spend: number; impressions: number; clicks: number; results: number; cpa: number | null; ctr: number | null; adGroups: GAdGroup[] }
 const MATCH_LABEL: Record<string, string> = { EXACT: "exata", PHRASE: "frase", BROAD: "ampla" }
 
 function GoogleExplorer({ clientId, since, until }: { clientId: string; since: string; until: string }) {
@@ -939,11 +957,11 @@ function GoogleExplorer({ clientId, since, until }: { clientId: string; since: s
 // Converte a árvore Google da API em TNode[] (reutilizado no explorador e nos funis).
 let _gkw = 0
 const googleToNodes = (campaigns: GCampaign[]): TNode[] => campaigns.map((c) => ({
-  id: c.id, name: c.name, spend: c.spend, impressions: c.impressions, clicks: c.clicks, results: c.results, cpa: c.cpa, ctr: c.ctr,
+  id: c.id, name: c.name, status: c.status, spend: c.spend, impressions: c.impressions, clicks: c.clicks, results: c.results, cpa: c.cpa, ctr: c.ctr,
   children: c.adGroups.map((g) => ({
-    id: g.id, name: g.name, spend: g.spend, impressions: g.impressions, clicks: g.clicks, results: g.results, cpa: g.cpa, ctr: g.ctr,
+    id: g.id, name: g.name, status: g.status, spend: g.spend, impressions: g.impressions, clicks: g.clicks, results: g.results, cpa: g.cpa, ctr: g.ctr,
     children: g.keywords.map((k) => ({
-      id: `kw-${_gkw++}`, name: k.text, spend: k.spend, impressions: k.impressions, clicks: k.clicks, results: k.results, cpa: k.cpa, ctr: k.ctr,
+      id: `kw-${_gkw++}`, name: k.text, status: k.status, spend: k.spend, impressions: k.impressions, clicks: k.clicks, results: k.results, cpa: k.cpa, ctr: k.ctr,
       matchType: MATCH_LABEL[k.matchType] ?? k.matchType.toLowerCase(),
     })),
   })),
