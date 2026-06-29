@@ -114,7 +114,28 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
   // Triagem: só conversas sem cliente (chat global)
   const [unlinkedOnly, setUnlinkedOnly] = useState(false)
 
+  // Busca + filtro de tipo (grupo / individual)
+  const [search, setSearch] = useState("")
+  const [typeFilter, setTypeFilter] = useState<"all" | "group" | "individual">("all")
+
+  // Iniciar nova conversa
+  const [newOpen, setNewOpen] = useState(false)
+  const [newPhone, setNewPhone] = useState("")
+  const [newName, setNewName] = useState("")
+  const [newText, setNewText] = useState("")
+  const [starting, setStarting] = useState(false)
+
   const activeConv = conversations.find((c) => c.id === activeConvId)
+
+  const q = search.trim().toLowerCase()
+  const filteredConversations = conversations.filter((c) => {
+    if (typeFilter === "group" && !c.isGroup) return false
+    if (typeFilter === "individual" && c.isGroup) return false
+    if (!q) return true
+    return c.name.toLowerCase().includes(q)
+      || (c.client?.name.toLowerCase().includes(q) ?? false)
+      || (c.messages[0]?.text?.toLowerCase().includes(q) ?? false)
+  })
 
   const loadConversations = useCallback(async () => {
     const params = new URLSearchParams()
@@ -127,6 +148,20 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
     setConversations(data.conversations ?? [])
     setLoading(false)
   }, [clientId, assigneeFilter, unlinkedOnly])
+
+  async function startConversation() {
+    setStarting(true); setSendError("")
+    const res = await fetch(`/api/chat/start`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: newPhone, name: newName, text: newText }),
+    })
+    const data = await res.json()
+    setStarting(false)
+    if (!res.ok) { setSendError(data.error ?? "Falha ao iniciar conversa."); return }
+    setNewOpen(false); setNewPhone(""); setNewName(""); setNewText("")
+    await loadConversations()
+    setActiveConvId(data.conversation.id)
+  }
 
   const loadMessages = useCallback(async (convId: string) => {
     const res = await fetch(`/api/chat/${convId}`)
@@ -366,9 +401,24 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
       {/* Lista de conversas */}
       <div className={cn("w-72 flex-shrink-0 border-r border-white/8 flex flex-col bg-zinc-900", tab !== "mensagens" && "hidden")}>
         <div className="px-4 py-4 border-b border-white/8">
-          <h2 className="text-sm font-semibold text-zinc-100">{isGlobal ? "Todas as conversas" : "Conversas"}</h2>
-          <p className="text-xs text-zinc-500 mt-0.5">{conversations.length} grupo{conversations.length !== 1 ? "s" : ""}</p>
-          <div className="mt-3 flex gap-1 rounded-lg border border-white/8 bg-black/20 p-0.5">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-zinc-100">{isGlobal ? "Todas as conversas" : "Conversas"}</h2>
+            <button onClick={() => setNewOpen((v) => !v)} className="flex items-center gap-1 rounded-lg bg-orange-500/15 px-2 py-1 text-[11px] font-medium text-orange-400 hover:bg-orange-500/25">
+              <Plus size={13} /> Nova
+            </button>
+          </div>
+          <p className="text-xs text-zinc-500 mt-0.5">{filteredConversations.length} de {conversations.length} conversa{conversations.length !== 1 ? "s" : ""}</p>
+
+          {/* Busca */}
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar conversa, cliente, mensagem…"
+            className="mt-3 w-full rounded-lg border border-white/8 bg-black/20 px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-orange-500/30 focus:outline-none"
+          />
+
+          {/* Filtro responsável */}
+          <div className="mt-2 flex gap-1 rounded-lg border border-white/8 bg-black/20 p-0.5">
             {([["all", "Todas"], ["me", "Minhas"], ["none", "Sem dono"]] as [AssigneeFilter, string][]).map(([value, label]) => (
               <button
                 key={value}
@@ -376,6 +426,21 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
                 className={cn(
                   "flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
                   assigneeFilter === value ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {/* Filtro tipo */}
+          <div className="mt-1.5 flex gap-1 rounded-lg border border-white/8 bg-black/20 p-0.5">
+            {([["all", "Tudo"], ["group", "Grupos"], ["individual", "Individuais"]] as ["all" | "group" | "individual", string][]).map(([value, label]) => (
+              <button
+                key={value}
+                onClick={() => setTypeFilter(value)}
+                className={cn(
+                  "flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors",
+                  typeFilter === value ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300"
                 )}
               >
                 {label}
@@ -393,19 +458,33 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
               {unlinkedOnly ? "Mostrando só sem cliente" : "Triar: só sem cliente"}
             </button>
           )}
+
+          {/* Form nova conversa */}
+          {newOpen && (
+            <div className="mt-3 space-y-2 rounded-lg border border-orange-500/20 bg-orange-500/[0.04] p-3">
+              <p className="text-[11px] font-medium text-orange-300">Iniciar conversa</p>
+              <input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="Telefone (ex: 5531999998888)" className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none" />
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nome (opcional)" className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none" />
+              <textarea value={newText} onChange={(e) => setNewText(e.target.value)} placeholder="Primeira mensagem…" rows={2} className="w-full resize-none rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none" />
+              {sendError && <p className="text-[11px] text-red-400">{sendError}</p>}
+              <button onClick={startConversation} disabled={starting} className="flex w-full items-center justify-center gap-1.5 rounded-md bg-orange-500/80 px-2 py-1.5 text-xs font-medium text-white hover:bg-orange-500 disabled:opacity-50">
+                {starting ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />} Enviar e abrir
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="p-4 text-xs text-zinc-600">Carregando...</div>
-          ) : conversations.length === 0 ? (
+          ) : filteredConversations.length === 0 ? (
             <div className="p-6 text-center">
               <MessageSquare size={28} className="mx-auto mb-2 text-zinc-700" />
-              <p className="text-xs text-zinc-600">Nenhuma conversa ainda.</p>
-              <p className="text-xs text-zinc-700 mt-1">Vincule um grupo a um cliente e aguarde mensagens.</p>
+              <p className="text-xs text-zinc-600">{conversations.length === 0 ? "Nenhuma conversa ainda." : "Nada encontrado com esse filtro."}</p>
+              {conversations.length === 0 && <p className="text-xs text-zinc-700 mt-1">Vincule um grupo a um cliente ou inicie uma conversa.</p>}
             </div>
           ) : (
-            conversations.map((conv) => {
+            filteredConversations.map((conv) => {
               const lastMsg = conv.messages[0]
               return (
                 <button
