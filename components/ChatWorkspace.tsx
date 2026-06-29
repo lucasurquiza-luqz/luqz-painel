@@ -515,11 +515,9 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
                         )}
                         <div className={cn("flex mb-1", msg.isFromMe ? "justify-end" : "justify-start")}>
                           <div className={cn("max-w-[70%]", msg.isFromMe ? "items-end" : "items-start", "flex flex-col")}>
-                            {!msg.isFromMe && (
-                              <span className="text-xs text-orange-400 font-medium mb-1 px-1">
-                                {msg.fromName ?? msg.fromJid.split("@")[0]}
-                              </span>
-                            )}
+                            <span className={cn("text-xs font-medium mb-1 px-1", msg.isFromMe ? "text-zinc-400" : "text-orange-400")}>
+                              {msg.fromName ?? msg.fromJid.split("@")[0]}
+                            </span>
                             <div
                               className={cn(
                                 "px-4 py-2.5 rounded-2xl text-sm break-words",
