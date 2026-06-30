@@ -53,7 +53,8 @@ export async function POST(req: NextRequest) {
   // base64 puro (sem prefixo data:mime) — formato que Evolution API aceita
   const base64 = buffer.toString("base64")
 
-  // MinIO disponivel → usa MinIO
+  // MinIO configurado → é a fonte de verdade. Se falhar, NÃO cai no disco local
+  // (que é efêmero e some no deploy) — devolve erro visível pra não perder arquivo.
   if (process.env.MINIO_ENDPOINT && process.env.MINIO_ACCESS_KEY) {
     try {
       const { uploadToMinIO } = await import("@/lib/storage")
@@ -61,11 +62,12 @@ export async function POST(req: NextRequest) {
       const url = await uploadToMinIO(key, buffer, file.type.split(";")[0].trim())
       return NextResponse.json({ url, type: mediaType, name: file.name, base64 })
     } catch (err) {
-      console.error("[uploads] MinIO falhou, usando local:", err)
+      console.error("[uploads] Falha ao enviar pro MinIO:", err)
+      return NextResponse.json({ error: "Falha ao salvar o arquivo no storage (MinIO). Tente novamente." }, { status: 502 })
     }
   }
 
-  // Fallback: armazenamento local
+  // Sem MinIO (dev local): grava no disco. Em produção isso é efêmero — configure MinIO.
   const localPath = path.join(process.cwd(), "public", "uploads", filename)
   await mkdir(path.dirname(localPath), { recursive: true })
   await writeFile(localPath, buffer)
