@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db"
 import Link from "next/link"
-import { AlertTriangle, TrendingUp, ListChecks, HeartPulse, ArrowUpRight } from "lucide-react"
+import { AlertTriangle, TrendingUp, ListChecks, ListTodo, HeartPulse, ArrowUpRight } from "lucide-react"
 import { getClientsHealth, LEVEL_LABEL, LEVEL_ORDER } from "@/lib/client-health"
 import { getPortfolioPerformance } from "@/lib/portfolio"
 import { PageHeader, Panel, StatusBadge } from "@/components/ui/primitives"
@@ -45,6 +45,20 @@ export default async function ResumoDiarioPage() {
         <Kpi label="CPA médio" value={brl(totals.cpaAvg)} />
         <Kpi label="Contas em alerta" value={String(totals.accountsInAlert)} tone={totals.accountsInAlert > 0 ? "warn" : "good"} />
       </div>
+
+      {/* Bloco — Suas tarefas (reservado; chega com o módulo de Tarefas) */}
+      <Section icon={ListTodo} title="Suas tarefas" count={0}>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg border border-white/8 bg-black/20 p-4">
+            <p className="text-[11px] font-medium text-red-300">Atrasadas</p>
+            <p className="mt-2 text-xs text-zinc-600">🔜 Aparece aqui quando o módulo de Tarefas entrar (recorrentes + pontuais).</p>
+          </div>
+          <div className="rounded-lg border border-white/8 bg-black/20 p-4">
+            <p className="text-[11px] font-medium text-[#FFB185]">Pra hoje</p>
+            <p className="mt-2 text-xs text-zinc-600">🔜 Suas tarefas do dia, filtradas por você (visão por pessoa).</p>
+          </div>
+        </div>
+      </Section>
 
       {/* Bloco 2 — Alertas de performance */}
       <Section icon={AlertTriangle} title="Alertas de performance" count={alertRows.length} tone="warn">
