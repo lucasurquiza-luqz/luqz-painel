@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Loader2, Plus, X, CircleDot, Clock, MessageSquare, Trash2, CornerDownRight, Check, Copy } from "lucide-react"
+import { Loader2, Plus, X, Clock, MessageSquare, Trash2, CornerDownRight, Check, Copy, Circle, User, Flag, CalendarDays, Folder, AlignLeft } from "lucide-react"
 import { PageHeader, Panel, Button } from "@/components/ui/primitives"
 import { cn } from "@/lib/utils"
 
@@ -13,6 +13,10 @@ const STATUS: { v: string; label: string; tone: string }[] = [
   { v: "DONE", label: "Concluído", tone: "text-emerald-300" },
 ]
 const STATUS_LABEL = Object.fromEntries(STATUS.map((s) => [s.v, s.label]))
+const STATUS_PILL: Record<string, string> = {
+  BACKLOG: "bg-zinc-500/20 text-zinc-300", TODO: "bg-sky-500/20 text-sky-300", DOING: "bg-[#FF8F50]/20 text-[#FFB185]",
+  REVIEW: "bg-violet-500/20 text-violet-300", DONE: "bg-emerald-500/20 text-emerald-300",
+}
 const PRIORITY: Record<string, { label: string; cls: string }> = {
   BAIXA: { label: "Baixa", cls: "bg-white/5 text-zinc-400" },
   MEDIA: { label: "Média", cls: "bg-sky-500/15 text-sky-300" },
@@ -346,29 +350,48 @@ function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, 
     await fetch(`/api/tasks/${s.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: s.status === "DONE" ? "TODO" : "DONE" }) })
     await reload()
   }
-  const st = STATUS.find((s) => s.v === task.status)
-
   return (
-    <Overlay onClose={onClose} size="xl" bare>
-      {/* Cabeçalho */}
-      <div className="flex items-start justify-between gap-3 border-b border-white/8 px-6 py-4">
-        <div className="min-w-0 flex-1">
-          <p className="mb-1 text-[11px] text-zinc-500">{task.client ? task.client.name + " › " : ""}{task.project?.name ?? "—"}</p>
-          <input value={task.title} onChange={(e) => onPatch(task.id, { title: e.target.value })} className="w-full bg-transparent text-lg font-semibold text-white focus:outline-none" />
-        </div>
-        <button onClick={onClose} className="shrink-0 text-zinc-500 hover:text-white"><X size={18} /></button>
-      </div>
+    <Overlay onClose={onClose} size="xxl" bare>
+      <div className="flex h-[85vh] min-h-0">
+        {/* ===== Painel principal ===== */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <p className="mb-3 flex items-center gap-1.5 text-[11px] text-zinc-500">
+            <span className="rounded-md bg-white/5 px-2 py-0.5 text-zinc-400">Tarefa</span>
+            <span className="text-zinc-700">·</span>
+            {task.client ? `${task.client.name} › ` : ""}{task.project?.name ?? "—"}
+          </p>
+          <input value={task.title} onChange={(e) => onPatch(task.id, { title: e.target.value })} placeholder="Título da tarefa" className="mb-5 w-full bg-transparent text-2xl font-semibold text-white placeholder:text-zinc-600 focus:outline-none" />
 
-      <div className="grid gap-0 md:grid-cols-[1fr_240px]">
-        {/* Coluna principal */}
-        <div className="space-y-5 border-white/8 p-6 md:border-r">
-          <div>
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-600">Descrição</p>
-            <textarea value={desc} onChange={(e) => setDesc(e.target.value)} onBlur={() => onPatch(task.id, { description: desc })} placeholder="Detalhe a tarefa…" rows={3} className={cn(inp, "resize-none")} />
+          {/* Propriedades em linhas (estilo ClickUp) */}
+          <div className="space-y-0.5">
+            <PropRow icon={<Circle size={13} />} label="Status">
+              <select value={task.status} onChange={(e) => onStatus(task.id, e.target.value)} className={cn("cursor-pointer rounded-full px-3 py-1 text-[11px] font-semibold uppercase focus:outline-none", STATUS_PILL[task.status])}>{STATUS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}</select>
+            </PropRow>
+            <PropRow icon={<User size={13} />} label="Responsável">
+              <span className="flex items-center gap-1.5">
+                <Avatar name={task.assignee?.name ?? null} size={20} />
+                <select value={task.assignee?.id ?? ""} onChange={(e) => onPatch(task.id, { assigneeId: e.target.value })} className={inlineSel}><option value="">Não atribuído</option>{team.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
+              </span>
+            </PropRow>
+            <PropRow icon={<Flag size={13} />} label="Prioridade">
+              <select value={task.priority} onChange={(e) => onPatch(task.id, { priority: e.target.value })} className={cn(inlineSel, PRIORITY[task.priority]?.cls.replace(/bg-[^ ]+/, ""))}>{Object.entries(PRIORITY).map(([v, p]) => <option key={v} value={v}>{p.label}</option>)}</select>
+            </PropRow>
+            <PropRow icon={<CalendarDays size={13} />} label="Prazo">
+              <input type="date" value={task.dueDate ? task.dueDate.slice(0, 10) : ""} onChange={(e) => onPatch(task.id, { dueDate: e.target.value || null })} className={cn(inlineSel, "[color-scheme:dark]")} />
+            </PropRow>
+            <PropRow icon={<Folder size={13} />} label="Projeto">
+              <select value={task.project?.id ?? ""} onChange={(e) => { if (e.target.value) onPatch(task.id, { projectId: e.target.value }) }} className={inlineSel}>{projects.map((p) => <option key={p.id} value={p.id}>{projLabel(p)}</option>)}</select>
+            </PropRow>
+          </div>
+
+          {/* Descrição */}
+          <div className="mt-6">
+            <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-600"><AlignLeft size={13} /> Descrição</p>
+            <textarea value={desc} onChange={(e) => setDesc(e.target.value)} onBlur={() => onPatch(task.id, { description: desc })} placeholder="Adicione uma descrição…" rows={3} className={cn(inp, "resize-none")} />
           </div>
 
           {/* Subtarefas */}
-          <div>
+          <div className="mt-6">
             <div className="mb-2 flex items-center justify-between">
               <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-600"><CornerDownRight size={13} /> Subtarefas</p>
               {subtasks.length > 0 && <span className="text-[10px] text-zinc-600">{subDone}/{subtasks.length}</span>}
@@ -379,63 +402,73 @@ function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, 
                 <div key={s.id} className="flex items-center gap-2 rounded-md bg-black/20 px-2 py-1.5 text-[12px]">
                   <button onClick={() => toggleSub(s)} className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded border", s.status === "DONE" ? "border-emerald-400 bg-emerald-400/20 text-emerald-300" : "border-white/20")}>{s.status === "DONE" && <Check size={11} />}</button>
                   <span className={cn("min-w-0 flex-1 truncate", s.status === "DONE" ? "text-zinc-600 line-through" : "text-zinc-200")}>{s.title}</span>
-                  {s.assignee && <span className="shrink-0 text-[10px] text-zinc-600">{s.assignee.name}</span>}
+                  {s.assignee && <Avatar name={s.assignee.name} size={16} />}
                 </div>
               ))}
             </div>
-            <div className="mt-2 flex gap-2">
-              <input value={newSub} onChange={(e) => setNewSub(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSubtask()} placeholder="+ Adicionar subtarefa" className={cn(inp, "flex-1")} />
-            </div>
+            <input value={newSub} onChange={(e) => setNewSub(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSubtask()} placeholder="+ Adicionar subtarefa" className={cn(inp, "mt-2")} />
           </div>
 
-          {/* Atividade / Histórico */}
-          <div>
-            <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-600"><Clock size={13} /> Atividade & histórico</p>
-            <div className="flex items-center gap-2">
-              <Avatar name={meName} size={26} />
-              <input value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendComment()} placeholder="Escreva um comentário…" className={cn(inp, "flex-1")} />
-              <Button onClick={sendComment} disabled={busy || !comment.trim()}><MessageSquare size={14} /></Button>
-            </div>
-            <div className="mt-4 space-y-3">
-              {activity.map((a) => a.type === "COMMENTED" ? (
-                // Comentário: card com avatar + nome + texto (estilo ClickUp)
-                <div key={a.id} className="flex gap-2.5">
-                  <Avatar name={a.userName} size={26} />
-                  <div className="min-w-0 flex-1 rounded-xl rounded-tl-sm bg-white/[0.04] px-3 py-2">
-                    <p className="text-[11px]"><span className="font-semibold text-zinc-200">{a.userName ?? "Alguém"}</span> <span className="text-zinc-600">· {new Date(a.createdAt).toLocaleString("pt-BR")}</span></p>
-                    <p className="mt-0.5 whitespace-pre-wrap text-[13px] leading-5 text-zinc-200">{String(a.payload?.body ?? "")}</p>
-                  </div>
-                </div>
-              ) : (
-                // Evento do sistema: linha discreta com avatar pequeno
-                <div key={a.id} className="flex items-center gap-2 text-[11px] text-zinc-500">
-                  <Avatar name={a.userName} size={18} />
-                  <span className={cn(a.type === "COMPLETED" && "text-emerald-300")}>{describe(a)}</span>
-                  <span className="text-zinc-700">· {new Date(a.createdAt).toLocaleString("pt-BR")}</span>
-                </div>
-              ))}
-              {!activity.length && <p className="text-[11px] text-zinc-600">Sem atividade ainda.</p>}
-            </div>
+          {/* Ações */}
+          <div className="mt-6 flex items-center gap-4 border-t border-white/8 pt-4">
+            <button onClick={duplicate} disabled={busy} className="flex items-center gap-1.5 text-[12px] text-zinc-400 hover:text-zinc-100"><Copy size={13} /> Duplicar</button>
+            <button onClick={() => onRemove(task.id)} className="flex items-center gap-1.5 text-[12px] text-zinc-500 hover:text-red-300"><Trash2 size={13} /> Excluir</button>
           </div>
         </div>
 
-        {/* Sidebar de propriedades */}
-        <div className="space-y-3 p-6">
-          <Field label="Status">
-            <select value={task.status} onChange={(e) => onStatus(task.id, e.target.value)} className={cn(inp, st && "font-medium", st?.tone)}>{STATUS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}</select>
-          </Field>
-          <Field label="Responsável"><select value={task.assignee?.id ?? ""} onChange={(e) => onPatch(task.id, { assigneeId: e.target.value })} className={inp}><option value="">—</option>{team.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
-          <Field label="Prioridade"><select value={task.priority} onChange={(e) => onPatch(task.id, { priority: e.target.value })} className={inp}>{Object.entries(PRIORITY).map(([v, p]) => <option key={v} value={v}>{p.label}</option>)}</select></Field>
-          <Field label="Prazo"><input type="date" value={task.dueDate ? task.dueDate.slice(0, 10) : ""} onChange={(e) => onPatch(task.id, { dueDate: e.target.value || null })} className={cn(inp, "[color-scheme:dark]")} /></Field>
-          <Field label="Projeto"><select value={task.project?.id ?? ""} onChange={(e) => { if (e.target.value) onPatch(task.id, { projectId: e.target.value }) }} className={inp}>{projects.map((p) => <option key={p.id} value={p.id}>{projLabel(p)}</option>)}</select></Field>
-          <div className="space-y-2 border-t border-white/8 pt-3">
-            <button onClick={duplicate} disabled={busy} className="flex w-full items-center gap-1.5 text-[12px] text-zinc-400 hover:text-zinc-100"><Copy size={13} /> Duplicar tarefa</button>
-            <button onClick={() => onRemove(task.id)} className="flex w-full items-center gap-1.5 text-[12px] text-zinc-500 hover:text-red-300"><Trash2 size={13} /> Excluir tarefa</button>
+        {/* ===== Painel de Atividade (direita) ===== */}
+        <div className="flex w-80 shrink-0 flex-col border-l border-white/8 bg-black/20">
+          <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
+            <span className="flex items-center gap-1.5 text-sm font-semibold text-white"><Clock size={14} /> Atividade</span>
+            <button onClick={onClose} className="text-zinc-500 hover:text-white"><X size={18} /></button>
+          </div>
+          <div className="flex-1 space-y-3 overflow-y-auto p-4">
+            {activity.map((a) => a.type === "COMMENTED" ? (
+              <div key={a.id} className="flex gap-2.5">
+                <Avatar name={a.userName} size={26} />
+                <div className="min-w-0 flex-1 rounded-xl rounded-tl-sm bg-white/[0.04] px-3 py-2">
+                  <p className="text-[11px]"><span className="font-semibold text-zinc-200">{a.userName ?? "Alguém"}</span> <span className="text-zinc-600">· {relTime(a.createdAt)}</span></p>
+                  <p className="mt-0.5 whitespace-pre-wrap text-[13px] leading-5 text-zinc-200">{String(a.payload?.body ?? "")}</p>
+                </div>
+              </div>
+            ) : (
+              <div key={a.id} className="flex items-start gap-2 text-[11px] text-zinc-500">
+                <Avatar name={a.userName} size={18} />
+                <span className="min-w-0"><span className={cn(a.type === "COMPLETED" && "text-emerald-300")}>{describe(a)}</span> <span className="text-zinc-700">· {relTime(a.createdAt)}</span></span>
+              </div>
+            ))}
+            {!activity.length && <p className="text-[11px] text-zinc-600">Sem atividade ainda.</p>}
+          </div>
+          <div className="border-t border-white/8 p-3">
+            <div className="flex items-center gap-2">
+              <Avatar name={meName} size={26} />
+              <input value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendComment()} placeholder="Escreva um comentário…" className={cn(inp, "flex-1")} />
+              <Button onClick={sendComment} disabled={busy || !comment.trim()} className="min-h-9 px-2.5"><MessageSquare size={14} /></Button>
+            </div>
           </div>
         </div>
       </div>
     </Overlay>
   )
+}
+
+function PropRow({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 rounded-md px-1 py-1 hover:bg-white/[0.02]">
+      <span className="flex w-28 shrink-0 items-center gap-2 text-[12px] text-zinc-500">{icon}{label}</span>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  )
+}
+const inlineSel = "max-w-full cursor-pointer rounded-md bg-transparent px-2 py-1 text-sm text-zinc-200 hover:bg-white/5 focus:bg-white/5 focus:outline-none [color-scheme:dark]"
+function relTime(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24)
+  if (m < 1) return "agora"
+  if (m < 60) return `há ${m}min`
+  if (h < 24) return `há ${h}h`
+  if (d < 7) return `há ${d}d`
+  return new Date(iso).toLocaleDateString("pt-BR")
 }
 
 // Modal de conclusão: exige o RESULTADO antes de fechar a tarefa.
@@ -475,8 +508,8 @@ const inp = "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block"><span className="mb-1 block text-[11px] text-zinc-500">{label}</span>{children}</label>
 }
-function Overlay({ title, size = "lg", bare, onClose, children }: { title?: string; size?: "lg" | "xl"; bare?: boolean; onClose: () => void; children: React.ReactNode }) {
-  const max = size === "xl" ? "max-w-3xl" : "max-w-lg"
+function Overlay({ title, size = "lg", bare, onClose, children }: { title?: string; size?: "lg" | "xl" | "xxl"; bare?: boolean; onClose: () => void; children: React.ReactNode }) {
+  const max = size === "xxl" ? "max-w-5xl" : size === "xl" ? "max-w-3xl" : "max-w-lg"
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm" onClick={onClose}>
       <div className={cn("mt-12 w-full overflow-hidden rounded-2xl border border-white/10 bg-[#141414] shadow-2xl", max)} onClick={(e) => e.stopPropagation()}>

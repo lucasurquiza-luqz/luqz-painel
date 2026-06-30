@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic"
 
 // Marcador de build: bumpado a cada release para confirmar, sem login, qual
 // versao esta efetivamente no ar (o middleware bloqueia as demais rotas /api).
-const BUILD_MARKER = "tarefas-filtros-acoes-em-massa-2026-06-30"
+const BUILD_MARKER = "tarefa-card-clickup-2paineis-2026-06-30"
 
 export async function GET() {
   try {
