@@ -38,6 +38,9 @@ export function ProjectsView({ clientId }: { clientId?: string }) {
   }, [clientId])
   useEffect(() => { void load() }, [load])
 
+  // Dentro de um cliente, abre a rota aninhada (sidebar mantém o cliente).
+  const openProject = (pid: string) => router.push(clientId ? `/clientes/${clientId}/projetos/${pid}` : `/projetos/${pid}`)
+
   async function remove(id: string, name: string) {
     if (!confirm(`Excluir o projeto "${name}" e TODAS as suas tarefas?`)) return
     await fetch(`/api/projects/${id}`, { method: "DELETE" })
@@ -59,7 +62,7 @@ export function ProjectsView({ clientId }: { clientId?: string }) {
         <div className="grid gap-3 sm:grid-cols-2">
           {projects.map((p) => (
             <Panel key={p.id} className="group flex items-center gap-3 p-4 hover:border-white/15">
-              <button onClick={() => router.push(`/projetos/${p.id}`)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+              <button onClick={() => openProject(p.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#FF8F50]/20 bg-[#FF8F50]/10"><FolderKanban size={18} className="text-[#FF8F50]" /></div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-zinc-100">{p.name}</p>
@@ -72,7 +75,7 @@ export function ProjectsView({ clientId }: { clientId?: string }) {
         </div>
       )}
 
-      {creating && <CreateProject fixedClientId={clientId} onClose={() => setCreating(false)} onCreated={(pid) => router.push(`/projetos/${pid}`)} />}
+      {creating && <CreateProject fixedClientId={clientId} onClose={() => setCreating(false)} onCreated={openProject} />}
     </main>
   )
 }

@@ -1,6 +1,6 @@
 // Cálculo do próximo disparo de uma tarefa recorrente — puro e testado.
 export type RecurFreq = "DIARIA" | "SEMANAL" | "MENSAL"
-export type RecurRule = { freq: RecurFreq; interval: number; weekday?: number | null; dayOfMonth?: number | null }
+export type RecurRule = { freq: RecurFreq; interval: number; weekday?: number | null; weekdays?: number[] | null; dayOfMonth?: number | null }
 
 // Avança `from` para o próximo disparo conforme a regra. Trabalha em UTC (datas
 // guardadas em UTC; o cron roda 1x/dia, granularidade de dia basta).
@@ -12,11 +12,21 @@ export function computeNextRun(rule: RecurRule, from: Date): Date {
     return d
   }
   if (rule.freq === "SEMANAL") {
-    d.setUTCDate(d.getUTCDate() + n * 7)
-    if (rule.weekday != null) {
-      // ajusta para o dia da semana desejado dentro da semana resultante
-      const diff = (rule.weekday - d.getUTCDay() + 7) % 7
-      d.setUTCDate(d.getUTCDate() + diff)
+    // dias da semana selecionados (personalizado) ou um único weekday legado
+    const days = (rule.weekdays && rule.weekdays.length ? rule.weekdays : rule.weekday != null ? [rule.weekday] : [])
+      .filter((w) => w >= 0 && w <= 6).sort((a, b) => a - b)
+    if (days.length === 0) {
+      // semanal simples, sem dia fixo: avança N semanas
+      d.setUTCDate(d.getUTCDate() + n * 7)
+      return d
+    }
+    const cw = d.getUTCDay()
+    const nextThisWeek = days.find((w) => w > cw)
+    if (nextThisWeek !== undefined) {
+      d.setUTCDate(d.getUTCDate() + (nextThisWeek - cw)) // próximo dia da lista nesta semana
+    } else {
+      // pula N semanas até o primeiro dia da lista (volta ao domingo da semana atual)
+      d.setUTCDate(d.getUTCDate() - cw + n * 7 + days[0])
     }
     return d
   }

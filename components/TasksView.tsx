@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Loader2, Plus, X, Clock, MessageSquare, Trash2, CornerDownRight, Check, Copy, Circle, User, Flag, CalendarDays, Folder, AlignLeft, Repeat } from "lucide-react"
+import { Loader2, Plus, X, Clock, MessageSquare, Trash2, CornerDownRight, Check, Copy, Circle, User, Flag, CalendarDays, Folder, AlignLeft, Repeat, ChevronDown } from "lucide-react"
 import { PageHeader, Panel, Button } from "@/components/ui/primitives"
 import { Pop, MenuItem, PickerSelect } from "@/components/ui/Picker"
 import { cn } from "@/lib/utils"
@@ -26,6 +26,69 @@ const PRIORITY: Record<string, { label: string; cls: string }> = {
 }
 
 const REPEAT_LABEL: Record<string, string> = { DIARIA: "Diária", SEMANAL: "Semanal", MENSAL: "Mensal" }
+const WD_SHORT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
+const WD_INIT = ["D", "S", "T", "Q", "Q", "S", "S"]
+type RecurPayload = { freq: string; interval: number; weekdays: number[] }
+
+function recurLabel(r: RecurPayload | null): string {
+  if (!r) return "Não repete"
+  if (r.freq === "SEMANAL" && r.weekdays?.length) {
+    if (r.weekdays.length === 7) return "Todo dia"
+    const days = r.weekdays.slice().sort((a, b) => a - b).map((w) => WD_SHORT[w]).join(", ")
+    return r.interval > 1 ? `${days} · a cada ${r.interval} sem` : days
+  }
+  if (r.interval > 1) { const u = r.freq === "DIARIA" ? "dias" : r.freq === "SEMANAL" ? "semanas" : "meses"; return `A cada ${r.interval} ${u}` }
+  return REPEAT_LABEL[r.freq] ?? "Repete"
+}
+
+// Campo "Repetir" reutilizável: presets + personalizado (estilo ClickUp).
+function RecurField({ value, onChange, trigger }: { value: RecurPayload | null; onChange: (v: RecurPayload | null) => void; trigger: React.ReactNode }) {
+  const [custom, setCustom] = useState(false)
+  return (
+    <>
+      <Pop trigger={trigger}>
+        {(close) => <>
+          <MenuItem active={!value} onClick={() => { onChange(null); close() }}>Não repete</MenuItem>
+          {Object.entries(REPEAT_LABEL).map(([v, l]) => <MenuItem key={v} active={value?.freq === v && value.interval === 1 && !value.weekdays?.length} onClick={() => { onChange({ freq: v, interval: 1, weekdays: [] }); close() }}><Repeat size={12} /> {l}</MenuItem>)}
+          <MenuItem onClick={() => { setCustom(true); close() }}>Personalizado…</MenuItem>
+        </>}
+      </Pop>
+      {custom && <RecurEditor initial={value} onClose={() => setCustom(false)} onSave={(v) => { onChange(v); setCustom(false) }} />}
+    </>
+  )
+}
+
+function RecurEditor({ initial, onClose, onSave }: { initial: RecurPayload | null; onClose: () => void; onSave: (v: RecurPayload) => void }) {
+  const [freq, setFreq] = useState(initial?.freq && initial.freq !== "DIARIA" ? initial.freq : initial?.freq ?? "SEMANAL")
+  const [interval, setIntervalN] = useState(initial?.interval ?? 1)
+  const [weekdays, setWeekdays] = useState<number[]>(initial?.weekdays ?? [])
+  const toggle = (w: number) => setWeekdays((ds) => (ds.includes(w) ? ds.filter((x) => x !== w) : [...ds, w]))
+  return (
+    <Overlay title="Repetição personalizada" onClose={onClose}>
+      <div className="space-y-4">
+        <div className="flex items-end gap-3">
+          <Field label="A cada"><input type="number" min={1} value={interval} onChange={(e) => setIntervalN(Math.max(1, Number(e.target.value)))} className={cn(inp, "w-20")} /></Field>
+          <Field label="Período"><select value={freq} onChange={(e) => setFreq(e.target.value)} className={inp}><option value="DIARIA">dia(s)</option><option value="SEMANAL">semana(s)</option><option value="MENSAL">mês(es)</option></select></Field>
+        </div>
+        {freq === "SEMANAL" && (
+          <div>
+            <p className="mb-1.5 text-[11px] text-zinc-500">Nos dias da semana</p>
+            <div className="flex gap-1.5">
+              {WD_INIT.map((w, i) => (
+                <button key={i} type="button" title={WD_SHORT[i]} onClick={() => toggle(i)} className={cn("flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold transition", weekdays.includes(i) ? "bg-[#FF8F50] text-black" : "bg-white/5 text-zinc-400 hover:bg-white/10")}>{w}</button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[10px] text-zinc-600">Vazio = usa o dia do prazo da tarefa.</p>
+          </div>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button onClick={() => onSave({ freq, interval, weekdays: freq === "SEMANAL" ? weekdays.slice().sort((a, b) => a - b) : [] })}><Check size={15} /> Aplicar</Button>
+        </div>
+      </div>
+    </Overlay>
+  )
+}
 
 type Ref = { id: string; name: string }
 type Proj = { id: string; name: string; clientName: string | null }
@@ -308,7 +371,8 @@ function Board({ tasks, showProject, onOpen, onDrop }: { tasks: Task[]; showProj
 function projLabel(p: Proj) { return p.clientName ? `${p.clientName} · ${p.name}` : `Interno · ${p.name}` }
 
 function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { team: Ref[]; projects: Proj[]; fixedProjectId?: string; onClose: () => void; onCreated: (t: Task) => void }) {
-  const [f, setF] = useState({ title: "", description: "", assigneeId: "", projectId: fixedProjectId ?? "", priority: "MEDIA", dueDate: "", repeat: "" })
+  const [f, setF] = useState({ title: "", description: "", assigneeId: "", projectId: fixedProjectId ?? "", priority: "MEDIA", dueDate: "" })
+  const [repeat, setRepeat] = useState<RecurPayload | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState("")
 
@@ -319,8 +383,8 @@ function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { t
     const res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(f) })
     const d = await res.json().catch(() => ({}))
     if (!res.ok) { setBusy(false); setErr(d.error ?? "Erro ao criar."); return }
-    // Recorrência definida já na criação (cadência puxada do prazo).
-    if (f.repeat && d.task?.id) await fetch(`/api/tasks/${d.task.id}/recur`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ freq: f.repeat }) })
+    // Recorrência definida já na criação (cadência puxada do prazo ou dos dias escolhidos).
+    if (repeat && d.task?.id) await fetch(`/api/tasks/${d.task.id}/recur`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(repeat) })
     setBusy(false)
     onCreated(d.task)
   }
@@ -335,9 +399,13 @@ function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { t
           <Field label="Responsável"><select value={f.assigneeId} onChange={(e) => setF({ ...f, assigneeId: e.target.value })} className={inp}><option value="">—</option>{team.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
           <Field label="Prioridade"><select value={f.priority} onChange={(e) => setF({ ...f, priority: e.target.value })} className={inp}>{Object.entries(PRIORITY).map(([v, p]) => <option key={v} value={v}>{p.label}</option>)}</select></Field>
           <Field label="Prazo"><input type="date" value={f.dueDate} onChange={(e) => setF({ ...f, dueDate: e.target.value })} className={cn(inp, "[color-scheme:dark]")} /></Field>
-          <Field label="Repetir"><select value={f.repeat} onChange={(e) => setF({ ...f, repeat: e.target.value })} className={inp}><option value="">Não repete</option>{Object.entries(REPEAT_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
+          <Field label="Repetir">
+            <div className={cn(inp, "flex items-center py-1")}>
+              <RecurField value={repeat} onChange={setRepeat} trigger={<span className="flex items-center gap-1.5 text-sm text-zinc-200">{recurLabel(repeat)}<ChevronDown size={13} className="text-zinc-600" /></span>} />
+            </div>
+          </Field>
         </div>
-        {f.repeat && <p className="-mt-1 text-[11px] text-zinc-500">A cadência segue o prazo da tarefa{!f.dueDate ? " (defina um prazo, ou usa a data de hoje como base)" : ""}.</p>}
+        {repeat && <p className="-mt-1 text-[11px] text-zinc-500">{repeat.freq === "SEMANAL" && repeat.weekdays.length ? "Repete nos dias escolhidos." : "A cadência segue o prazo da tarefa"}{repeat.freq !== "SEMANAL" || !repeat.weekdays.length ? (!f.dueDate ? " (defina um prazo, ou usa a data de hoje como base)." : ".") : ""}</p>}
         {err && <p className="text-xs text-red-400">{err}</p>}
         <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={submit} disabled={busy}>{busy ? <Loader2 size={15} className="animate-spin" /> : "Criar tarefa"}</Button></div>
       </div>
@@ -348,7 +416,7 @@ function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { t
 function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, onRemove, onChanged }: { task: Task; team: Ref[]; projects: Proj[]; meName: string | null; onClose: () => void; onPatch: (id: string, d: Record<string, unknown>) => void; onStatus: (id: string, status: string) => void; onRemove: (id: string) => void; onChanged: () => void }) {
   const [activity, setActivity] = useState<Activity[]>([])
   const [subtasks, setSubtasks] = useState<Subtask[]>([])
-  const [recur, setRecur] = useState<{ freq: string; interval: number } | null>(null)
+  const [recur, setRecur] = useState<RecurPayload | null>(null)
   const [desc, setDesc] = useState("")
   const [titleVal, setTitleVal] = useState(task.title)
   const [comment, setComment] = useState("")
@@ -362,7 +430,7 @@ function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, 
     const d = await res.json().catch(() => ({}))
     setActivity(d.activity ?? [])
     setSubtasks(d.task?.subtasks ?? [])
-    setRecur(d.recurrence ? { freq: d.recurrence.freq, interval: d.recurrence.interval } : null)
+    setRecur(d.recurrence ? { freq: d.recurrence.freq, interval: d.recurrence.interval, weekdays: d.recurrence.weekdays ?? [] } : null)
     setDesc(d.task?.description ?? "")
   }, [task.id])
   useEffect(() => { void reload() }, [reload])
@@ -384,9 +452,9 @@ function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, 
     await fetch(`/api/tasks/${s.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: s.status === "DONE" ? "TODO" : "DONE" }) })
     await reload()
   }
-  async function setRecurrence(freq: string | null) {
-    if (freq === null) await fetch(`/api/tasks/${task.id}/recur`, { method: "DELETE" })
-    else await fetch(`/api/tasks/${task.id}/recur`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ freq }) })
+  async function setRecurrence(v: RecurPayload | null) {
+    if (!v) await fetch(`/api/tasks/${task.id}/recur`, { method: "DELETE" })
+    else await fetch(`/api/tasks/${task.id}/recur`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(v) })
     await reload()
   }
   return (
@@ -431,12 +499,7 @@ function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, 
               <input type="date" value={task.dueDate ? task.dueDate.slice(0, 10) : ""} onChange={(e) => onPatch(task.id, { dueDate: e.target.value || null })} className={cn(inlineSel, "[color-scheme:dark]")} />
             </PropRow>
             <PropRow icon={<Repeat size={13} />} label="Repetir">
-              <Pop trigger={<span className={cn("flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[12px]", recur ? "bg-[#FF8F50]/15 text-[#FFB185]" : "text-zinc-500 hover:bg-white/5")}>{recur ? <><Repeat size={11} /> {REPEAT_LABEL[recur.freq]}</> : "Não repete"}</span>}>
-                {(close) => <>
-                  <MenuItem active={!recur} onClick={() => { setRecurrence(null); close() }}>Não repete</MenuItem>
-                  {Object.entries(REPEAT_LABEL).map(([v, l]) => <MenuItem key={v} active={recur?.freq === v} onClick={() => { setRecurrence(v); close() }}><Repeat size={12} /> {l}</MenuItem>)}
-                </>}
-              </Pop>
+              <RecurField value={recur} onChange={setRecurrence} trigger={<span className={cn("flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[12px]", recur ? "bg-[#FF8F50]/15 text-[#FFB185]" : "text-zinc-500 hover:bg-white/5")}>{recur ? <><Repeat size={11} /> {recurLabel(recur)}</> : "Não repete"}</span>} />
             </PropRow>
             <PropRow icon={<Folder size={13} />} label="Projeto">
               <Pop trigger={<span className="text-sm text-zinc-200">{task.project?.name ?? "—"}</span>}>

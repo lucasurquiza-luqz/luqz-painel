@@ -889,7 +889,8 @@ model TaskRecurrence {
   priority    TaskPriority @default(MEDIA)
   freq        RecurFreq    @default(SEMANAL)
   interval    Int          @default(1) // a cada N (dias/semanas/meses)
-  weekday     Int? // 0-6 (SEMANAL)
+  weekday     Int? // 0-6 (SEMANAL) — legado, dia único
+  weekdays    Int[]        @default([]) // 0-6 (SEMANAL personalizado, vários dias)
   dayOfMonth  Int? // 1-31 (MENSAL)
   active      Boolean      @default(true)
   nextRunAt   DateTime

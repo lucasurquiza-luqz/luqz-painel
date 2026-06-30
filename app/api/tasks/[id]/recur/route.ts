@@ -27,13 +27,15 @@ export async function POST(req: NextRequest, { params }: Params) {
   const freq = b.freq as RecurFreq
   const interval = Number.isFinite(b.interval) && b.interval > 0 ? Math.floor(b.interval) : 1
 
-  // Cadência derivada da data de vencimento da tarefa (ou de hoje).
+  // Cadência: dias informados (personalizado) ou derivada do vencimento da tarefa.
   const ref = task.dueDate ?? new Date()
-  const weekday = freq === "SEMANAL" ? ref.getUTCDay() : null
+  const customDays = Array.isArray(b.weekdays) ? b.weekdays.filter((w: unknown) => typeof w === "number" && w >= 0 && w <= 6) : []
+  const weekdays = freq === "SEMANAL" ? customDays : []
+  const weekday = freq === "SEMANAL" && weekdays.length === 0 ? ref.getUTCDay() : null
   const dayOfMonth = freq === "MENSAL" ? ref.getUTCDate() : null
-  const nextRunAt = computeNextRun({ freq, interval, weekday, dayOfMonth }, ref)
+  const nextRunAt = computeNextRun({ freq, interval, weekday, weekdays, dayOfMonth }, ref)
 
-  const data = { freq, interval, weekday, dayOfMonth, nextRunAt, active: true }
+  const data = { freq, interval, weekday, weekdays, dayOfMonth, nextRunAt, active: true }
   let recurrence
   if (task.recurrenceId && (await prisma.taskRecurrence.findUnique({ where: { id: task.recurrenceId }, select: { id: true } }))) {
     recurrence = await prisma.taskRecurrence.update({ where: { id: task.recurrenceId }, data })
@@ -47,7 +49,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     await prisma.task.update({ where: { id }, data: { recurrenceId: recurrence.id } })
   }
   await logActivity("TASK", id, { userId: auth.user.userId, name: auth.user.name }, "EDITED", { field: "recorrência", to: freq })
-  return NextResponse.json({ recurrence: { id: recurrence.id, freq, interval, weekday, dayOfMonth, active: true, nextRunAt } })
+  return NextResponse.json({ recurrence: { id: recurrence.id, freq, interval, weekday, weekdays, dayOfMonth, active: true, nextRunAt } })
 }
 
 // Para de repetir: remove o molde e limpa o vínculo na tarefa.

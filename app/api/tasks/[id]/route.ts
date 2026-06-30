@@ -24,7 +24,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const activity = await prisma.activity.findMany({ where: { entity: "TASK", entityId: id }, orderBy: { createdAt: "desc" }, take: 100 })
   // Molde de recorrência ligado a esta tarefa (recurrenceId é scalar, sem relação)
   const recurrence = task.recurrenceId
-    ? await prisma.taskRecurrence.findUnique({ where: { id: task.recurrenceId }, select: { id: true, freq: true, interval: true, weekday: true, dayOfMonth: true, active: true, nextRunAt: true } })
+    ? await prisma.taskRecurrence.findUnique({ where: { id: task.recurrenceId }, select: { id: true, freq: true, interval: true, weekday: true, weekdays: true, dayOfMonth: true, active: true, nextRunAt: true } })
     : null
   return NextResponse.json({ task, activity, recurrence })
 }

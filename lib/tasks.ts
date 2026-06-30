@@ -35,7 +35,7 @@ export async function generateRecurringTasks(): Promise<{ created: number }> {
           dueDate: r.nextRunAt, recurrenceId: r.id, createdById: r.createdById,
         },
       })
-      const rule: RecurRule = { freq: r.freq, interval: r.interval, weekday: r.weekday, dayOfMonth: r.dayOfMonth }
+      const rule: RecurRule = { freq: r.freq, interval: r.interval, weekday: r.weekday, weekdays: r.weekdays, dayOfMonth: r.dayOfMonth }
       // avança até o próximo disparo no futuro (cobre moldes atrasados)
       let next = computeNextRun(rule, r.nextRunAt)
       let guard = 0
