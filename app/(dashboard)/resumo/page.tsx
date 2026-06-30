@@ -6,6 +6,9 @@ import { getPortfolioPerformance } from "@/lib/portfolio"
 import { PageHeader, Panel, StatusBadge } from "@/components/ui/primitives"
 import { formatInTimeZone } from "date-fns-tz"
 import { ptBR } from "date-fns/locale"
+import { getIronSession } from "iron-session"
+import { cookies } from "next/headers"
+import { sessionOptions, type SessionData } from "@/lib/auth"
 
 const TZ = "America/Sao_Paulo"
 const brl = (v: number | null) => (v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }))
@@ -17,6 +20,21 @@ export default async function ResumoDiarioPage() {
   const { alertsByClient, totals } = portfolio
 
   const today = formatInTimeZone(new Date(), TZ, "EEEE, dd/MM", { locale: ptBR })
+
+  // Minhas tarefas: atrasadas (prazo < hoje) e pra hoje (prazo = hoje), não concluídas.
+  const session = await getIronSession<SessionData>(await cookies(), sessionOptions)
+  const startOfToday = new Date(new Date().toDateString())
+  const endOfToday = new Date(startOfToday.getTime() + 86_400_000)
+  const myTasks = session.userId
+    ? await prisma.task.findMany({
+        where: { assigneeId: session.userId, status: { not: "DONE" }, dueDate: { not: null, lt: endOfToday } },
+        orderBy: { dueDate: "asc" },
+        select: { id: true, title: true, dueDate: true, client: { select: { name: true } } },
+        take: 50,
+      })
+    : []
+  const myOverdue = myTasks.filter((t) => t.dueDate! < startOfToday)
+  const myToday = myTasks.filter((t) => t.dueDate! >= startOfToday)
 
   // Alertas de performance (ordena críticos primeiro)
   const alertRows = [...alertsByClient.entries()]
@@ -46,16 +64,16 @@ export default async function ResumoDiarioPage() {
         <Kpi label="Contas em alerta" value={String(totals.accountsInAlert)} tone={totals.accountsInAlert > 0 ? "warn" : "good"} />
       </div>
 
-      {/* Bloco — Suas tarefas (reservado; chega com o módulo de Tarefas) */}
-      <Section icon={ListTodo} title="Suas tarefas" count={0}>
+      {/* Bloco — Suas tarefas (atrasadas + pra hoje), do usuário logado */}
+      <Section icon={ListTodo} title="Suas tarefas" count={myOverdue.length + myToday.length}>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-lg border border-white/8 bg-black/20 p-4">
-            <p className="text-[11px] font-medium text-red-300">Atrasadas</p>
-            <p className="mt-2 text-xs text-zinc-600">🔜 Aparece aqui quando o módulo de Tarefas entrar (recorrentes + pontuais).</p>
+            <p className="mb-2 text-[11px] font-medium text-red-300">Atrasadas ({myOverdue.length})</p>
+            {myOverdue.length ? <TaskMiniList tasks={myOverdue} /> : <p className="text-xs text-zinc-600">Nada atrasado. 👏</p>}
           </div>
           <div className="rounded-lg border border-white/8 bg-black/20 p-4">
-            <p className="text-[11px] font-medium text-[#FFB185]">Pra hoje</p>
-            <p className="mt-2 text-xs text-zinc-600">🔜 Suas tarefas do dia, filtradas por você (visão por pessoa).</p>
+            <p className="mb-2 text-[11px] font-medium text-[#FFB185]">Pra hoje ({myToday.length})</p>
+            {myToday.length ? <TaskMiniList tasks={myToday} /> : <p className="text-xs text-zinc-600">Nada pra hoje.</p>}
           </div>
         </div>
       </Section>
@@ -118,6 +136,20 @@ export default async function ResumoDiarioPage() {
         )}
       </Section>
     </main>
+  )
+}
+
+function TaskMiniList({ tasks }: { tasks: { id: string; title: string; dueDate: Date | null; client: { name: string } | null }[] }) {
+  return (
+    <div className="space-y-1.5">
+      {tasks.slice(0, 6).map((t) => (
+        <Link key={t.id} href="/tarefas" className="flex items-center justify-between gap-2 rounded-md bg-black/20 px-2 py-1.5 text-[12px] hover:bg-white/5">
+          <span className="min-w-0 truncate text-zinc-200">{t.title}{t.client && <span className="text-zinc-600"> · {t.client.name}</span>}</span>
+          {t.dueDate && <span className="shrink-0 text-[10px] text-zinc-500">{new Date(t.dueDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>}
+        </Link>
+      ))}
+      {tasks.length > 6 && <Link href="/tarefas" className="block px-2 text-[11px] text-[#FFB185] hover:underline">+{tasks.length - 6} mais →</Link>}
+    </div>
   )
 }
 

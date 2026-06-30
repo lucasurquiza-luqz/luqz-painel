@@ -12,8 +12,10 @@ import {
   ChevronsUpDown,
   ClipboardList,
   FileText,
+  FolderKanban,
   Gauge,
   KeyRound,
+  ListTodo,
   LayoutDashboard,
   LogOut,
   MessageSquare,
@@ -143,6 +145,18 @@ export function Sidebar({ role, name }: SidebarProps) {
                 label="Torre de controle"
                 icon={Gauge}
                 active={pathname.startsWith("/torre")}
+              />
+              <NavItem
+                href="/tarefas"
+                label="Tarefas"
+                icon={ListTodo}
+                active={pathname.startsWith("/tarefas")}
+              />
+              <NavItem
+                href="/projetos"
+                label="Projetos"
+                icon={FolderKanban}
+                active={pathname.startsWith("/projetos")}
               />
               <NavItem
                 href="/assistente"
