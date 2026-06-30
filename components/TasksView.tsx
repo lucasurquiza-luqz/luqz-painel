@@ -5,12 +5,12 @@ import { Loader2, Plus, X, CircleDot, Clock, MessageSquare, Trash2, CornerDownRi
 import { PageHeader, Panel, Button } from "@/components/ui/primitives"
 import { cn } from "@/lib/utils"
 
-const STATUS: { v: string; label: string }[] = [
-  { v: "BACKLOG", label: "Backlog" },
-  { v: "TODO", label: "A fazer" },
-  { v: "DOING", label: "Fazendo" },
-  { v: "REVIEW", label: "Revisão" },
-  { v: "DONE", label: "Concluído" },
+const STATUS: { v: string; label: string; tone: string }[] = [
+  { v: "BACKLOG", label: "Backlog", tone: "text-zinc-400" },
+  { v: "TODO", label: "A fazer", tone: "text-sky-300" },
+  { v: "DOING", label: "Fazendo", tone: "text-[#FFB185]" },
+  { v: "REVIEW", label: "Revisão", tone: "text-violet-300" },
+  { v: "DONE", label: "Concluído", tone: "text-emerald-300" },
 ]
 const STATUS_LABEL = Object.fromEntries(STATUS.map((s) => [s.v, s.label]))
 const PRIORITY: Record<string, { label: string; cls: string }> = {
@@ -42,6 +42,7 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
   const [onlyOpen, setOnlyOpen] = useState(true)
   const [creating, setCreating] = useState(false)
   const [selected, setSelected] = useState<Task | null>(null)
+  const [closing, setClosing] = useState<string | null>(null) // tarefa aguardando o "resultado" pra fechar
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -68,6 +69,17 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
   async function patch(id: string, data: Record<string, unknown>) {
     const res = await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) })
     if (res.ok) { const d = await res.json(); setTasks((ts) => ts.map((t) => (t.id === id ? d.task : t))); if (selected?.id === id) setSelected(d.task) }
+  }
+  // Mudar status: fechar (DONE) exige o resultado → abre o modal.
+  function changeStatus(id: string, status: string) {
+    if (status === "DONE") setClosing(id)
+    else patch(id, { status })
+  }
+  async function confirmClose(result: string) {
+    const id = closing!
+    const res = await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "DONE", result }) })
+    if (res.ok) { const d = await res.json(); setTasks((ts) => ts.map((t) => (t.id === id ? d.task : t))); if (selected?.id === id) setSelected(d.task) }
+    setClosing(null)
   }
   async function remove(id: string) {
     await fetch(`/api/tasks/${id}`, { method: "DELETE" })
@@ -103,7 +115,7 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
         <div className="space-y-2">
           {tasks.map((t) => (
             <Panel key={t.id} className="flex items-center gap-3 p-3">
-              <select value={t.status} onChange={(e) => patch(t.id, { status: e.target.value })} onClick={(e) => e.stopPropagation()}
+              <select value={t.status} onChange={(e) => changeStatus(t.id, e.target.value)} onClick={(e) => e.stopPropagation()}
                 className="shrink-0 rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs text-zinc-200 [color-scheme:dark]">
                 {STATUS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
               </select>
@@ -123,7 +135,8 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
       )}
 
       {creating && <CreateModal team={team} projects={projects} fixedProjectId={projectId} onClose={() => setCreating(false)} onCreated={(t) => { setTasks((ts) => [t, ...ts]); setCreating(false) }} />}
-      {selected && <TaskDrawer task={selected} team={team} projects={projects} onClose={() => setSelected(null)} onPatch={patch} onRemove={remove} onChanged={load} />}
+      {selected && <TaskDrawer task={selected} team={team} projects={projects} onClose={() => setSelected(null)} onPatch={patch} onStatus={changeStatus} onRemove={remove} onChanged={load} />}
+      {closing && <ResultModal onClose={() => setClosing(null)} onConfirm={confirmClose} />}
     </Wrapper>
   )
 }
@@ -168,27 +181,25 @@ function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { t
   )
 }
 
-function TaskDrawer({ task, team, projects, onClose, onPatch, onRemove, onChanged }: { task: Task; team: Ref[]; projects: Proj[]; onClose: () => void; onPatch: (id: string, d: Record<string, unknown>) => void; onRemove: (id: string) => void; onChanged: () => void }) {
+function TaskDrawer({ task, team, projects, onClose, onPatch, onStatus, onRemove, onChanged }: { task: Task; team: Ref[]; projects: Proj[]; onClose: () => void; onPatch: (id: string, d: Record<string, unknown>) => void; onStatus: (id: string, status: string) => void; onRemove: (id: string) => void; onChanged: () => void }) {
   const [activity, setActivity] = useState<Activity[]>([])
   const [subtasks, setSubtasks] = useState<Subtask[]>([])
+  const [desc, setDesc] = useState("")
   const [comment, setComment] = useState("")
   const [newSub, setNewSub] = useState("")
   const [busy, setBusy] = useState(false)
-
-  async function duplicate() {
-    setBusy(true)
-    await fetch(`/api/tasks/${task.id}/duplicate`, { method: "POST" })
-    setBusy(false); onChanged(); onClose()
-  }
+  const subDone = subtasks.filter((s) => s.status === "DONE").length
 
   const reload = useCallback(async () => {
     const res = await fetch(`/api/tasks/${task.id}`)
     const d = await res.json().catch(() => ({}))
     setActivity(d.activity ?? [])
     setSubtasks(d.task?.subtasks ?? [])
+    setDesc(d.task?.description ?? "")
   }, [task.id])
   useEffect(() => { void reload() }, [reload])
 
+  async function duplicate() { setBusy(true); await fetch(`/api/tasks/${task.id}/duplicate`, { method: "POST" }); setBusy(false); onChanged(); onClose() }
   async function sendComment() {
     if (!comment.trim()) return
     setBusy(true)
@@ -205,64 +216,101 @@ function TaskDrawer({ task, team, projects, onClose, onPatch, onRemove, onChange
     await fetch(`/api/tasks/${s.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: s.status === "DONE" ? "TODO" : "DONE" }) })
     await reload()
   }
+  const st = STATUS.find((s) => s.v === task.status)
 
   return (
-    <Overlay onClose={onClose} title="Detalhes da tarefa" wide>
-      <div className="space-y-4">
-        <input value={task.title} onChange={(e) => onPatch(task.id, { title: e.target.value })} className={cn(inp, "text-base font-semibold")} />
-        {(task.project || task.client) && (
-          <p className="text-[11px] text-zinc-500">{task.client ? task.client.name + " › " : ""}{task.project?.name}</p>
-        )}
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Status"><select value={task.status} onChange={(e) => onPatch(task.id, { status: e.target.value })} className={inp}>{STATUS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}</select></Field>
+    <Overlay onClose={onClose} size="xl" bare>
+      {/* Cabeçalho */}
+      <div className="flex items-start justify-between gap-3 border-b border-white/8 px-6 py-4">
+        <div className="min-w-0 flex-1">
+          <p className="mb-1 text-[11px] text-zinc-500">{task.client ? task.client.name + " › " : ""}{task.project?.name ?? "—"}</p>
+          <input value={task.title} onChange={(e) => onPatch(task.id, { title: e.target.value })} className="w-full bg-transparent text-lg font-semibold text-white focus:outline-none" />
+        </div>
+        <button onClick={onClose} className="shrink-0 text-zinc-500 hover:text-white"><X size={18} /></button>
+      </div>
+
+      <div className="grid gap-0 md:grid-cols-[1fr_240px]">
+        {/* Coluna principal */}
+        <div className="space-y-5 border-white/8 p-6 md:border-r">
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-600">Descrição</p>
+            <textarea value={desc} onChange={(e) => setDesc(e.target.value)} onBlur={() => onPatch(task.id, { description: desc })} placeholder="Detalhe a tarefa…" rows={3} className={cn(inp, "resize-none")} />
+          </div>
+
+          {/* Subtarefas */}
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-600"><CornerDownRight size={13} /> Subtarefas</p>
+              {subtasks.length > 0 && <span className="text-[10px] text-zinc-600">{subDone}/{subtasks.length}</span>}
+            </div>
+            {subtasks.length > 0 && <div className="mb-2 h-1 w-full overflow-hidden rounded-full bg-white/8"><div className="h-full rounded-full bg-emerald-400/70" style={{ width: `${(subDone / subtasks.length) * 100}%` }} /></div>}
+            <div className="space-y-1">
+              {subtasks.map((s) => (
+                <div key={s.id} className="flex items-center gap-2 rounded-md bg-black/20 px-2 py-1.5 text-[12px]">
+                  <button onClick={() => toggleSub(s)} className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded border", s.status === "DONE" ? "border-emerald-400 bg-emerald-400/20 text-emerald-300" : "border-white/20")}>{s.status === "DONE" && <Check size={11} />}</button>
+                  <span className={cn("min-w-0 flex-1 truncate", s.status === "DONE" ? "text-zinc-600 line-through" : "text-zinc-200")}>{s.title}</span>
+                  {s.assignee && <span className="shrink-0 text-[10px] text-zinc-600">{s.assignee.name}</span>}
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 flex gap-2">
+              <input value={newSub} onChange={(e) => setNewSub(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSubtask()} placeholder="+ Adicionar subtarefa" className={cn(inp, "flex-1")} />
+            </div>
+          </div>
+
+          {/* Atividade / Histórico */}
+          <div>
+            <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-600"><Clock size={13} /> Atividade & histórico</p>
+            <div className="flex gap-2">
+              <input value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendComment()} placeholder="Comentar…" className={cn(inp, "flex-1")} />
+              <Button onClick={sendComment} disabled={busy}><MessageSquare size={14} /></Button>
+            </div>
+            <div className="mt-3 space-y-3">
+              {activity.map((a) => (
+                <div key={a.id} className="flex gap-2 text-[12px]">
+                  {a.type === "COMMENTED" ? <MessageSquare size={12} className="mt-0.5 shrink-0 text-sky-400/70" /> : <CircleDot size={12} className="mt-0.5 shrink-0 text-zinc-600" />}
+                  <div className="min-w-0">
+                    <p className={cn(a.type === "COMMENTED" || a.type === "COMPLETED" ? "text-zinc-200" : "text-zinc-400")}>{describe(a)}</p>
+                    <p className="text-[10px] text-zinc-600">{a.userName ?? "sistema"} · {new Date(a.createdAt).toLocaleString("pt-BR")}</p>
+                  </div>
+                </div>
+              ))}
+              {!activity.length && <p className="text-[11px] text-zinc-600">Sem histórico ainda.</p>}
+            </div>
+          </div>
+        </div>
+
+        {/* Sidebar de propriedades */}
+        <div className="space-y-3 p-6">
+          <Field label="Status">
+            <select value={task.status} onChange={(e) => onStatus(task.id, e.target.value)} className={cn(inp, st && "font-medium", st?.tone)}>{STATUS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}</select>
+          </Field>
           <Field label="Responsável"><select value={task.assignee?.id ?? ""} onChange={(e) => onPatch(task.id, { assigneeId: e.target.value })} className={inp}><option value="">—</option>{team.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
           <Field label="Prioridade"><select value={task.priority} onChange={(e) => onPatch(task.id, { priority: e.target.value })} className={inp}>{Object.entries(PRIORITY).map(([v, p]) => <option key={v} value={v}>{p.label}</option>)}</select></Field>
           <Field label="Prazo"><input type="date" value={task.dueDate ? task.dueDate.slice(0, 10) : ""} onChange={(e) => onPatch(task.id, { dueDate: e.target.value || null })} className={cn(inp, "[color-scheme:dark]")} /></Field>
-          <Field label="Mover para projeto"><select value={task.project?.id ?? ""} onChange={(e) => { if (e.target.value) onPatch(task.id, { projectId: e.target.value }) }} className={inp}>{projects.map((p) => <option key={p.id} value={p.id}>{projLabel(p)}</option>)}</select></Field>
-        </div>
-
-        {/* Subtarefas */}
-        <div>
-          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-zinc-300"><CornerDownRight size={13} /> Subtarefas ({subtasks.length})</p>
-          <div className="space-y-1">
-            {subtasks.map((s) => (
-              <div key={s.id} className="flex items-center gap-2 rounded-md bg-black/20 px-2 py-1.5 text-[12px]">
-                <button onClick={() => toggleSub(s)} className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded border", s.status === "DONE" ? "border-emerald-400 bg-emerald-400/20 text-emerald-300" : "border-white/20")}>{s.status === "DONE" && <Check size={11} />}</button>
-                <span className={cn("min-w-0 flex-1 truncate", s.status === "DONE" ? "text-zinc-600 line-through" : "text-zinc-200")}>{s.title}</span>
-                {s.assignee && <span className="shrink-0 text-[10px] text-zinc-600">{s.assignee.name}</span>}
-              </div>
-            ))}
-          </div>
-          <div className="mt-2 flex gap-2">
-            <input value={newSub} onChange={(e) => setNewSub(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSubtask()} placeholder="Adicionar subtarefa…" className={cn(inp, "flex-1")} />
-            <Button onClick={addSubtask} disabled={busy}><Plus size={14} /></Button>
+          <Field label="Projeto"><select value={task.project?.id ?? ""} onChange={(e) => { if (e.target.value) onPatch(task.id, { projectId: e.target.value }) }} className={inp}>{projects.map((p) => <option key={p.id} value={p.id}>{projLabel(p)}</option>)}</select></Field>
+          <div className="space-y-2 border-t border-white/8 pt-3">
+            <button onClick={duplicate} disabled={busy} className="flex w-full items-center gap-1.5 text-[12px] text-zinc-400 hover:text-zinc-100"><Copy size={13} /> Duplicar tarefa</button>
+            <button onClick={() => onRemove(task.id)} className="flex w-full items-center gap-1.5 text-[12px] text-zinc-500 hover:text-red-300"><Trash2 size={13} /> Excluir tarefa</button>
           </div>
         </div>
+      </div>
+    </Overlay>
+  )
+}
 
-        {/* Histórico */}
-        <div>
-          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-zinc-300"><Clock size={13} /> Histórico</p>
-          <div className="flex gap-2">
-            <input value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendComment()} placeholder="Comentar…" className={cn(inp, "flex-1")} />
-            <Button onClick={sendComment} disabled={busy}><MessageSquare size={14} /></Button>
-          </div>
-          <div className="mt-3 space-y-2.5">
-            {activity.map((a) => (
-              <div key={a.id} className="flex gap-2 text-[12px]">
-                <CircleDot size={12} className="mt-0.5 shrink-0 text-zinc-600" />
-                <div className="min-w-0">
-                  <p className="text-zinc-300">{describe(a)}</p>
-                  <p className="text-[10px] text-zinc-600">{a.userName ?? "sistema"} · {new Date(a.createdAt).toLocaleString("pt-BR")}</p>
-                </div>
-              </div>
-            ))}
-            {!activity.length && <p className="text-[11px] text-zinc-600">Sem histórico ainda.</p>}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <button onClick={duplicate} disabled={busy} className="flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-zinc-200"><Copy size={12} /> Duplicar</button>
-          <button onClick={() => onRemove(task.id)} className="flex items-center gap-1.5 text-[11px] text-zinc-600 hover:text-red-300"><Trash2 size={12} /> Excluir tarefa</button>
+// Modal de conclusão: exige o RESULTADO antes de fechar a tarefa.
+function ResultModal({ onClose, onConfirm }: { onClose: () => void; onConfirm: (result: string) => void }) {
+  const [result, setResult] = useState("")
+  const [busy, setBusy] = useState(false)
+  return (
+    <Overlay onClose={onClose} title="Concluir tarefa">
+      <div className="space-y-3">
+        <p className="text-xs text-zinc-500">Descreva o <b className="text-zinc-300">resultado</b> da tarefa. Sem isso ela não pode ser fechada.</p>
+        <textarea autoFocus value={result} onChange={(e) => setResult(e.target.value)} rows={4} placeholder="O que foi entregue / resultado…" className={cn(inp, "resize-none")} />
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button disabled={busy || !result.trim()} onClick={() => { setBusy(true); onConfirm(result.trim()) }}>{busy ? <Loader2 size={15} className="animate-spin" /> : <><Check size={15} /> Concluir</>}</Button>
         </div>
       </div>
     </Overlay>
@@ -272,11 +320,12 @@ function TaskDrawer({ task, team, projects, onClose, onPatch, onRemove, onChange
 function describe(a: Activity): string {
   const p = a.payload ?? {}
   switch (a.type) {
-    case "CREATED": return "Tarefa criada"
+    case "CREATED": return p.duplicatedFrom ? "Tarefa criada (duplicada)" : "Tarefa criada"
     case "STATUS_CHANGED": return `Status: ${STATUS_LABEL[p.from as string] ?? p.from} → ${STATUS_LABEL[p.to as string] ?? p.to}`
-    case "COMPLETED": return "Concluída ✓"
+    case "COMPLETED": return p.result ? `Concluída ✓ — ${p.result}` : "Concluída ✓"
     case "ASSIGNED": return p.to ? "Responsável alterado" : "Responsável removido"
     case "DUE_DATE": return p.to ? `Prazo: ${new Date(p.to as string).toLocaleDateString("pt-BR")}` : "Prazo removido"
+    case "MOVED": return "Movida de projeto"
     case "COMMENTED": return String(p.body ?? "")
     case "EDITED": return `Editou ${p.field ?? "campo"}`
     default: return a.type
@@ -287,12 +336,17 @@ const inp = "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block"><span className="mb-1 block text-[11px] text-zinc-500">{label}</span>{children}</label>
 }
-function Overlay({ title, wide, onClose, children }: { title: string; wide?: boolean; onClose: () => void; children: React.ReactNode }) {
+function Overlay({ title, size = "lg", bare, onClose, children }: { title?: string; size?: "lg" | "xl"; bare?: boolean; onClose: () => void; children: React.ReactNode }) {
+  const max = size === "xl" ? "max-w-3xl" : "max-w-lg"
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className={cn("mt-12 w-full rounded-2xl border border-white/10 bg-[#141414] p-6 shadow-2xl", wide ? "max-w-2xl" : "max-w-lg")} onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold text-white">{title}</h2><button onClick={onClose} className="text-zinc-500 hover:text-white"><X size={18} /></button></div>
-        {children}
+      <div className={cn("mt-12 w-full overflow-hidden rounded-2xl border border-white/10 bg-[#141414] shadow-2xl", max)} onClick={(e) => e.stopPropagation()}>
+        {bare ? children : (
+          <div className="p-6">
+            <div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold text-white">{title}</h2><button onClick={onClose} className="text-zinc-500 hover:text-white"><X size={18} /></button></div>
+            {children}
+          </div>
+        )}
       </div>
     </div>
   )

@@ -30,7 +30,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const auth = await requireApiUser(["ADMIN", "OPERADOR"])
   if (!auth.ok) return auth.response
 
-  const before = await prisma.task.findUnique({ where: { id }, include: { assignee: { select: { name: true } } } })
+  const before = await prisma.task.findUnique({ where: { id }, select: { title: true, status: true, priority: true, assigneeId: true, dueDate: true, projectId: true, parentTaskId: true } })
   if (!before) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 })
 
   const b = await req.json().catch(() => ({}))
@@ -41,9 +41,16 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (typeof b.title === "string" && b.title.trim() && b.title.trim() !== before.title) { data.title = b.title.trim(); logs.push({ type: "EDITED", payload: { field: "título" } }) }
   if (typeof b.description === "string") data.description = b.description.trim() || null
   if (STATUSES.includes(b.status) && b.status !== before.status) {
+    // Regra: tarefa-mãe só fecha com o RESULTADO descrito.
+    if (b.status === "DONE" && !before.parentTaskId) {
+      const result = typeof b.result === "string" ? b.result.trim() : ""
+      if (!result) return NextResponse.json({ error: "Para concluir, descreva o resultado da tarefa.", needResult: true }, { status: 422 })
+      logs.push({ type: "COMPLETED", payload: { result } })
+    } else {
+      logs.push({ type: b.status === "DONE" ? "COMPLETED" : b.status === before.status ? "EDITED" : "STATUS_CHANGED", payload: { from: before.status, to: b.status } })
+    }
     data.status = b.status
     data.completedAt = b.status === "DONE" ? new Date() : null
-    logs.push({ type: b.status === "DONE" ? "COMPLETED" : "STATUS_CHANGED", payload: { from: before.status, to: b.status } })
   }
   if (PRIORITIES.includes(b.priority) && b.priority !== before.priority) { data.priority = b.priority; logs.push({ type: "EDITED", payload: { field: "prioridade", to: b.priority } }) }
   if ("assigneeId" in b && (b.assigneeId || null) !== before.assigneeId) {
