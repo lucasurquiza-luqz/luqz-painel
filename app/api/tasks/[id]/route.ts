@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db"
 import { requireApiUser } from "@/lib/api-auth"
 import { logActivity } from "@/lib/tasks"
 import { normalizeAssignees } from "@/app/api/tasks/route"
+import { notifyUsers, taskLink } from "@/lib/notifications"
 
 type Params = { params: Promise<{ id: string }> }
 const STATUSES = ["BACKLOG", "TODO", "DOING", "REVIEW", "DONE"]
@@ -61,11 +62,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (PRIORITIES.includes(b.priority) && b.priority !== before.priority) { data.priority = b.priority; logs.push({ type: "EDITED", payload: { field: "prioridade", to: b.priority } }) }
   // Responsáveis: aceita assigneeIds[] (múltiplos) ou assigneeId (único, legado)
   const nextAssignees = normalizeAssignees(b)
+  let addedAssignees: string[] = []
   if (nextAssignees !== undefined) {
     const cur = [...before.assigneeIds].sort().join(",")
     if (nextAssignees.slice().sort().join(",") !== cur) {
       data.assigneeIds = nextAssignees
       data.assigneeId = nextAssignees[0] ?? null
+      addedAssignees = nextAssignees.filter((x) => !before.assigneeIds.includes(x))
       logs.push({ type: "ASSIGNED", payload: { count: nextAssignees.length } })
     }
   }
@@ -89,6 +92,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     include: { assignee: { select: { id: true, name: true } }, project: { select: { id: true, name: true } }, client: { select: { id: true, name: true } } },
   })
   for (const l of logs) await logActivity("TASK", id, actor, l.type, l.payload)
+  // Notifica quem acabou de ser atribuído (exceto quem fez a ação).
+  if (addedAssignees.length) {
+    await notifyUsers(addedAssignees, actor.userId, {
+      type: "ASSIGNED",
+      title: `${actor.name} atribuiu você a uma tarefa`,
+      body: task.title,
+      link: taskLink({ clientId: task.clientId ?? null, projectId: task.projectId ?? null, id }),
+      taskId: id,
+      actorName: actor.name,
+    })
+  }
   return NextResponse.json({ task })
 }
 

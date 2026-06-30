@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { requireApiUser } from "@/lib/api-auth"
 import { logActivity } from "@/lib/tasks"
+import { notifyUsers, taskLink } from "@/lib/notifications"
 import type { Prisma, TaskStatus, TaskPriority } from "@prisma/client"
 
 const STATUSES = ["BACKLOG", "TODO", "DOING", "REVIEW", "DONE"]
@@ -91,5 +92,15 @@ export async function POST(req: NextRequest) {
     select: taskSelect,
   })
   await logActivity("TASK", task.id, { userId: auth.user.userId, name: auth.user.name }, "CREATED", { title })
+  if (assigneeIds.length) {
+    await notifyUsers(assigneeIds, auth.user.userId, {
+      type: "ASSIGNED",
+      title: `${auth.user.name} atribuiu você a uma tarefa`,
+      body: task.title,
+      link: taskLink({ clientId: task.clientId ?? null, projectId: task.projectId ?? null, id: task.id }),
+      taskId: task.id,
+      actorName: auth.user.name,
+    })
+  }
   return NextResponse.json({ task })
 }

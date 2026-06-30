@@ -251,6 +251,12 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
   const [closing, setClosing] = useState<string | null>(null) // tarefa aguardando o "resultado" pra fechar
   const [meName, setMeName] = useState<string | null>(null)
   useEffect(() => { fetch("/api/me").then((r) => r.json()).then((d) => setMeName(d.name ?? null)).catch(() => {}) }, [])
+  // Deep-link de notificação: ?task=<id> abre o card direto (independe de filtros).
+  useEffect(() => {
+    const tid = new URLSearchParams(window.location.search).get("task")
+    if (!tid) return
+    fetch(`/api/tasks/${tid}`).then((r) => r.json()).then((d) => { if (d.task) setSelected(d.task) }).catch(() => {})
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -648,6 +654,10 @@ function TaskDrawer({ task, team, tags, projects, meName, onClose, onPatch, onSt
   async function removeAttachment(aid: string) {
     await fetch(`/api/tasks/${task.id}/attachments?attachmentId=${aid}`, { method: "DELETE" }); await reload()
   }
+  // @menção: detecta o token "@…" no fim do comentário e sugere a equipe.
+  const mentionMatch = comment.match(/@([^\s@]*)$/)
+  const mentionOptions = mentionMatch ? team.filter((u) => u.name.toLowerCase().includes(mentionMatch[1].toLowerCase())).slice(0, 6) : []
+  const pickMention = (name: string) => setComment(comment.replace(/@[^\s@]*$/, `@${name} `))
   return (
     <Overlay onClose={onClose} size="xxl" bare>
       <div className="flex h-[85vh] min-h-0">
@@ -786,7 +796,19 @@ function TaskDrawer({ task, team, tags, projects, meName, onClose, onPatch, onSt
           <div className="border-t border-white/8 p-3">
             <div className="flex items-center gap-2">
               <Avatar name={meName} size={26} />
-              <input value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendComment()} placeholder="Escreva um comentário…" className={cn(inp, "flex-1")} />
+              <div className="relative flex-1">
+                {mentionOptions.length > 0 && (
+                  <div className="absolute bottom-full left-0 z-10 mb-1 w-56 overflow-hidden rounded-lg border border-white/10 bg-[#1b1b1b] p-1 shadow-2xl">
+                    <p className="px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-600">Mencionar</p>
+                    {mentionOptions.map((u) => (
+                      <button key={u.id} onClick={() => pickMention(u.name)} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-zinc-200 hover:bg-white/5">
+                        <Avatar name={u.name} size={18} /> {u.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <input value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === "Enter" && mentionOptions.length === 0 && sendComment()} placeholder="Comente… use @ para mencionar" className={cn(inp, "w-full")} />
+              </div>
               <Button onClick={sendComment} disabled={busy || !comment.trim()} className="min-h-9 px-2.5"><MessageSquare size={14} /></Button>
             </div>
           </div>

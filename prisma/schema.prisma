@@ -1003,6 +1003,22 @@ model Tag {
   createdAt DateTime @default(now())
 }
 
+// Notificações in-app (menção em comentário, atribuição de tarefa, etc.).
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String // destinatário
+  type      String // MENTION | ASSIGNED | COMMENT
+  title     String
+  body      String?
+  link      String? // rota a abrir ao clicar
+  taskId    String?
+  actorName String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read, createdAt])
+}
+
 // Histórico genérico (tarefa OU projeto): criação, mudança de status, comentário, etc.
 model Activity {
   id        String         @id @default(cuid())

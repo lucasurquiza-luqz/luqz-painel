@@ -30,6 +30,7 @@ import {
   HeartPulse,
 } from "lucide-react"
 import { DashBrandMark } from "@/components/DashBrandMark"
+import { NotificationsBell } from "@/components/NotificationsBell"
 import { cn } from "@/lib/utils"
 
 type IconType = React.ComponentType<{ size?: number; className?: string }>
@@ -129,9 +130,12 @@ export function Sidebar({ role, name }: SidebarProps) {
   return (
     <aside className="flex h-full w-72 shrink-0 flex-col border-r border-white/10 bg-[#111111]">
       <div className="border-b border-white/10 p-5">
-        <Link href="/clientes" className="block rounded-lg focus-visible:outline-offset-4">
-          <DashBrandMark />
-        </Link>
+        <div className="flex items-center justify-between gap-2">
+          <Link href="/clientes" className="block rounded-lg focus-visible:outline-offset-4">
+            <DashBrandMark />
+          </Link>
+          <NotificationsBell />
+        </div>
 
         {clientId && <ClientSwitcher clientId={clientId} clientName={clientName} />}
       </div>
