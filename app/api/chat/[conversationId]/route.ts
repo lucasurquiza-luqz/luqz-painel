@@ -69,10 +69,12 @@ export async function POST(req: NextRequest, { params }: Params) {
       await sendText(remoteJid, text)
     }
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Erro ao enviar" },
-      { status: 500 }
-    )
+    const raw = err instanceof Error ? err.message : "Erro ao enviar"
+    // Erros conhecidos da Evolution → mensagem acionável.
+    const friendly = /connection closed|not connected|close/i.test(raw)
+      ? "WhatsApp desconectado: a sessão da instância caiu. Reconecte em Configurações → WhatsApp e tente de novo."
+      : raw
+    return NextResponse.json({ error: friendly }, { status: 502 })
   }
 
   const hasMedia = !!(mediaUrl || mediaBase64)
