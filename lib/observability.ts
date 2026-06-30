@@ -1,5 +1,7 @@
-// Ponto único de captura de erro. Hoje: log estruturado (greppável).
-// Amanhã: plugar Sentry aqui (basta checar SENTRY_DSN e encaminhar) sem tocar nos callers.
+// Ponto único de captura de erro: log estruturado (greppável) + Sentry.
+// Sentry é inicializado em instrumentation.ts; se não houver client, captureException é no-op.
+import * as Sentry from "@sentry/node"
+
 type Meta = Record<string, unknown>
 
 export function reportError(scope: string, err: unknown, meta?: Meta): void {
@@ -11,5 +13,7 @@ export function reportError(scope: string, err: unknown, meta?: Meta): void {
     console.error(`[${scope}]`, message)
   }
   if (stack) console.error(stack)
-  // TODO(observabilidade): se process.env.SENTRY_DSN, encaminhar { scope, err, meta } ao Sentry.
+  if (Sentry.getClient()) {
+    Sentry.captureException(err instanceof Error ? err : new Error(message), { tags: { scope }, extra: meta })
+  }
 }
