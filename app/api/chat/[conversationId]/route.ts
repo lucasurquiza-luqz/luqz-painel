@@ -57,6 +57,13 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const remoteJid = conversation.remoteJid
 
+  // Em GRUPO, assina a mensagem com o nome de quem enviou (como o Chatwoot),
+  // pra equipe e cliente saberem quem falou. Em 1:1 envia limpo.
+  // O texto ASSINADO vai pro WhatsApp; o texto LIMPO é o que guardamos no Dash.
+  const isGroup = remoteJid.endsWith("@g.us")
+  const sign = (t: string) => (isGroup ? `*${auth.user.name}*:\n${t}` : t)
+  const cleanText: string | null = text?.trim() ? text.trim() : null
+
   try {
     if (mediaUrl || mediaBase64) {
       // Prefere base64 (enviado direto, sem Evolution precisar baixar URL)
@@ -64,9 +71,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       const type = (["image", "document", "video", "audio"].includes(mediaType)
         ? mediaType
         : "document") as "image" | "document" | "video" | "audio"
-      await sendMedia(remoteJid, media, type, text ?? "", mediaName ?? undefined)
+      const caption = cleanText ? sign(cleanText) : (isGroup ? `*${auth.user.name}*:` : "")
+      await sendMedia(remoteJid, media, type, caption, mediaName ?? undefined)
     } else {
-      await sendText(remoteJid, text)
+      await sendText(remoteJid, sign(cleanText ?? ""))
     }
   } catch (err) {
     const raw = err instanceof Error ? err.message : "Erro ao enviar"
