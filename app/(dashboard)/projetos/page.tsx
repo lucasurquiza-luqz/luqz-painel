@@ -1,6 +1,6 @@
-"use client"
-import { ProjectsView } from "@/components/ProjectsView"
+import { redirect } from "next/navigation"
 
-export default function ProjetosPage() {
-  return <ProjectsView />
+// Projetos vivem dentro do cliente. Não há lista global solta.
+export default function ProjetosRedirect() {
+  redirect("/clientes")
 }

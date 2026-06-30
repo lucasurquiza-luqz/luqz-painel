@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Loader2, Plus, X, CircleDot, Clock, MessageSquare, Trash2, CornerDownRight, Check } from "lucide-react"
+import { Loader2, Plus, X, CircleDot, Clock, MessageSquare, Trash2, CornerDownRight, Check, Copy } from "lucide-react"
 import { PageHeader, Panel, Button } from "@/components/ui/primitives"
 import { cn } from "@/lib/utils"
 
@@ -123,7 +123,7 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
       )}
 
       {creating && <CreateModal team={team} projects={projects} fixedProjectId={projectId} onClose={() => setCreating(false)} onCreated={(t) => { setTasks((ts) => [t, ...ts]); setCreating(false) }} />}
-      {selected && <TaskDrawer task={selected} team={team} onClose={() => setSelected(null)} onPatch={patch} onRemove={remove} />}
+      {selected && <TaskDrawer task={selected} team={team} projects={projects} onClose={() => setSelected(null)} onPatch={patch} onRemove={remove} onChanged={load} />}
     </Wrapper>
   )
 }
@@ -168,12 +168,18 @@ function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { t
   )
 }
 
-function TaskDrawer({ task, team, onClose, onPatch, onRemove }: { task: Task; team: Ref[]; onClose: () => void; onPatch: (id: string, d: Record<string, unknown>) => void; onRemove: (id: string) => void }) {
+function TaskDrawer({ task, team, projects, onClose, onPatch, onRemove, onChanged }: { task: Task; team: Ref[]; projects: Proj[]; onClose: () => void; onPatch: (id: string, d: Record<string, unknown>) => void; onRemove: (id: string) => void; onChanged: () => void }) {
   const [activity, setActivity] = useState<Activity[]>([])
   const [subtasks, setSubtasks] = useState<Subtask[]>([])
   const [comment, setComment] = useState("")
   const [newSub, setNewSub] = useState("")
   const [busy, setBusy] = useState(false)
+
+  async function duplicate() {
+    setBusy(true)
+    await fetch(`/api/tasks/${task.id}/duplicate`, { method: "POST" })
+    setBusy(false); onChanged(); onClose()
+  }
 
   const reload = useCallback(async () => {
     const res = await fetch(`/api/tasks/${task.id}`)
@@ -212,6 +218,7 @@ function TaskDrawer({ task, team, onClose, onPatch, onRemove }: { task: Task; te
           <Field label="Responsável"><select value={task.assignee?.id ?? ""} onChange={(e) => onPatch(task.id, { assigneeId: e.target.value })} className={inp}><option value="">—</option>{team.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
           <Field label="Prioridade"><select value={task.priority} onChange={(e) => onPatch(task.id, { priority: e.target.value })} className={inp}>{Object.entries(PRIORITY).map(([v, p]) => <option key={v} value={v}>{p.label}</option>)}</select></Field>
           <Field label="Prazo"><input type="date" value={task.dueDate ? task.dueDate.slice(0, 10) : ""} onChange={(e) => onPatch(task.id, { dueDate: e.target.value || null })} className={cn(inp, "[color-scheme:dark]")} /></Field>
+          <Field label="Mover para projeto"><select value={task.project?.id ?? ""} onChange={(e) => { if (e.target.value) onPatch(task.id, { projectId: e.target.value }) }} className={inp}>{projects.map((p) => <option key={p.id} value={p.id}>{projLabel(p)}</option>)}</select></Field>
         </div>
 
         {/* Subtarefas */}
@@ -253,7 +260,10 @@ function TaskDrawer({ task, team, onClose, onPatch, onRemove }: { task: Task; te
           </div>
         </div>
 
-        <button onClick={() => onRemove(task.id)} className="flex items-center gap-1.5 text-[11px] text-zinc-600 hover:text-red-300"><Trash2 size={12} /> Excluir tarefa</button>
+        <div className="flex items-center gap-4">
+          <button onClick={duplicate} disabled={busy} className="flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-zinc-200"><Copy size={12} /> Duplicar</button>
+          <button onClick={() => onRemove(task.id)} className="flex items-center gap-1.5 text-[11px] text-zinc-600 hover:text-red-300"><Trash2 size={12} /> Excluir tarefa</button>
+        </div>
       </div>
     </Overlay>
   )

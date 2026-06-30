@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Loader2, ArrowLeft, Pencil, Check, Clock, FileText, Link2, Upload, Paperclip, Trash2 } from "lucide-react"
 import { PageHeader, Panel, Button } from "@/components/ui/primitives"
@@ -9,7 +9,7 @@ import { TasksView } from "@/components/TasksView"
 import { PerformanceSummaryCard } from "@/components/PerformanceSummaryCard"
 import { cn } from "@/lib/utils"
 
-const KIND: Record<string, string> = { CONTEUDO: "Conteúdo", TRAFEGO: "Tráfego", ONBOARDING: "Onboarding", WEB: "Web/LP", COMERCIAL: "Comercial", INTERNO: "Interno", OUTRO: "Outro" }
+const KIND: Record<string, string> = { CONTEUDO: "Produção de Conteúdo", TRAFEGO: "Tráfego", ONBOARDING: "Onboarding", WEB: "Web/LP", COMERCIAL: "Comercial", OUTRO: "Outro" }
 const STATUS: Record<string, string> = { ATIVO: "Ativo", PAUSADO: "Pausado", CONCLUIDO: "Concluído", ARQUIVADO: "Arquivado" }
 const inp = "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-[#FF8F50]/40 focus:outline-none"
 
@@ -19,10 +19,17 @@ type Ref = { id: string; name: string }
 
 export default function ProjetoWorkspace() {
   const { id } = useParams<{ id: string }>()
+  const router = useRouter()
   const [data, setData] = useState<Data | null>(null)
   const [team, setTeam] = useState<Ref[]>([])
   const [tab, setTab] = useState("overview")
   const [editing, setEditing] = useState(false)
+
+  async function deleteProject() {
+    if (!confirm("Excluir este projeto e TODAS as suas tarefas? Esta ação não pode ser desfeita.")) return
+    await fetch(`/api/projects/${id}`, { method: "DELETE" })
+    router.push(data?.project.clientId ? `/clientes/${data.project.clientId}/projetos` : "/clientes")
+  }
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/projects/${id}`)
@@ -71,6 +78,7 @@ export default function ProjetoWorkspace() {
                 <div className="mb-2 flex items-center justify-between"><span className="text-xs font-semibold text-zinc-300">Documentação do projeto</span><Button variant="secondary" className="min-h-8 px-3 py-1 text-xs" onClick={() => setEditing(true)}><Pencil size={13} /> Editar</Button></div>
                 {p.notes ? <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-300">{p.notes}</p> : <p className="text-sm text-zinc-600">Sem documentação ainda. Clique em Editar para escrever o briefing/escopo.</p>}
               </Panel>
+              <button onClick={deleteProject} className="flex items-center gap-1.5 text-[11px] text-zinc-600 hover:text-red-300"><Trash2 size={12} /> Excluir projeto</button>
             </div>
           )
       )}

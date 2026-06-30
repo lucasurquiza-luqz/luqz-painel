@@ -156,15 +156,9 @@ export function Sidebar({ role, name }: SidebarProps) {
               />
               <NavItem
                 href="/tarefas"
-                label="Tarefas"
+                label="Minhas tarefas"
                 icon={ListTodo}
                 active={pathname.startsWith("/tarefas")}
-              />
-              <NavItem
-                href="/projetos"
-                label="Projetos"
-                icon={FolderKanban}
-                active={pathname.startsWith("/projetos")}
               />
               <NavItem
                 href="/assistente"
