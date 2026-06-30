@@ -63,6 +63,8 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
   const [fPriority, setFPriority] = useState("")        // filtro por prioridade
   const [sortBy, setSortBy] = useState("due")           // due | priority | recent
   const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [err, setErr] = useState("")
+  const flash = (m: string) => { setErr(m); setTimeout(() => setErr(""), 4000) }
   const [creating, setCreating] = useState(false)
   const [selected, setSelected] = useState<Task | null>(null)
   const [closing, setClosing] = useState<string | null>(null) // tarefa aguardando o "resultado" pra fechar
@@ -94,6 +96,7 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
   async function patch(id: string, data: Record<string, unknown>) {
     const res = await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) })
     if (res.ok) { const d = await res.json(); setTasks((ts) => ts.map((t) => (t.id === id ? d.task : t))); if (selected?.id === id) setSelected(d.task) }
+    else flash((await res.json().catch(() => ({})))?.error ?? "Não foi possível salvar.")
   }
   // Mudar status: fechar (DONE) exige o resultado → abre o modal.
   function changeStatus(id: string, status: string) {
@@ -104,6 +107,7 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
     const id = closing!
     const res = await fetch(`/api/tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "DONE", result }) })
     if (res.ok) { const d = await res.json(); setTasks((ts) => ts.map((t) => (t.id === id ? d.task : t))); if (selected?.id === id) setSelected(d.task) }
+    else flash((await res.json().catch(() => ({})))?.error ?? "Não foi possível concluir.")
     setClosing(null)
   }
   async function remove(id: string) {
@@ -115,6 +119,7 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
     if (!quickAdd.trim() || !projectId) return
     const res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: quickAdd.trim(), projectId, status: status ?? "TODO" }) })
     if (res.ok) { const d = await res.json(); setTasks((ts) => [d.task, ...ts]); setQuickAdd("") }
+    else flash((await res.json().catch(() => ({})))?.error ?? "Não foi possível criar.")
   }
 
   // Filtro (prioridade) + ordenação, aplicados sobre as tarefas carregadas.
@@ -203,28 +208,45 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
       ) : visibleTasks.length === 0 ? (
         <Panel className="p-8 text-center text-sm text-zinc-600">Nenhuma tarefa{fPriority ? " com esse filtro" : ""}.</Panel>
       ) : (
-        <div className="space-y-2">
-          {visibleTasks.map((t) => (
-            <Panel key={t.id} className={cn("flex items-center gap-3 p-3", picked.has(t.id) && "border-[#FF8F50]/40")}>
-              <input type="checkbox" checked={picked.has(t.id)} onChange={() => togglePick(t.id)} className="shrink-0 accent-[#FF8F50]" />
-              <select value={t.status} onChange={(e) => changeStatus(t.id, e.target.value)} onClick={(e) => e.stopPropagation()}
-                className="shrink-0 rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs text-zinc-200 [color-scheme:dark]">
-                {STATUS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
-              </select>
-              <button onClick={() => setSelected(t)} className="flex min-w-0 flex-1 flex-col items-start text-left">
-                <span className={cn("truncate text-sm font-medium", t.status === "DONE" ? "text-zinc-500 line-through" : "text-zinc-100")}>{t.title}</span>
-                <span className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                  {!projectId && t.project && <span className="rounded bg-white/5 px-1.5 py-0.5">{t.project.name}</span>}
-                  {!clientId && !projectId && t.client && <span className="text-orange-400/70">{t.client.name}</span>}
-                  <span className={`rounded px-1.5 py-0.5 ${PRIORITY[t.priority]?.cls}`}>{PRIORITY[t.priority]?.label}</span>
-                </span>
-              </button>
-              {t.dueDate && <span className={cn("shrink-0 text-[11px]", isOverdue(t) ? "text-red-300" : "text-zinc-500")}>{fmtDay(t.dueDate)}{isOverdue(t) ? " ⚠" : ""}</span>}
-              {t.assignee ? <Avatar name={t.assignee.name} /> : <span className="hidden text-[11px] text-zinc-700 sm:inline">sem resp.</span>}
-            </Panel>
-          ))}
+        // Lista agrupada por status (estilo ClickUp)
+        <div className="space-y-4">
+          {STATUS.map((s) => {
+            const group = visibleTasks.filter((t) => t.status === s.v)
+            if (!group.length) return null
+            return (
+              <div key={s.v}>
+                <p className={cn("mb-1.5 flex items-center gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide", s.tone)}>
+                  <span className={cn("rounded px-1.5 py-0.5", STATUS_PILL[s.v])}>{s.label}</span>
+                  <span className="text-zinc-600">{group.length}</span>
+                </p>
+                <div className="space-y-1.5">
+                  {group.map((t) => (
+                    <Panel key={t.id} className={cn("flex items-center gap-3 p-3", picked.has(t.id) && "border-[#FF8F50]/40")}>
+                      <input type="checkbox" checked={picked.has(t.id)} onChange={() => togglePick(t.id)} className="shrink-0 accent-[#FF8F50]" />
+                      <select value={t.status} onChange={(e) => changeStatus(t.id, e.target.value)} onClick={(e) => e.stopPropagation()}
+                        className="shrink-0 rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs text-zinc-200 [color-scheme:dark]">
+                        {STATUS.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
+                      </select>
+                      <button onClick={() => setSelected(t)} className="flex min-w-0 flex-1 flex-col items-start text-left">
+                        <span className={cn("truncate text-sm font-medium", t.status === "DONE" ? "text-zinc-500 line-through" : "text-zinc-100")}>{t.title}</span>
+                        <span className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                          {!projectId && t.project && <span className="rounded bg-white/5 px-1.5 py-0.5">{t.project.name}</span>}
+                          {!clientId && !projectId && t.client && <span className="text-orange-400/70">{t.client.name}</span>}
+                          <span className={`rounded px-1.5 py-0.5 ${PRIORITY[t.priority]?.cls}`}>{PRIORITY[t.priority]?.label}</span>
+                        </span>
+                      </button>
+                      {t.dueDate && <span className={cn("shrink-0 text-[11px]", isOverdue(t) ? "text-red-300" : "text-zinc-500")}>{fmtDay(t.dueDate)}{isOverdue(t) ? " ⚠" : ""}</span>}
+                      {t.assignee ? <Avatar name={t.assignee.name} /> : <span className="hidden text-[11px] text-zinc-700 sm:inline">sem resp.</span>}
+                    </Panel>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
+
+      {err && <div className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-lg border border-red-500/30 bg-red-950/80 px-4 py-2 text-sm text-red-200 shadow-xl backdrop-blur">{err}</div>}
 
       {creating && <CreateModal team={team} projects={projects} fixedProjectId={projectId} onClose={() => setCreating(false)} onCreated={(t) => { setTasks((ts) => [t, ...ts]); setCreating(false) }} />}
       {selected && <TaskDrawer task={selected} team={team} projects={projects} meName={meName} onClose={() => setSelected(null)} onPatch={patch} onStatus={changeStatus} onRemove={remove} onChanged={load} />}
@@ -319,10 +341,12 @@ function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, 
   const [activity, setActivity] = useState<Activity[]>([])
   const [subtasks, setSubtasks] = useState<Subtask[]>([])
   const [desc, setDesc] = useState("")
+  const [titleVal, setTitleVal] = useState(task.title)
   const [comment, setComment] = useState("")
   const [newSub, setNewSub] = useState("")
   const [busy, setBusy] = useState(false)
   const subDone = subtasks.filter((s) => s.status === "DONE").length
+  useEffect(() => { setTitleVal(task.title) }, [task.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const reload = useCallback(async () => {
     const res = await fetch(`/api/tasks/${task.id}`)
@@ -360,7 +384,7 @@ function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, 
             <span className="text-zinc-700">·</span>
             {task.client ? `${task.client.name} › ` : ""}{task.project?.name ?? "—"}
           </p>
-          <input value={task.title} onChange={(e) => onPatch(task.id, { title: e.target.value })} placeholder="Título da tarefa" className="mb-5 w-full bg-transparent text-2xl font-semibold text-white placeholder:text-zinc-600 focus:outline-none" />
+          <input value={titleVal} onChange={(e) => setTitleVal(e.target.value)} onBlur={() => titleVal.trim() && titleVal !== task.title && onPatch(task.id, { title: titleVal.trim() })} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()} placeholder="Título da tarefa" className="mb-5 w-full bg-transparent text-2xl font-semibold text-white placeholder:text-zinc-600 focus:outline-none" />
 
           {/* Propriedades em linhas (estilo ClickUp) */}
           <div className="space-y-0.5">
