@@ -41,10 +41,15 @@ export async function refreshActiveSnapshots(): Promise<{ refreshed: number; fai
     where: { active: true, adAccounts: { some: {} } },
     select: { id: true },
   })
+  // Em lotes paralelos — serial trava com dezenas de contas (cada uma chama Meta+Google).
   let refreshed = 0, failed = 0
-  for (const c of clients) {
-    try { await refreshPerformanceSnapshot(c.id, month); refreshed++ }
-    catch (e) { failed++; console.error(`[cron] perf snapshot ${c.id}:`, e instanceof Error ? e.message : e) }
+  const BATCH = 5
+  for (let i = 0; i < clients.length; i += BATCH) {
+    const results = await Promise.allSettled(clients.slice(i, i + BATCH).map((c) => refreshPerformanceSnapshot(c.id, month)))
+    for (const r of results) {
+      if (r.status === "fulfilled") refreshed++
+      else { failed++; console.error(`[cron] perf snapshot:`, r.reason instanceof Error ? r.reason.message : r.reason) }
+    }
   }
   return { refreshed, failed }
 }

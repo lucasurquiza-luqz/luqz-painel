@@ -1,4 +1,5 @@
 import { AdsNotConfiguredError, type AdConfig, type AdMetrics, type GoogleCampaign, type GoogleKeyword, type GoogleSearchTerm, type DateRange } from "@/lib/ads/types"
+import { rowRatios as ratios } from "@/lib/ads/calc"
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token"
 const ADS_API = "https://googleads.googleapis.com/v21"
@@ -48,9 +49,6 @@ async function gaql(cid: string, query: string): Promise<Record<string, any>[]> 
   }
   return (Array.isArray(body) ? body : [body]).flatMap((b) => b.results ?? [])
 }
-
-const ratios = <T extends { spend: number; impressions: number; clicks: number; results: number }>(n: T) =>
-  ({ ...n, cpa: n.results > 0 ? n.spend / n.results : null, ctr: n.impressions > 0 ? (n.clicks / n.impressions) * 100 : null })
 
 // Árvore do mês: Campanha → Grupo de anúncios → Palavra-chave (via MCC central).
 export async function fetchGoogleTree(customerId: string, { since, until }: DateRange): Promise<GoogleCampaign[]> {

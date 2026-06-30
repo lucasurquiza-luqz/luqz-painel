@@ -3,6 +3,7 @@ import { decryptSecret } from "@/lib/crypto-secrets"
 import { fetchMetaInsights } from "@/lib/ads/meta"
 import { fetchGoogleInsights } from "@/lib/ads/google"
 import { effectiveObjectives, monthRange, type AdConfig, type AdMetrics, type AdObjective, type DailyPoint, type DateRange, type ResultBreakdown } from "@/lib/ads/types"
+import { cpa as calcCpa, roas as calcRoas, ctr as calcCtr, cpc as calcCpc, cpm as calcCpm } from "@/lib/ads/calc"
 
 export type ProviderResult = (AdMetrics & { error?: undefined }) | { provider: "META" | "GOOGLE"; error: string }
 export type Totals = { spend: number; impressions: number; clicks: number; pageViews: number; results: number; cpa: number | null; revenue: number | null; roas: number | null; ctr: number | null; cpc: number | null; cpm: number | null }
@@ -97,12 +98,12 @@ export async function getClientRealizado(clientId: string, range: DateRange): Pr
       clicks,
       pageViews: ok.reduce((s, r) => s + r.pageViews, 0),
       results,
-      cpa: results > 0 ? spend / results : null,
+      cpa: calcCpa(spend, results),
       revenue,
-      roas: revenue != null && spend > 0 ? revenue / spend : null,
-      ctr: impressions > 0 ? (clicks / impressions) * 100 : null,
-      cpc: clicks > 0 ? spend / clicks : null,
-      cpm: impressions > 0 ? (spend / impressions) * 1000 : null,
+      roas: calcRoas(revenue, spend),
+      ctr: calcCtr(clicks, impressions),
+      cpc: calcCpc(spend, clicks),
+      cpm: calcCpm(spend, impressions),
     },
     breakdown,
     trackRevenue: accounts.some((a) => a.trackRevenue),
