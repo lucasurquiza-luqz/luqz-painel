@@ -58,6 +58,11 @@ export default function ClientesPage() {
   const [importReport, setImportReport] = useState<ImportReport | null>(null)
   const [importBusy, setImportBusy] = useState(false)
   const [importDone, setImportDone] = useState(false)
+  const [results, setResults] = useState<Record<string, { spend: number; results: number; cpa: number | null; roas: number | null }>>({})
+
+  useEffect(() => {
+    fetch("/api/clients/results").then((r) => r.json()).then((d) => setResults(d.results ?? {})).catch(() => {})
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -293,6 +298,17 @@ export default function ClientesPage() {
               <Link href={`/clientes/${client.id}`} className="flex min-w-0 flex-1 items-center gap-4 rounded-lg focus-visible:outline-offset-4">
                 <div className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border", client.active ? "border-[#FF8F50]/20 bg-[#FF8F50]/10" : "border-white/8 bg-white/[0.03]")}><Building2 size={18} className={client.active ? "text-[#FF8F50]" : "text-zinc-700"} /></div>
                 <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold text-zinc-100">{client.name}</p><StatusBadge status={client.active ? "healthy" : "unknown"}>{client.active ? "Ativo" : "Inativo"}</StatusBadge></div><p className="mt-1 truncate text-xs text-zinc-600">{client._count.groups} grupos · {client._count.messages} mensagens{client.description ? ` · ${client.description}` : ""}</p>{!client.active && client.statusReason && <p className="mt-1 truncate text-xs text-zinc-700">{client.statusReason}</p>}</div>
+                {(() => {
+                  const r = results[client.id]
+                  if (!r) return null
+                  if (r.spend === 0) return <span className="hidden shrink-0 rounded-md bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-300 sm:inline" title="Sem veiculação no mês">sem veiculação</span>
+                  return (
+                    <span className="hidden shrink-0 text-right text-[11px] text-zinc-500 sm:block" title="Resultado do mês (gasto · CPA · ROAS)">
+                      <span className="block font-semibold text-zinc-200">{r.spend.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}</span>
+                      <span>CPA {r.cpa == null ? "—" : r.cpa.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}{r.roas != null ? ` · ${r.roas.toFixed(1)}x` : ` · ${r.results} res.`}</span>
+                    </span>
+                  )
+                })()}
                 <ChevronRight size={16} className="shrink-0 text-zinc-700" />
               </Link>
               <div className="flex shrink-0 gap-2">
