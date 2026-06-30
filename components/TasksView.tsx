@@ -1,8 +1,9 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Loader2, Plus, X, Clock, MessageSquare, Trash2, CornerDownRight, Check, Copy, Circle, User, Flag, CalendarDays, Folder, AlignLeft } from "lucide-react"
 import { PageHeader, Panel, Button } from "@/components/ui/primitives"
+import { Pop, MenuItem, PickerSelect } from "@/components/ui/Picker"
 import { cn } from "@/lib/utils"
 
 const STATUS: { v: string; label: string; tone: string }[] = [
@@ -165,12 +166,12 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
         </div>
         <Toggle on={mine} onClick={() => setMine((v) => !v)}>Minhas</Toggle>
         {view === "list" && <Toggle on={onlyOpen} onClick={() => setOnlyOpen((v) => !v)}>Só abertas</Toggle>}
-        <select value={fPriority} onChange={(e) => setFPriority(e.target.value)} className="rounded-lg border border-white/8 bg-black/20 px-2 py-1.5 text-xs text-zinc-300 [color-scheme:dark]">
-          <option value="">Prioridade: todas</option>{Object.entries(PRIORITY).map(([v, p]) => <option key={v} value={v}>{p.label}</option>)}
-        </select>
-        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="rounded-lg border border-white/8 bg-black/20 px-2 py-1.5 text-xs text-zinc-300 [color-scheme:dark]">
-          <option value="due">Ordenar: prazo</option><option value="priority">Ordenar: prioridade</option><option value="recent">Ordenar: recentes</option>
-        </select>
+        <span className="rounded-lg border border-white/8 bg-black/20 px-1">
+          <PickerSelect value={fPriority} onChange={setFPriority} placeholder="Prioridade: todas" options={[{ value: "", label: "Prioridade: todas" }, ...Object.entries(PRIORITY).map(([v, p]) => ({ value: v, label: p.label }))]} />
+        </span>
+        <span className="rounded-lg border border-white/8 bg-black/20 px-1">
+          <PickerSelect value={sortBy} onChange={setSortBy} options={[{ value: "due", label: "Ordenar: prazo" }, { value: "priority", label: "Ordenar: prioridade" }, { value: "recent", label: "Ordenar: recentes" }]} />
+        </span>
       </div>
 
       {projectId && canCreate && (
@@ -223,10 +224,11 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
                   {group.map((t) => (
                     <Panel key={t.id} className={cn("flex items-center gap-3 p-3", picked.has(t.id) && "border-[#FF8F50]/40")}>
                       <input type="checkbox" checked={picked.has(t.id)} onChange={() => togglePick(t.id)} className="shrink-0 accent-[#FF8F50]" />
-                      <select value={t.status} onChange={(e) => changeStatus(t.id, e.target.value)} onClick={(e) => e.stopPropagation()}
-                        className="shrink-0 rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs text-zinc-200 [color-scheme:dark]">
-                        {STATUS.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
-                      </select>
+                      <span className="shrink-0">
+                        <Pop trigger={<span className={cn("rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase", STATUS_PILL[t.status])}>{STATUS_LABEL[t.status]}</span>}>
+                          {(close) => STATUS.map((o) => <MenuItem key={o.v} active={o.v === t.status} onClick={() => { changeStatus(t.id, o.v); close() }}><span className={cn("h-2 w-2 rounded-full", STATUS_DOT[o.v])} /> {o.label}</MenuItem>)}
+                        </Pop>
+                      </span>
                       <button onClick={() => setSelected(t)} className="flex min-w-0 flex-1 flex-col items-start text-left">
                         <span className={cn("truncate text-sm font-medium", t.status === "DONE" ? "text-zinc-500 line-through" : "text-zinc-100")}>{t.title}</span>
                         <span className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
@@ -492,26 +494,6 @@ function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, 
 
 const STATUS_DOT: Record<string, string> = { BACKLOG: "bg-zinc-400", TODO: "bg-sky-400", DOING: "bg-[#FF8F50]", REVIEW: "bg-violet-400", DONE: "bg-emerald-400" }
 const PRIO_DOT: Record<string, string> = { BAIXA: "bg-zinc-400", MEDIA: "bg-sky-400", ALTA: "bg-amber-400", URGENTE: "bg-red-400" }
-
-// Popover estilo ClickUp: um gatilho (pill/botão) que abre um menu flutuante.
-function Pop({ trigger, children }: { trigger: React.ReactNode; children: (close: () => void) => React.ReactNode }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
-    document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h)
-  }, [open])
-  return (
-    <div ref={ref} className="relative inline-block">
-      <button onClick={() => setOpen((o) => !o)} className="flex max-w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left hover:bg-white/5">{trigger}</button>
-      {open && <div className="absolute left-0 top-full z-50 mt-1 max-h-64 min-w-[200px] overflow-y-auto rounded-lg border border-white/10 bg-[#1b1b1b] p-1 shadow-2xl">{children(() => setOpen(false))}</div>}
-    </div>
-  )
-}
-function MenuItem({ onClick, active, children }: { onClick: () => void; active?: boolean; children: React.ReactNode }) {
-  return <button onClick={onClick} className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-zinc-200 hover:bg-white/5", active && "bg-white/5")}>{children}{active && <Check size={13} className="ml-auto text-[#FF8F50]" />}</button>
-}
 
 function PropRow({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
   return (
