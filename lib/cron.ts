@@ -2,6 +2,7 @@ import cron from "node-cron"
 import { sendDueMessages } from "./scheduler"
 import { generateAutomaticDailySummaries } from "./group-summary-cron"
 import { refreshActiveSnapshots } from "./ads/snapshot"
+import { generateRecurringTasks } from "./tasks"
 
 let started = false
 
@@ -46,5 +47,19 @@ export function startCron() {
     { timezone: "America/Sao_Paulo" }
   )
 
-  console.log("[cron] Scheduler iniciado (mensagens + resumos diários + performance)")
+  // Tarefas recorrentes: gera as instâncias do dia (00:10 SP).
+  cron.schedule(
+    "10 0 * * *",
+    async () => {
+      try {
+        const r = await generateRecurringTasks()
+        console.log(`[cron] Tarefas recorrentes: ${JSON.stringify(r)}`)
+      } catch (err) {
+        console.error("[cron] Erro ao gerar tarefas recorrentes:", err)
+      }
+    },
+    { timezone: "America/Sao_Paulo" }
+  )
+
+  console.log("[cron] Scheduler iniciado (mensagens + resumos diários + performance + recorrentes)")
 }

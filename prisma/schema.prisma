@@ -872,6 +872,38 @@ enum ActivityEntity {
   PROJECT
 }
 
+enum RecurFreq {
+  DIARIA
+  SEMANAL
+  MENSAL
+}
+
+// Molde de tarefa recorrente: o cron gera instâncias de Task conforme a regra.
+model TaskRecurrence {
+  id          String       @id @default(cuid())
+  projectId   String
+  clientId    String?
+  title       String
+  description String?
+  assigneeId  String?
+  priority    TaskPriority @default(MEDIA)
+  freq        RecurFreq    @default(SEMANAL)
+  interval    Int          @default(1) // a cada N (dias/semanas/meses)
+  weekday     Int? // 0-6 (SEMANAL)
+  dayOfMonth  Int? // 1-31 (MENSAL)
+  active      Boolean      @default(true)
+  nextRunAt   DateTime
+  lastRunAt   DateTime?
+  createdById String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([active, nextRunAt])
+  @@index([projectId])
+}
+
 enum ProjectKind {
   CONTEUDO
   TRAFEGO
@@ -902,9 +934,10 @@ model Project {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
-  client    Client?          @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tasks     Task[]
-  documents ClientDocument[]
+  client      Client?          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tasks       Task[]
+  documents   ClientDocument[]
+  recurrences TaskRecurrence[]
 
   @@index([clientId])
 }
@@ -919,6 +952,7 @@ model Task {
   priority    TaskPriority @default(MEDIA)
   assigneeId   String?
   parentTaskId String? // subtarefa: aponta pra tarefa-mãe (mesmo projeto)
+  recurrenceId String? // instância gerada por um molde recorrente
   dueDate      DateTime?
   completedAt  DateTime?
   order        Int          @default(0)
