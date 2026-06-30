@@ -288,6 +288,9 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
         <input value={quickAdd} onChange={(e) => setQuickAdd(e.target.value)} onKeyDown={(e) => e.key === "Enter" && createQuick()} placeholder="+ Adicionar tarefa rápida (Enter)" className="w-full rounded-lg border border-white/8 bg-black/20 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-[#FF8F50]/40 focus:outline-none" />
       )}
 
+      {view === "list" && manualSort && <p className="flex items-center gap-1.5 text-[11px] text-[#FFB185]"><GripVertical size={12} /> Arraste pela alça para reordenar dentro de cada status.</p>}
+      {view === "list" && !manualSort && <p className="text-[11px] text-zinc-600">Dica: escolha <b className="text-zinc-500">Ordenar: manual</b> para arrastar e reordenar as tarefas.</p>}
+
       {/* Barra de ações em massa */}
       {picked.size > 0 && (
         <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-[#FF8F50]/30 bg-[#1a1410] px-3 py-2 text-xs">
@@ -334,10 +337,11 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
                   {group.map((t) => (
                     <div key={t.id}
                       draggable={manualSort}
-                      onDragStart={manualSort ? () => setDragId(t.id) : undefined}
-                      onDragOver={manualSort ? (e: React.DragEvent) => e.preventDefault() : undefined}
-                      onDrop={manualSort ? () => dropReorder(group, t.id) : undefined}
-                      className={cn(manualSort && "cursor-grab active:cursor-grabbing", dragId === t.id && "opacity-50")}>
+                      onDragStart={manualSort ? (e: React.DragEvent) => { e.dataTransfer.setData("text/plain", t.id); e.dataTransfer.effectAllowed = "move"; setDragId(t.id) } : undefined}
+                      onDragOver={manualSort ? (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = "move" } : undefined}
+                      onDrop={manualSort ? (e: React.DragEvent) => { e.preventDefault(); dropReorder(group, t.id) } : undefined}
+                      onDragEnd={manualSort ? () => setDragId(null) : undefined}
+                      className={cn(manualSort && "cursor-grab active:cursor-grabbing", dragId === t.id && "opacity-40")}>
                     <Panel className={cn("flex items-center gap-3 p-3", picked.has(t.id) && "border-[#FF8F50]/40")}>
                       {manualSort && <GripVertical size={14} className="shrink-0 text-zinc-700" />}
                       <input type="checkbox" checked={picked.has(t.id)} onChange={() => togglePick(t.id)} className="shrink-0 accent-[#FF8F50]" />
