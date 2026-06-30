@@ -45,7 +45,9 @@ export async function POST(req: NextRequest) {
   if (!mediaType) return NextResponse.json({ error: `Tipo nao permitido: ${file.type}` }, { status: 400 })
 
   const ext = file.name.split(".").pop() ?? "bin"
-  const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+  const now = new Date()
+  const folder = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`
+  const filename = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
   const buffer = Buffer.from(await file.arrayBuffer())
 
   // base64 puro (sem prefixo data:mime) — formato que Evolution API aceita
@@ -64,9 +66,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Fallback: armazenamento local
-  const uploadDir = path.join(process.cwd(), "public", "uploads")
-  await mkdir(uploadDir, { recursive: true })
-  await writeFile(path.join(uploadDir, filename), buffer)
+  const localPath = path.join(process.cwd(), "public", "uploads", filename)
+  await mkdir(path.dirname(localPath), { recursive: true })
+  await writeFile(localPath, buffer)
 
   const url = `${process.env.NEXT_PUBLIC_APP_URL}/uploads/${filename}`
   return NextResponse.json({ url, type: mediaType, name: file.name, base64 })
