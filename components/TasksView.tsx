@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Loader2, Plus, X, Clock, MessageSquare, Trash2, CornerDownRight, Check, Copy, Circle, User, Flag, CalendarDays, Folder, AlignLeft } from "lucide-react"
 import { PageHeader, Panel, Button } from "@/components/ui/primitives"
 import { cn } from "@/lib/utils"
@@ -389,22 +389,36 @@ function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, 
           {/* Propriedades em linhas (estilo ClickUp) */}
           <div className="space-y-0.5">
             <PropRow icon={<Circle size={13} />} label="Status">
-              <select value={task.status} onChange={(e) => onStatus(task.id, e.target.value)} className={cn("cursor-pointer rounded-full px-3 py-1 text-[11px] font-semibold uppercase focus:outline-none", STATUS_PILL[task.status])}>{STATUS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}</select>
+              <Pop trigger={<span className={cn("rounded-full px-3 py-1 text-[11px] font-semibold uppercase", STATUS_PILL[task.status])}>{STATUS_LABEL[task.status]}</span>}>
+                {(close) => STATUS.map((s) => (
+                  <MenuItem key={s.v} active={s.v === task.status} onClick={() => { onStatus(task.id, s.v); close() }}>
+                    <span className={cn("h-2 w-2 rounded-full", STATUS_DOT[s.v])} /> {s.label}
+                  </MenuItem>
+                ))}
+              </Pop>
             </PropRow>
             <PropRow icon={<User size={13} />} label="Responsável">
-              <span className="flex items-center gap-1.5">
-                <Avatar name={task.assignee?.name ?? null} size={20} />
-                <select value={task.assignee?.id ?? ""} onChange={(e) => onPatch(task.id, { assigneeId: e.target.value })} className={inlineSel}><option value="">Não atribuído</option>{team.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
-              </span>
+              <Pop trigger={<span className="flex items-center gap-1.5 text-sm text-zinc-200"><Avatar name={task.assignee?.name ?? null} size={20} />{task.assignee?.name ?? <span className="text-zinc-500">Não atribuído</span>}</span>}>
+                {(close) => <>
+                  <MenuItem active={!task.assignee} onClick={() => { onPatch(task.id, { assigneeId: "" }); close() }}><Avatar name={null} size={18} /> Não atribuído</MenuItem>
+                  {team.map((u) => <MenuItem key={u.id} active={u.id === task.assignee?.id} onClick={() => { onPatch(task.id, { assigneeId: u.id }); close() }}><Avatar name={u.name} size={18} /> {u.name}</MenuItem>)}
+                </>}
+              </Pop>
             </PropRow>
             <PropRow icon={<Flag size={13} />} label="Prioridade">
-              <select value={task.priority} onChange={(e) => onPatch(task.id, { priority: e.target.value })} className={cn(inlineSel, PRIORITY[task.priority]?.cls.replace(/bg-[^ ]+/, ""))}>{Object.entries(PRIORITY).map(([v, p]) => <option key={v} value={v}>{p.label}</option>)}</select>
+              <Pop trigger={<span className={cn("flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[12px] font-medium", PRIORITY[task.priority]?.cls)}><span className={cn("h-2 w-2 rounded-full", PRIO_DOT[task.priority])} />{PRIORITY[task.priority]?.label}</span>}>
+                {(close) => Object.entries(PRIORITY).map(([v, p]) => (
+                  <MenuItem key={v} active={v === task.priority} onClick={() => { onPatch(task.id, { priority: v }); close() }}><span className={cn("h-2 w-2 rounded-full", PRIO_DOT[v])} /> {p.label}</MenuItem>
+                ))}
+              </Pop>
             </PropRow>
             <PropRow icon={<CalendarDays size={13} />} label="Prazo">
               <input type="date" value={task.dueDate ? task.dueDate.slice(0, 10) : ""} onChange={(e) => onPatch(task.id, { dueDate: e.target.value || null })} className={cn(inlineSel, "[color-scheme:dark]")} />
             </PropRow>
             <PropRow icon={<Folder size={13} />} label="Projeto">
-              <select value={task.project?.id ?? ""} onChange={(e) => { if (e.target.value) onPatch(task.id, { projectId: e.target.value }) }} className={inlineSel}>{projects.map((p) => <option key={p.id} value={p.id}>{projLabel(p)}</option>)}</select>
+              <Pop trigger={<span className="text-sm text-zinc-200">{task.project?.name ?? "—"}</span>}>
+                {(close) => projects.map((p) => <MenuItem key={p.id} active={p.id === task.project?.id} onClick={() => { onPatch(task.id, { projectId: p.id }); close() }}>{projLabel(p)}</MenuItem>)}
+              </Pop>
             </PropRow>
           </div>
 
@@ -474,6 +488,29 @@ function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, 
       </div>
     </Overlay>
   )
+}
+
+const STATUS_DOT: Record<string, string> = { BACKLOG: "bg-zinc-400", TODO: "bg-sky-400", DOING: "bg-[#FF8F50]", REVIEW: "bg-violet-400", DONE: "bg-emerald-400" }
+const PRIO_DOT: Record<string, string> = { BAIXA: "bg-zinc-400", MEDIA: "bg-sky-400", ALTA: "bg-amber-400", URGENTE: "bg-red-400" }
+
+// Popover estilo ClickUp: um gatilho (pill/botão) que abre um menu flutuante.
+function Pop({ trigger, children }: { trigger: React.ReactNode; children: (close: () => void) => React.ReactNode }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h)
+  }, [open])
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button onClick={() => setOpen((o) => !o)} className="flex max-w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left hover:bg-white/5">{trigger}</button>
+      {open && <div className="absolute left-0 top-full z-50 mt-1 max-h-64 min-w-[200px] overflow-y-auto rounded-lg border border-white/10 bg-[#1b1b1b] p-1 shadow-2xl">{children(() => setOpen(false))}</div>}
+    </div>
+  )
+}
+function MenuItem({ onClick, active, children }: { onClick: () => void; active?: boolean; children: React.ReactNode }) {
+  return <button onClick={onClick} className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-zinc-200 hover:bg-white/5", active && "bg-white/5")}>{children}{active && <Check size={13} className="ml-auto text-[#FF8F50]" />}</button>
 }
 
 function PropRow({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
