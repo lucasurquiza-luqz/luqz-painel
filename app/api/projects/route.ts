@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { requireApiUser } from "@/lib/api-auth"
 import { logActivity } from "@/lib/tasks"
+import { materializeTemplateTasks, type TplTask } from "@/lib/templates"
 
 export async function GET(req: NextRequest) {
   const auth = await requireApiUser(["ADMIN", "OPERADOR"])
@@ -53,5 +54,13 @@ export async function POST(req: NextRequest) {
     },
   })
   await logActivity("PROJECT", project.id, { userId: auth.user.userId, name: auth.user.name }, "CREATED", { name })
+
+  // A partir de um template: materializa as tarefas (e subtarefas) no projeto.
+  if (typeof body.templateId === "string" && body.templateId) {
+    const tpl = await prisma.projectTemplate.findUnique({ where: { id: body.templateId }, select: { tasks: true } })
+    if (tpl && Array.isArray(tpl.tasks)) {
+      await materializeTemplateTasks(tpl.tasks as unknown as TplTask[], project.id, clientId, auth.user.userId)
+    }
+  }
   return NextResponse.json({ project })
 }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Loader2, ArrowLeft, Pencil, Check, Clock, FileText, Link2, Upload, Paperclip, Trash2 } from "lucide-react"
+import { Loader2, ArrowLeft, Pencil, Check, Clock, FileText, Link2, Upload, Paperclip, Trash2, Copy } from "lucide-react"
 import { PageHeader, Panel, Button } from "@/components/ui/primitives"
 import { TasksView } from "@/components/TasksView"
 import { PerformanceSummaryCard } from "@/components/PerformanceSummaryCard"
@@ -29,6 +29,15 @@ export function ProjectWorkspace({ id, backHref }: { id: string; backHref: strin
     if (!confirm("Excluir este projeto e TODAS as suas tarefas? Esta ação não pode ser desfeita.")) return
     await fetch(`/api/projects/${id}`, { method: "DELETE" })
     router.push(backHref)
+  }
+
+  async function saveAsTemplate() {
+    const name = prompt("Nome do template (captura o cadastro do projeto + as tarefas atuais):", data?.project.name ?? "")
+    if (!name?.trim()) return
+    const r = await fetch("/api/project-templates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fromProjectId: id, name: name.trim() }) })
+    const d = await r.json().catch(() => ({}))
+    if (r.ok) alert(`Template "${d.template?.name}" salvo com ${d.template?.taskCount ?? 0} tarefa(s). Use em "Novo projeto".`)
+    else alert(d.error ?? "Não foi possível salvar o template.")
   }
 
   const load = useCallback(async () => {
@@ -101,7 +110,10 @@ export function ProjectWorkspace({ id, backHref }: { id: string; backHref: strin
                   </div>
                 ) : <p className="text-sm text-zinc-600">Sem links cadastrados (site, Drive, Analytics, Ads…).</p>}
               </Panel>
-              <button onClick={deleteProject} className="flex items-center gap-1.5 text-[11px] text-zinc-600 hover:text-red-300"><Trash2 size={12} /> Excluir projeto</button>
+              <div className="flex items-center gap-4">
+                <button onClick={saveAsTemplate} className="flex items-center gap-1.5 text-[11px] text-zinc-600 hover:text-[#FFB185]"><Copy size={12} /> Salvar como template</button>
+                <button onClick={deleteProject} className="flex items-center gap-1.5 text-[11px] text-zinc-600 hover:text-red-300"><Trash2 size={12} /> Excluir projeto</button>
+              </div>
             </div>
           )
       )}

@@ -1003,6 +1003,21 @@ model Tag {
   createdAt DateTime @default(now())
 }
 
+// Modelo reutilizável de projeto: meta + lista de tarefas (JSON) pra abrir
+// projetos novos já estruturados (ex.: "Produção de Conteúdo").
+model ProjectTemplate {
+  id          String      @id @default(cuid())
+  name        String
+  kind        ProjectKind @default(OUTRO)
+  description String?
+  objectives  String?
+  notes       String?
+  links       Json?
+  tasks       Json // [{ title, description?, priority, estimateMin?, tagNames?[], subtasks?[{title, priority?}] }]
+  createdById String?
+  createdAt   DateTime    @default(now())
+}
+
 // Notificações in-app (menção em comentário, atribuição de tarefa, etc.).
 model Notification {
   id        String   @id @default(cuid())

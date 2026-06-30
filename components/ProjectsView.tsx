@@ -80,23 +80,36 @@ export function ProjectsView({ clientId }: { clientId?: string }) {
   )
 }
 
+type Tpl = { id: string; name: string; kind: string; description: string | null; taskCount: number }
 function CreateProject({ fixedClientId, onClose, onCreated }: { fixedClientId?: string; onClose: () => void; onCreated: (projectId: string) => void }) {
   const [f, setF] = useState({ name: "", kind: "OUTRO", ownerId: "", dueDate: "", description: "", objectives: "", notes: "" })
   const [members, setMembers] = useState<string[]>([])
   const [links, setLinks] = useState<PLink[]>([])
   const [team, setTeam] = useState<Ref[]>([])
+  const [templates, setTemplates] = useState<Tpl[]>([])
+  const [templateId, setTemplateId] = useState("")
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState("")
   useEffect(() => { fetch("/api/team").then((r) => r.json()).then((d) => setTeam(d.users ?? [])).catch(() => {}) }, [])
+  useEffect(() => { fetch("/api/project-templates").then((r) => r.json()).then((d) => setTemplates(d.templates ?? [])).catch(() => {}) }, [])
 
   const toggleMember = (id: string) => setMembers((m) => (m.includes(id) ? m.filter((x) => x !== id) : [...m, id]))
   const setLink = (i: number, k: "label" | "url", v: string) => setLinks((ls) => ls.map((l, j) => (j === i ? { ...l, [k]: v } : l)))
+
+  // Ao escolher um template, puxa a meta dele pra prefilhar o formulário.
+  async function pickTemplate(id: string) {
+    setTemplateId(id)
+    if (!id) return
+    const d = await (await fetch(`/api/project-templates/${id}`)).json().catch(() => ({}))
+    const t = d.template
+    if (t) setF((cur) => ({ ...cur, kind: t.kind ?? cur.kind, description: t.description ?? "", objectives: t.objectives ?? "", notes: t.notes ?? "", name: cur.name || t.name }))
+  }
 
   async function submit() {
     if (!f.name.trim()) { setErr("Informe o nome."); return }
     if (!fixedClientId) { setErr("Projeto precisa de um cliente."); return }
     setBusy(true); setErr("")
-    const res = await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...f, clientId: fixedClientId, memberIds: members, links: links.filter((l) => l.url.trim()) }) })
+    const res = await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...f, clientId: fixedClientId, memberIds: members, links: links.filter((l) => l.url.trim()), templateId: templateId || undefined }) })
     const d = await res.json().catch(() => ({}))
     setBusy(false)
     if (!res.ok) { setErr(d.error ?? "Erro ao criar."); return }
@@ -108,6 +121,17 @@ function CreateProject({ fixedClientId, onClose, onCreated }: { fixedClientId?: 
       <div className="my-12 w-full max-w-2xl rounded-2xl border border-white/10 bg-[#141414] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold text-white">Novo projeto</h2><button onClick={onClose} className="text-zinc-500 hover:text-white"><X size={18} /></button></div>
         <div className="space-y-4">
+          {templates.length > 0 && (
+            <div className="rounded-lg border border-[#FF8F50]/20 bg-[#FF8F50]/[0.06] p-3">
+              <Field label="Começar a partir de um template (opcional)">
+                <select value={templateId} onChange={(e) => pickTemplate(e.target.value)} className={inp}>
+                  <option value="">Em branco</option>
+                  {templates.map((t) => <option key={t.id} value={t.id}>{t.name} · {t.taskCount} tarefa(s)</option>)}
+                </select>
+              </Field>
+              {templateId && <p className="mt-1.5 text-[11px] text-[#FFB185]">As tarefas do template serão criadas automaticamente no projeto.</p>}
+            </div>
+          )}
           <input autoFocus value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Nome do projeto" className={cn(inp, "text-base font-semibold")} />
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <Field label="Tipo"><select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })} className={inp}>{Object.entries(KIND).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
