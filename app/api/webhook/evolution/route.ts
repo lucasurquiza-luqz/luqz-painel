@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
+import { reportError } from "@/lib/observability"
 import { uploadBase64ToMinIO } from "@/lib/storage"
 import {
   asRecord,
@@ -87,15 +88,16 @@ export async function POST(req: NextRequest) {
   // se atualizar, a Evolution alcanca o Dash; se ficar em branco, nao alcanca.
   await touchRuntime()
 
-  // Valida o secret quando ele e enviado (query ou header). Algumas versoes da
-  // Evolution nao conseguem anexar secret a URL do webhook; nesses casos o POST
-  // chega sem secret e e aceito. So rejeitamos quando um secret ERRADO e enviado.
+  // Valida o secret. Modo padrão (compatível): só rejeita secret ERRADO — algumas versões
+  // da Evolution não anexam secret à URL, então POST sem secret é aceito.
+  // Modo estrito (EVOLUTION_WEBHOOK_REQUIRE_SECRET=true): exige o secret correto sempre —
+  // fecha o buraco de injeção. Ligar SÓ depois de confirmar que a URL registrada leva ?secret=.
   const webhookSecret = process.env.EVOLUTION_WEBHOOK_SECRET
   if (webhookSecret) {
     const provided = req.nextUrl.searchParams.get("secret") ?? req.headers.get("x-webhook-secret")
-    if (provided && provided !== webhookSecret) {
-      return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
-    }
+    const strict = process.env.EVOLUTION_WEBHOOK_REQUIRE_SECRET === "true"
+    const bad = strict ? provided !== webhookSecret : (provided != null && provided !== webhookSecret)
+    if (bad) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })
   }
 
   try {
@@ -205,7 +207,7 @@ export async function POST(req: NextRequest) {
     await touchRuntime({ messageAt: timestamp })
     return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error("[webhook/evolution]", err)
+    reportError("webhook.evolution", err)
     return NextResponse.json({ ok: true })
   }
 }

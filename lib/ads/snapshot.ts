@@ -2,6 +2,7 @@ import { formatInTimeZone } from "date-fns-tz"
 import { prisma } from "@/lib/db"
 import { getClientPerformance, getClientPerformanceByMonth, type Performance } from "@/lib/ads/realizado"
 import { previousRange, type DateRange } from "@/lib/ads/types"
+import { reportError } from "@/lib/observability"
 
 const TZ = "America/Sao_Paulo"
 
@@ -48,7 +49,7 @@ export async function refreshActiveSnapshots(): Promise<{ refreshed: number; fai
     const results = await Promise.allSettled(clients.slice(i, i + BATCH).map((c) => refreshPerformanceSnapshot(c.id, month)))
     for (const r of results) {
       if (r.status === "fulfilled") refreshed++
-      else { failed++; console.error(`[cron] perf snapshot:`, r.reason instanceof Error ? r.reason.message : r.reason) }
+      else { failed++; reportError("cron.perfSnapshot", r.reason, { month }) }
     }
   }
   return { refreshed, failed }
