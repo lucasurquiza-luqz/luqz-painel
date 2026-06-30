@@ -31,7 +31,7 @@ export async function generateRecurringTasks(): Promise<{ created: number }> {
       await prisma.task.create({
         data: {
           title: r.title, description: r.description, status: "TODO", priority: r.priority,
-          assigneeId: r.assigneeId, projectId: r.projectId, clientId: r.clientId,
+          assigneeId: r.assigneeId, assigneeIds: r.assigneeId ? [r.assigneeId] : [], projectId: r.projectId, clientId: r.clientId,
           dueDate: r.nextRunAt, recurrenceId: r.id, createdById: r.createdById,
         },
       })

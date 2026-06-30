@@ -9,10 +9,17 @@ const PRIORITIES = ["BAIXA", "MEDIA", "ALTA", "URGENTE"]
 
 const taskSelect = {
   id: true, title: true, status: true, priority: true, dueDate: true, completedAt: true,
-  clientId: true, projectId: true, assigneeId: true, createdAt: true,
+  clientId: true, projectId: true, assigneeId: true, assigneeIds: true, order: true, createdAt: true,
   assignee: { select: { id: true, name: true } },
   project: { select: { id: true, name: true } },
   client: { select: { id: true, name: true } },
+}
+
+// Normaliza entrada de responsáveis: aceita assigneeIds[] ou assigneeId único.
+export function normalizeAssignees(b: { assigneeIds?: unknown; assigneeId?: unknown }): string[] | undefined {
+  if (Array.isArray(b.assigneeIds)) return [...new Set(b.assigneeIds.filter((x): x is string => typeof x === "string" && !!x))]
+  if ("assigneeId" in b) return typeof b.assigneeId === "string" && b.assigneeId ? [b.assigneeId] : []
+  return undefined
 }
 
 export async function GET(req: NextRequest) {
@@ -22,8 +29,8 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams
   const where: Prisma.TaskWhereInput = {}
   const assignee = sp.get("assignee")
-  if (assignee === "me") where.assigneeId = auth.user.userId
-  else if (assignee) where.assigneeId = assignee
+  if (assignee === "me") where.assigneeIds = { has: auth.user.userId }
+  else if (assignee) where.assigneeIds = { has: assignee }
   const status = sp.get("status")
   if (status && STATUSES.includes(status)) where.status = status as TaskStatus
   if (sp.get("clientId")) where.clientId = sp.get("clientId")
@@ -63,13 +70,15 @@ export async function POST(req: NextRequest) {
     if (!parent || parent.projectId !== projectId) return NextResponse.json({ error: "Subtarefa deve estar no mesmo projeto da tarefa-mãe." }, { status: 400 })
   }
 
+  const assigneeIds = normalizeAssignees(b) ?? []
   const task = await prisma.task.create({
     data: {
       title,
       description: typeof b.description === "string" ? b.description.trim() || null : null,
       status: STATUSES.includes(b.status) ? (b.status as TaskStatus) : "TODO",
       priority: PRIORITIES.includes(b.priority) ? (b.priority as TaskPriority) : "MEDIA",
-      assigneeId: typeof b.assigneeId === "string" && b.assigneeId ? b.assigneeId : null,
+      assigneeIds,
+      assigneeId: assigneeIds[0] ?? null,
       projectId,
       parentTaskId,
       clientId: project.clientId, // derivado do projeto

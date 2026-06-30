@@ -17,7 +17,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
   const copy = await prisma.task.create({
     data: {
       title: `${src.title} (cópia)`, description: src.description, status: "TODO", priority: src.priority,
-      assigneeId: src.assigneeId, projectId: src.projectId, clientId: src.clientId, dueDate: src.dueDate,
+      assigneeId: src.assigneeId, assigneeIds: src.assigneeIds, projectId: src.projectId, clientId: src.clientId, dueDate: src.dueDate,
       createdById: auth.user.userId,
     },
     select: { id: true },
@@ -26,7 +26,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
     await prisma.task.createMany({
       data: src.subtasks.map((s) => ({
         title: s.title, description: s.description, status: "TODO" as const, priority: s.priority,
-        assigneeId: s.assigneeId, projectId: src.projectId, clientId: src.clientId, parentTaskId: copy.id, createdById: auth.user.userId,
+        assigneeId: s.assigneeId, assigneeIds: s.assigneeIds, projectId: src.projectId, clientId: src.clientId, parentTaskId: copy.id, createdById: auth.user.userId,
       })),
     })
   }

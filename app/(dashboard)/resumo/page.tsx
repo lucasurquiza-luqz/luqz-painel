@@ -27,7 +27,7 @@ export default async function ResumoDiarioPage() {
   const endOfToday = new Date(startOfToday.getTime() + 86_400_000)
   const myTasks = session.userId
     ? await prisma.task.findMany({
-        where: { assigneeId: session.userId, status: { not: "DONE" }, dueDate: { not: null, lt: endOfToday } },
+        where: { assigneeIds: { has: session.userId }, status: { not: "DONE" }, dueDate: { not: null, lt: endOfToday } },
         orderBy: { dueDate: "asc" },
         select: { id: true, title: true, dueDate: true, client: { select: { name: true } } },
         take: 50,

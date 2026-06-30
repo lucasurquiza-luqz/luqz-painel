@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Loader2, Plus, X, Clock, MessageSquare, Trash2, CornerDownRight, Check, Copy, Circle, User, Flag, CalendarDays, Folder, AlignLeft, Repeat, ChevronDown } from "lucide-react"
+import { Loader2, Plus, X, Clock, MessageSquare, Trash2, CornerDownRight, Check, Copy, Circle, User, Flag, CalendarDays, Folder, AlignLeft, Repeat, ChevronDown, GripVertical, Paperclip, Upload, Link2, FileText } from "lucide-react"
 import { PageHeader, Panel, Button } from "@/components/ui/primitives"
 import { Pop, MenuItem, PickerSelect } from "@/components/ui/Picker"
 import { cn } from "@/lib/utils"
@@ -94,10 +94,11 @@ type Ref = { id: string; name: string }
 type Proj = { id: string; name: string; clientName: string | null }
 type Task = {
   id: string; title: string; status: string; priority: string; dueDate: string | null; completedAt: string | null
-  assignee: Ref | null; project: Ref | null; client: Ref | null; createdAt: string
+  assignee: Ref | null; assigneeIds: string[]; order: number; project: Ref | null; client: Ref | null; createdAt: string
 }
 type Subtask = { id: string; title: string; status: string; assignee: { name: string } | null }
 type Activity = { id: string; type: string; userName: string | null; payload: Record<string, unknown> | null; createdAt: string }
+type Attachment = { id: string; name: string; url: string; type: string | null; uploadedByName: string | null; createdAt: string }
 
 // Avatar estilo ClickUp: iniciais em círculo colorido (cor derivada do nome).
 const AV_COLORS = ["#FF8F50", "#38bdf8", "#a78bfa", "#34d399", "#fbbf24", "#f472b6", "#22d3ee", "#fb7185"]
@@ -112,6 +113,32 @@ function Avatar({ name, size = 22 }: { name: string | null; size?: number }) {
     </span>
   )
 }
+
+// Avatares empilhados (múltiplos responsáveis), nomes resolvidos pela equipe.
+function AvatarStack({ ids, team, size = 22 }: { ids: string[]; team: Ref[]; size?: number }) {
+  if (!ids?.length) return <span className="hidden text-[11px] text-zinc-700 sm:inline">sem resp.</span>
+  const shown = ids.slice(0, 3)
+  return (
+    <span className="flex -space-x-1.5">
+      {shown.map((id) => <span key={id} className="rounded-full ring-2 ring-[#161616]"><Avatar name={team.find((u) => u.id === id)?.name ?? null} size={size} /></span>)}
+      {ids.length > 3 && <span style={{ width: size, height: size, fontSize: size * 0.38 }} className="flex items-center justify-center rounded-full bg-white/10 font-semibold text-zinc-300 ring-2 ring-[#161616]">+{ids.length - 3}</span>}
+    </span>
+  )
+}
+
+// Picker de múltiplos responsáveis (toggle, mantém o menu aberto).
+function AssigneePicker({ value, team, onChange, trigger }: { value: string[]; team: Ref[]; onChange: (ids: string[]) => void; trigger: React.ReactNode }) {
+  const toggle = (id: string) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id])
+  return (
+    <Pop trigger={trigger}>
+      {() => <>
+        <MenuItem active={!value.length} onClick={() => onChange([])}><Avatar name={null} size={18} /> Ninguém</MenuItem>
+        {team.map((u) => <MenuItem key={u.id} active={value.includes(u.id)} onClick={() => toggle(u.id)}><Avatar name={u.name} size={18} /> {u.name}</MenuItem>)}
+      </>}
+    </Pop>
+  )
+}
+const assigneesLabel = (ids: string[], team: Ref[]) => ids.length === 1 ? (team.find((u) => u.id === ids[0])?.name ?? "1 pessoa") : `${ids.length} pessoas`
 
 const isOverdue = (t: Task) => !!t.dueDate && t.status !== "DONE" && new Date(t.dueDate) < new Date(new Date().toDateString())
 const fmtDay = (d: string | null) => (d ? new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : null)
@@ -129,6 +156,7 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
   const [fPriority, setFPriority] = useState("")        // filtro por prioridade
   const [sortBy, setSortBy] = useState("due")           // due | priority | recent
   const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [dragId, setDragId] = useState<string | null>(null)
   const [err, setErr] = useState("")
   const flash = (m: string) => { setErr(m); setTimeout(() => setErr(""), 4000) }
   const [creating, setCreating] = useState(false)
@@ -194,10 +222,27 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
     .filter((t) => !fPriority || t.priority === fPriority)
     .slice()
     .sort((a, b) => {
+      if (sortBy === "manual") return (a.order ?? 0) - (b.order ?? 0) || b.createdAt.localeCompare(a.createdAt)
       if (sortBy === "priority") return (PRIO_ORDER[a.priority] ?? 9) - (PRIO_ORDER[b.priority] ?? 9)
       if (sortBy === "recent") return b.createdAt.localeCompare(a.createdAt)
       return (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999") // due: prazo asc, sem prazo por último
     })
+  const manualSort = sortBy === "manual"
+
+  // Reordenação manual por drag dentro do grupo de status.
+  async function persistOrder(ids: string[]) {
+    setTasks((ts) => ts.map((t) => { const i = ids.indexOf(t.id); return i >= 0 ? { ...t, order: i } : t }))
+    await fetch("/api/tasks/reorder", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) })
+  }
+  function dropReorder(group: Task[], targetId: string) {
+    if (!dragId || dragId === targetId) { setDragId(null); return }
+    const ids = group.map((t) => t.id)
+    const from = ids.indexOf(dragId), to = ids.indexOf(targetId)
+    setDragId(null)
+    if (from < 0 || to < 0) return
+    ids.splice(to, 0, ids.splice(from, 1)[0])
+    void persistOrder(ids)
+  }
 
   function togglePick(id: string) { setPicked((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n }) }
   async function bulk(data: Record<string, unknown>) {
@@ -235,7 +280,7 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
           <PickerSelect value={fPriority} onChange={setFPriority} placeholder="Prioridade: todas" options={[{ value: "", label: "Prioridade: todas" }, ...Object.entries(PRIORITY).map(([v, p]) => ({ value: v, label: p.label }))]} />
         </span>
         <span className="rounded-lg border border-white/8 bg-black/20 px-1">
-          <PickerSelect value={sortBy} onChange={setSortBy} options={[{ value: "due", label: "Ordenar: prazo" }, { value: "priority", label: "Ordenar: prioridade" }, { value: "recent", label: "Ordenar: recentes" }]} />
+          <PickerSelect value={sortBy} onChange={setSortBy} options={[{ value: "due", label: "Ordenar: prazo" }, { value: "priority", label: "Ordenar: prioridade" }, { value: "recent", label: "Ordenar: recentes" }, { value: "manual", label: "Ordenar: manual (arrastar)" }]} />
         </span>
       </div>
 
@@ -270,7 +315,7 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
       ) : !canCreate ? (
         <Panel className="p-8 text-center text-sm text-zinc-600">Crie um <b className="text-zinc-400">projeto</b> primeiro — tarefas vivem dentro de projetos.</Panel>
       ) : view === "board" ? (
-        <Board tasks={visibleTasks} showProject={!projectId} onOpen={setSelected} onDrop={changeStatus} />
+        <Board tasks={visibleTasks} team={team} showProject={!projectId} onOpen={setSelected} onDrop={changeStatus} />
       ) : visibleTasks.length === 0 ? (
         <Panel className="p-8 text-center text-sm text-zinc-600">Nenhuma tarefa{fPriority ? " com esse filtro" : ""}.</Panel>
       ) : (
@@ -287,7 +332,14 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
                 </p>
                 <div className="space-y-1.5">
                   {group.map((t) => (
-                    <Panel key={t.id} className={cn("flex items-center gap-3 p-3", picked.has(t.id) && "border-[#FF8F50]/40")}>
+                    <div key={t.id}
+                      draggable={manualSort}
+                      onDragStart={manualSort ? () => setDragId(t.id) : undefined}
+                      onDragOver={manualSort ? (e: React.DragEvent) => e.preventDefault() : undefined}
+                      onDrop={manualSort ? () => dropReorder(group, t.id) : undefined}
+                      className={cn(manualSort && "cursor-grab active:cursor-grabbing", dragId === t.id && "opacity-50")}>
+                    <Panel className={cn("flex items-center gap-3 p-3", picked.has(t.id) && "border-[#FF8F50]/40")}>
+                      {manualSort && <GripVertical size={14} className="shrink-0 text-zinc-700" />}
                       <input type="checkbox" checked={picked.has(t.id)} onChange={() => togglePick(t.id)} className="shrink-0 accent-[#FF8F50]" />
                       <span className="shrink-0">
                         <Pop trigger={<span className={cn("rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase", STATUS_PILL[t.status])}>{STATUS_LABEL[t.status]}</span>}>
@@ -303,8 +355,9 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
                         </span>
                       </button>
                       {t.dueDate && <span className={cn("shrink-0 text-[11px]", isOverdue(t) ? "text-red-300" : "text-zinc-500")}>{fmtDay(t.dueDate)}{isOverdue(t) ? " ⚠" : ""}</span>}
-                      {t.assignee ? <Avatar name={t.assignee.name} /> : <span className="hidden text-[11px] text-zinc-700 sm:inline">sem resp.</span>}
+                      <AvatarStack ids={t.assigneeIds ?? []} team={team} />
                     </Panel>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -327,7 +380,7 @@ function Toggle({ on, onClick, children }: { on: boolean; onClick: () => void; c
 }
 
 // Kanban: colunas por status, cartões arrastáveis (drop → muda status; DONE pede resultado).
-function Board({ tasks, showProject, onOpen, onDrop }: { tasks: Task[]; showProject: boolean; onOpen: (t: Task) => void; onDrop: (id: string, status: string) => void }) {
+function Board({ tasks, team, showProject, onOpen, onDrop }: { tasks: Task[]; team: Ref[]; showProject: boolean; onOpen: (t: Task) => void; onDrop: (id: string, status: string) => void }) {
   const [over, setOver] = useState<string | null>(null)
   return (
     <div className="flex gap-3 overflow-x-auto pb-2">
@@ -354,7 +407,7 @@ function Board({ tasks, showProject, onOpen, onDrop }: { tasks: Task[]; showProj
                       <span className={`rounded px-1.5 py-0.5 text-[10px] ${PRIORITY[t.priority]?.cls}`}>{PRIORITY[t.priority]?.label}</span>
                       {t.dueDate && <span className={cn("text-[10px]", isOverdue(t) ? "text-red-300" : "text-zinc-600")}>{fmtDay(t.dueDate)}</span>}
                     </span>
-                    {t.assignee && <Avatar name={t.assignee.name} size={20} />}
+                    <AvatarStack ids={t.assigneeIds ?? []} team={team} size={20} />
                   </div>
                   {showProject && t.project && <p className="mt-1.5 truncate text-[10px] text-zinc-600">{t.client ? t.client.name + " · " : ""}{t.project.name}</p>}
                 </div>
@@ -371,7 +424,8 @@ function Board({ tasks, showProject, onOpen, onDrop }: { tasks: Task[]; showProj
 function projLabel(p: Proj) { return p.clientName ? `${p.clientName} · ${p.name}` : `Interno · ${p.name}` }
 
 function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { team: Ref[]; projects: Proj[]; fixedProjectId?: string; onClose: () => void; onCreated: (t: Task) => void }) {
-  const [f, setF] = useState({ title: "", description: "", assigneeId: "", projectId: fixedProjectId ?? "", priority: "MEDIA", dueDate: "" })
+  const [f, setF] = useState({ title: "", description: "", projectId: fixedProjectId ?? "", priority: "MEDIA", dueDate: "" })
+  const [assigneeIds, setAssigneeIds] = useState<string[]>([])
   const [repeat, setRepeat] = useState<RecurPayload | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState("")
@@ -380,7 +434,7 @@ function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { t
     if (!f.title.trim()) { setErr("Informe o título."); return }
     if (!f.projectId) { setErr("Escolha um projeto."); return }
     setBusy(true); setErr("")
-    const res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(f) })
+    const res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...f, assigneeIds }) })
     const d = await res.json().catch(() => ({}))
     if (!res.ok) { setBusy(false); setErr(d.error ?? "Erro ao criar."); return }
     // Recorrência definida já na criação (cadência puxada do prazo ou dos dias escolhidos).
@@ -396,7 +450,11 @@ function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { t
         <textarea value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="Descrição (opcional)" rows={3} className={cn(inp, "resize-none")} />
         <div className="grid grid-cols-2 gap-3">
           {!fixedProjectId && <Field label="Projeto"><select value={f.projectId} onChange={(e) => setF({ ...f, projectId: e.target.value })} className={inp}><option value="">— escolher —</option>{projects.map((p) => <option key={p.id} value={p.id}>{projLabel(p)}</option>)}</select></Field>}
-          <Field label="Responsável"><select value={f.assigneeId} onChange={(e) => setF({ ...f, assigneeId: e.target.value })} className={inp}><option value="">—</option>{team.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
+          <Field label="Responsáveis">
+            <div className={cn(inp, "flex items-center py-1")}>
+              <AssigneePicker value={assigneeIds} team={team} onChange={setAssigneeIds} trigger={<span className="flex items-center gap-1.5 text-sm text-zinc-200">{assigneeIds.length ? <><AvatarStack ids={assigneeIds} team={team} size={18} /> {assigneesLabel(assigneeIds, team)}</> : <span className="text-zinc-500">—</span>}<ChevronDown size={13} className="text-zinc-600" /></span>} />
+            </div>
+          </Field>
           <Field label="Prioridade"><select value={f.priority} onChange={(e) => setF({ ...f, priority: e.target.value })} className={inp}>{Object.entries(PRIORITY).map(([v, p]) => <option key={v} value={v}>{p.label}</option>)}</select></Field>
           <Field label="Prazo"><input type="date" value={f.dueDate} onChange={(e) => setF({ ...f, dueDate: e.target.value })} className={cn(inp, "[color-scheme:dark]")} /></Field>
           <Field label="Repetir">
@@ -416,6 +474,8 @@ function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { t
 function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, onRemove, onChanged }: { task: Task; team: Ref[]; projects: Proj[]; meName: string | null; onClose: () => void; onPatch: (id: string, d: Record<string, unknown>) => void; onStatus: (id: string, status: string) => void; onRemove: (id: string) => void; onChanged: () => void }) {
   const [activity, setActivity] = useState<Activity[]>([])
   const [subtasks, setSubtasks] = useState<Subtask[]>([])
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [linkForm, setLinkForm] = useState({ name: "", url: "" })
   const [recur, setRecur] = useState<RecurPayload | null>(null)
   const [desc, setDesc] = useState("")
   const [titleVal, setTitleVal] = useState(task.title)
@@ -430,6 +490,7 @@ function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, 
     const d = await res.json().catch(() => ({}))
     setActivity(d.activity ?? [])
     setSubtasks(d.task?.subtasks ?? [])
+    setAttachments(d.task?.attachments ?? [])
     setRecur(d.recurrence ? { freq: d.recurrence.freq, interval: d.recurrence.interval, weekdays: d.recurrence.weekdays ?? [] } : null)
     setDesc(d.task?.description ?? "")
   }, [task.id])
@@ -457,6 +518,23 @@ function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, 
     else await fetch(`/api/tasks/${task.id}/recur`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(v) })
     await reload()
   }
+  async function uploadAttachment(file: File) {
+    setBusy(true)
+    const fd = new FormData(); fd.append("file", file)
+    const up = await fetch("/api/uploads", { method: "POST", body: fd })
+    const u = await up.json().catch(() => ({}))
+    if (up.ok) await fetch(`/api/tasks/${task.id}/attachments`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: u.name ?? file.name, url: u.url, type: u.type }) })
+    setBusy(false); await reload()
+  }
+  async function addAttachmentLink() {
+    if (!linkForm.name.trim() || !linkForm.url.trim()) return
+    setBusy(true)
+    await fetch(`/api/tasks/${task.id}/attachments`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: linkForm.name.trim(), url: linkForm.url.trim(), type: "link" }) })
+    setLinkForm({ name: "", url: "" }); setBusy(false); await reload()
+  }
+  async function removeAttachment(aid: string) {
+    await fetch(`/api/tasks/${task.id}/attachments?attachmentId=${aid}`, { method: "DELETE" }); await reload()
+  }
   return (
     <Overlay onClose={onClose} size="xxl" bare>
       <div className="flex h-[85vh] min-h-0">
@@ -480,13 +558,8 @@ function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, 
                 ))}
               </Pop>
             </PropRow>
-            <PropRow icon={<User size={13} />} label="Responsável">
-              <Pop trigger={<span className="flex items-center gap-1.5 text-sm text-zinc-200"><Avatar name={task.assignee?.name ?? null} size={20} />{task.assignee?.name ?? <span className="text-zinc-500">Não atribuído</span>}</span>}>
-                {(close) => <>
-                  <MenuItem active={!task.assignee} onClick={() => { onPatch(task.id, { assigneeId: "" }); close() }}><Avatar name={null} size={18} /> Não atribuído</MenuItem>
-                  {team.map((u) => <MenuItem key={u.id} active={u.id === task.assignee?.id} onClick={() => { onPatch(task.id, { assigneeId: u.id }); close() }}><Avatar name={u.name} size={18} /> {u.name}</MenuItem>)}
-                </>}
-              </Pop>
+            <PropRow icon={<User size={13} />} label="Responsáveis">
+              <AssigneePicker value={task.assigneeIds ?? []} team={team} onChange={(ids) => onPatch(task.id, { assigneeIds: ids })} trigger={<span className="flex items-center gap-2 text-sm text-zinc-200">{task.assigneeIds?.length ? <><AvatarStack ids={task.assigneeIds} team={team} size={20} /> {assigneesLabel(task.assigneeIds, team)}</> : <span className="text-zinc-500">Não atribuído</span>}</span>} />
             </PropRow>
             <PropRow icon={<Flag size={13} />} label="Prioridade">
               <Pop trigger={<span className={cn("flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[12px] font-medium", PRIORITY[task.priority]?.cls)}><span className={cn("h-2 w-2 rounded-full", PRIO_DOT[task.priority])} />{PRIORITY[task.priority]?.label}</span>}>
@@ -531,6 +604,33 @@ function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, 
               ))}
             </div>
             <input value={newSub} onChange={(e) => setNewSub(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addSubtask()} placeholder="+ Adicionar subtarefa" className={cn(inp, "mt-2")} />
+          </div>
+
+          {/* Anexos */}
+          <div className="mt-6">
+            <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-600"><Paperclip size={13} /> Anexos {attachments.length > 0 && <span className="text-zinc-600">· {attachments.length}</span>}</p>
+            <div className="space-y-1.5">
+              {attachments.map((a) => {
+                const isImg = a.type === "image" || /\.(png|jpe?g|webp|gif|avif)$/i.test(a.url)
+                return (
+                  <div key={a.id} className="flex items-center gap-2 rounded-md bg-black/20 px-2 py-1.5">
+                    {isImg ? <img src={a.url} alt="" className="h-9 w-9 shrink-0 rounded object-cover" /> : <FileText size={15} className="shrink-0 text-[#FF8F50]" />}
+                    <a href={a.url} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate text-[12px] text-zinc-200 hover:underline">{a.name}</a>
+                    {a.uploadedByName && <span className="hidden shrink-0 text-[10px] text-zinc-600 sm:inline">{a.uploadedByName}</span>}
+                    <button onClick={() => removeAttachment(a.id)} className="shrink-0 text-zinc-600 hover:text-red-300"><Trash2 size={13} /></button>
+                  </div>
+                )
+              })}
+            </div>
+            <label className="mt-2 flex w-fit cursor-pointer items-center gap-1.5 rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5 text-[12px] text-zinc-300 hover:bg-white/5">
+              <Upload size={13} /> Enviar arquivo
+              <input type="file" className="hidden" onChange={(e) => e.target.files?.[0] && uploadAttachment(e.target.files[0])} />
+            </label>
+            <div className="mt-2 flex gap-2">
+              <input value={linkForm.name} onChange={(e) => setLinkForm({ ...linkForm, name: e.target.value })} placeholder="Nome do link" className={cn(inp, "flex-1")} />
+              <input value={linkForm.url} onChange={(e) => setLinkForm({ ...linkForm, url: e.target.value })} placeholder="https://…" className={cn(inp, "flex-[2]")} />
+              <Button variant="secondary" onClick={addAttachmentLink} disabled={busy || !linkForm.name.trim() || !linkForm.url.trim()}><Link2 size={14} /></Button>
+            </div>
           </div>
 
           {/* Ações */}
