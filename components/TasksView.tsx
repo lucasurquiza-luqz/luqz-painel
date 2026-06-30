@@ -56,6 +56,9 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
   const [onlyOpen, setOnlyOpen] = useState(true)
   const [view, setView] = useState<"list" | "board">("list")
   const [quickAdd, setQuickAdd] = useState("")
+  const [fPriority, setFPriority] = useState("")        // filtro por prioridade
+  const [sortBy, setSortBy] = useState("due")           // due | priority | recent
+  const [picked, setPicked] = useState<Set<string>>(new Set())
   const [creating, setCreating] = useState(false)
   const [selected, setSelected] = useState<Task | null>(null)
   const [closing, setClosing] = useState<string | null>(null) // tarefa aguardando o "resultado" pra fechar
@@ -110,6 +113,28 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
     if (res.ok) { const d = await res.json(); setTasks((ts) => [d.task, ...ts]); setQuickAdd("") }
   }
 
+  // Filtro (prioridade) + ordenação, aplicados sobre as tarefas carregadas.
+  const PRIO_ORDER: Record<string, number> = { URGENTE: 0, ALTA: 1, MEDIA: 2, BAIXA: 3 }
+  const visibleTasks = tasks
+    .filter((t) => !fPriority || t.priority === fPriority)
+    .slice()
+    .sort((a, b) => {
+      if (sortBy === "priority") return (PRIO_ORDER[a.priority] ?? 9) - (PRIO_ORDER[b.priority] ?? 9)
+      if (sortBy === "recent") return b.createdAt.localeCompare(a.createdAt)
+      return (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999") // due: prazo asc, sem prazo por último
+    })
+
+  function togglePick(id: string) { setPicked((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n }) }
+  async function bulk(data: Record<string, unknown>) {
+    await Promise.all([...picked].map((id) => fetch(`/api/tasks/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) })))
+    setPicked(new Set()); await load()
+  }
+  async function bulkDelete() {
+    if (!confirm(`Excluir ${picked.size} tarefa(s)?`)) return
+    await Promise.all([...picked].map((id) => fetch(`/api/tasks/${id}`, { method: "DELETE" })))
+    setPicked(new Set()); await load()
+  }
+
   const title = projectId ? (projectInfo?.name ?? "Projeto") : "Tarefas"
   const subtitle = projectId
     ? `${projectInfo?.clientName ? projectInfo.clientName + " · " : "Interno · "}Tarefas do projeto`
@@ -131,10 +156,38 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
         </div>
         <Toggle on={mine} onClick={() => setMine((v) => !v)}>Minhas</Toggle>
         {view === "list" && <Toggle on={onlyOpen} onClick={() => setOnlyOpen((v) => !v)}>Só abertas</Toggle>}
+        <select value={fPriority} onChange={(e) => setFPriority(e.target.value)} className="rounded-lg border border-white/8 bg-black/20 px-2 py-1.5 text-xs text-zinc-300 [color-scheme:dark]">
+          <option value="">Prioridade: todas</option>{Object.entries(PRIORITY).map(([v, p]) => <option key={v} value={v}>{p.label}</option>)}
+        </select>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="rounded-lg border border-white/8 bg-black/20 px-2 py-1.5 text-xs text-zinc-300 [color-scheme:dark]">
+          <option value="due">Ordenar: prazo</option><option value="priority">Ordenar: prioridade</option><option value="recent">Ordenar: recentes</option>
+        </select>
       </div>
 
       {projectId && canCreate && (
         <input value={quickAdd} onChange={(e) => setQuickAdd(e.target.value)} onKeyDown={(e) => e.key === "Enter" && createQuick()} placeholder="+ Adicionar tarefa rápida (Enter)" className="w-full rounded-lg border border-white/8 bg-black/20 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-[#FF8F50]/40 focus:outline-none" />
+      )}
+
+      {/* Barra de ações em massa */}
+      {picked.size > 0 && (
+        <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-[#FF8F50]/30 bg-[#1a1410] px-3 py-2 text-xs">
+          <span className="font-medium text-[#FFB185]">{picked.size} selecionada(s)</span>
+          <select onChange={(e) => { if (e.target.value) bulk({ status: e.target.value }); e.target.value = "" }} className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-zinc-200 [color-scheme:dark]">
+            <option value="">Status…</option>{STATUS.filter((s) => s.v !== "DONE").map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
+          </select>
+          <select value="" onChange={(e) => { if (e.target.value) bulk({ assigneeId: e.target.value === "__none" ? null : e.target.value }) }} className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-zinc-200 [color-scheme:dark]">
+            <option value="">Responsável…</option><option value="__none">— remover —</option>{team.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+          <select onChange={(e) => { if (e.target.value) bulk({ priority: e.target.value }); e.target.value = "" }} className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-zinc-200 [color-scheme:dark]">
+            <option value="">Prioridade…</option>{Object.entries(PRIORITY).map(([v, p]) => <option key={v} value={v}>{p.label}</option>)}
+          </select>
+          <input type="date" onChange={(e) => { if (e.target.value) bulk({ dueDate: e.target.value }) }} className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-zinc-200 [color-scheme:dark]" />
+          <select onChange={(e) => { if (e.target.value) bulk({ projectId: e.target.value }); e.target.value = "" }} className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-zinc-200 [color-scheme:dark]">
+            <option value="">Mover p/ projeto…</option>{projects.map((p) => <option key={p.id} value={p.id}>{projLabel(p)}</option>)}
+          </select>
+          <button onClick={bulkDelete} className="rounded-md px-2 py-1 text-red-300 hover:bg-red-500/10">Excluir</button>
+          <button onClick={() => setPicked(new Set())} className="rounded-md px-2 py-1 text-zinc-500 hover:text-zinc-300">Limpar</button>
+        </div>
       )}
 
       {loading ? (
@@ -142,13 +195,14 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
       ) : !canCreate ? (
         <Panel className="p-8 text-center text-sm text-zinc-600">Crie um <b className="text-zinc-400">projeto</b> primeiro — tarefas vivem dentro de projetos.</Panel>
       ) : view === "board" ? (
-        <Board tasks={tasks} showProject={!projectId} onOpen={setSelected} onDrop={changeStatus} />
-      ) : tasks.length === 0 ? (
-        <Panel className="p-8 text-center text-sm text-zinc-600">Nenhuma tarefa. Crie a primeira em “Nova tarefa”.</Panel>
+        <Board tasks={visibleTasks} showProject={!projectId} onOpen={setSelected} onDrop={changeStatus} />
+      ) : visibleTasks.length === 0 ? (
+        <Panel className="p-8 text-center text-sm text-zinc-600">Nenhuma tarefa{fPriority ? " com esse filtro" : ""}.</Panel>
       ) : (
         <div className="space-y-2">
-          {tasks.map((t) => (
-            <Panel key={t.id} className="flex items-center gap-3 p-3">
+          {visibleTasks.map((t) => (
+            <Panel key={t.id} className={cn("flex items-center gap-3 p-3", picked.has(t.id) && "border-[#FF8F50]/40")}>
+              <input type="checkbox" checked={picked.has(t.id)} onChange={() => togglePick(t.id)} className="shrink-0 accent-[#FF8F50]" />
               <select value={t.status} onChange={(e) => changeStatus(t.id, e.target.value)} onClick={(e) => e.stopPropagation()}
                 className="shrink-0 rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-xs text-zinc-200 [color-scheme:dark]">
                 {STATUS.map((s) => <option key={s.v} value={s.v}>{s.label}</option>)}
