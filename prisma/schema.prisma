@@ -889,6 +889,9 @@ model Project {
   description String?
   kind        ProjectKind   @default(OUTRO)
   notes       String? // documentação do projeto (markdown)
+  objectives  String? // objetivos / metas do projeto
+  links       Json? // hub de links/acessos: [{ label, url, category }]
+  memberIds   String[]      @default([]) // pessoas envolvidas (ids de usuários)
   color       String?
   status      ProjectStatus @default(ATIVO)
   startDate   DateTime?

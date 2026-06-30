@@ -16,7 +16,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
   const project = await prisma.project.findUnique({
     where: { id },
     select: {
-      id: true, name: true, description: true, kind: true, notes: true, color: true, status: true,
+      id: true, name: true, description: true, kind: true, notes: true, objectives: true, links: true, memberIds: true, color: true, status: true,
       startDate: true, dueDate: true, ownerId: true, clientId: true,
       client: { select: { id: true, name: true } },
     },
@@ -41,6 +41,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (typeof b.name === "string" && b.name.trim()) data.name = b.name.trim()
   if ("description" in b) data.description = typeof b.description === "string" ? b.description.trim() || null : null
   if ("notes" in b) data.notes = typeof b.notes === "string" ? b.notes : null
+  if ("objectives" in b) data.objectives = typeof b.objectives === "string" ? b.objectives : null
+  if ("links" in b && Array.isArray(b.links)) data.links = b.links.filter((l: { label?: unknown; url?: unknown }) => l && typeof l.url === "string" && l.url.trim()).map((l: { label?: string; url: string; category?: string }) => ({ label: (l.label ?? "").trim() || l.url, url: l.url.trim(), category: l.category ?? null }))
+  if ("memberIds" in b && Array.isArray(b.memberIds)) data.memberIds = b.memberIds.filter((x: unknown) => typeof x === "string")
   if (KINDS.includes(b.kind)) data.kind = b.kind as ProjectKind
   if (STATUSES.includes(b.status)) data.status = b.status as ProjectStatus
   if ("color" in b) data.color = typeof b.color === "string" ? b.color || null : null
