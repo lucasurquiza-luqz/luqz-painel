@@ -29,6 +29,9 @@ export async function GET(req: NextRequest) {
   if (sp.get("clientId")) where.clientId = sp.get("clientId")
   if (sp.get("projectId")) where.projectId = sp.get("projectId")
   if (sp.get("open") === "1") where.status = { not: "DONE" }
+  // Subtarefas: ?parent=<id> lista filhas; senão, só tarefas de topo.
+  const parent = sp.get("parent")
+  where.parentTaskId = parent ? parent : null
 
   const tasks = await prisma.task.findMany({
     where,
@@ -47,6 +50,19 @@ export async function POST(req: NextRequest) {
   const title = typeof b.title === "string" ? b.title.trim() : ""
   if (!title) return NextResponse.json({ error: "Informe o título da tarefa." }, { status: 400 })
 
+  // Hierarquia: toda tarefa vive num projeto; o cliente vem do projeto.
+  const projectId = typeof b.projectId === "string" && b.projectId ? b.projectId : null
+  if (!projectId) return NextResponse.json({ error: "Escolha um projeto para a tarefa." }, { status: 400 })
+  const project = await prisma.project.findUnique({ where: { id: projectId }, select: { clientId: true } })
+  if (!project) return NextResponse.json({ error: "Projeto não encontrado." }, { status: 400 })
+
+  // Subtarefa: precisa pertencer ao mesmo projeto da mãe.
+  const parentTaskId = typeof b.parentTaskId === "string" && b.parentTaskId ? b.parentTaskId : null
+  if (parentTaskId) {
+    const parent = await prisma.task.findUnique({ where: { id: parentTaskId }, select: { projectId: true } })
+    if (!parent || parent.projectId !== projectId) return NextResponse.json({ error: "Subtarefa deve estar no mesmo projeto da tarefa-mãe." }, { status: 400 })
+  }
+
   const task = await prisma.task.create({
     data: {
       title,
@@ -54,8 +70,9 @@ export async function POST(req: NextRequest) {
       status: STATUSES.includes(b.status) ? (b.status as TaskStatus) : "TODO",
       priority: PRIORITIES.includes(b.priority) ? (b.priority as TaskPriority) : "MEDIA",
       assigneeId: typeof b.assigneeId === "string" && b.assigneeId ? b.assigneeId : null,
-      projectId: typeof b.projectId === "string" && b.projectId ? b.projectId : null,
-      clientId: typeof b.clientId === "string" && b.clientId ? b.clientId : null,
+      projectId,
+      parentTaskId,
+      clientId: project.clientId, // derivado do projeto
       dueDate: b.dueDate ? new Date(b.dueDate) : null,
       createdById: auth.user.userId,
     },

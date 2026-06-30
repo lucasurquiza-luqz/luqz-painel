@@ -14,7 +14,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
 
   const task = await prisma.task.findUnique({
     where: { id },
-    include: { assignee: { select: { id: true, name: true } }, project: { select: { id: true, name: true } }, client: { select: { id: true, name: true } } },
+    include: {
+      assignee: { select: { id: true, name: true } }, project: { select: { id: true, name: true } }, client: { select: { id: true, name: true } },
+      subtasks: { orderBy: { createdAt: "asc" }, select: { id: true, title: true, status: true, assignee: { select: { name: true } } } },
+    },
   })
   if (!task) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 })
 

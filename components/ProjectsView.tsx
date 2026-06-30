@@ -37,7 +37,7 @@ export function ProjectsView({ clientId }: { clientId?: string }) {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {projects.map((p) => (
-            <Link key={p.id} href={`/tarefas?projectId=${p.id}`}>
+            <Link key={p.id} href={`/projetos/${p.id}`}>
               <Panel className="flex items-center gap-3 p-4 hover:border-white/15">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#FF8F50]/20 bg-[#FF8F50]/10"><FolderKanban size={18} className="text-[#FF8F50]" /></div>
                 <div className="min-w-0 flex-1">
