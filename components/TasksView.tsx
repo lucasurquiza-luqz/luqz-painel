@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Loader2, Plus, X, Clock, MessageSquare, Trash2, CornerDownRight, Check, Copy, Circle, User, Flag, CalendarDays, Folder, AlignLeft } from "lucide-react"
+import { Loader2, Plus, X, Clock, MessageSquare, Trash2, CornerDownRight, Check, Copy, Circle, User, Flag, CalendarDays, Folder, AlignLeft, Repeat } from "lucide-react"
 import { PageHeader, Panel, Button } from "@/components/ui/primitives"
 import { Pop, MenuItem, PickerSelect } from "@/components/ui/Picker"
 import { cn } from "@/lib/utils"
@@ -24,6 +24,8 @@ const PRIORITY: Record<string, { label: string; cls: string }> = {
   ALTA: { label: "Alta", cls: "bg-amber-500/15 text-amber-300" },
   URGENTE: { label: "Urgente", cls: "bg-red-500/15 text-red-300" },
 }
+
+const REPEAT_LABEL: Record<string, string> = { DIARIA: "Diária", SEMANAL: "Semanal", MENSAL: "Mensal" }
 
 type Ref = { id: string; name: string }
 type Proj = { id: string; name: string; clientName: string | null }
@@ -342,6 +344,7 @@ function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { t
 function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, onRemove, onChanged }: { task: Task; team: Ref[]; projects: Proj[]; meName: string | null; onClose: () => void; onPatch: (id: string, d: Record<string, unknown>) => void; onStatus: (id: string, status: string) => void; onRemove: (id: string) => void; onChanged: () => void }) {
   const [activity, setActivity] = useState<Activity[]>([])
   const [subtasks, setSubtasks] = useState<Subtask[]>([])
+  const [recur, setRecur] = useState<{ freq: string; interval: number } | null>(null)
   const [desc, setDesc] = useState("")
   const [titleVal, setTitleVal] = useState(task.title)
   const [comment, setComment] = useState("")
@@ -355,6 +358,7 @@ function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, 
     const d = await res.json().catch(() => ({}))
     setActivity(d.activity ?? [])
     setSubtasks(d.task?.subtasks ?? [])
+    setRecur(d.recurrence ? { freq: d.recurrence.freq, interval: d.recurrence.interval } : null)
     setDesc(d.task?.description ?? "")
   }, [task.id])
   useEffect(() => { void reload() }, [reload])
@@ -374,6 +378,11 @@ function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, 
   }
   async function toggleSub(s: Subtask) {
     await fetch(`/api/tasks/${s.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: s.status === "DONE" ? "TODO" : "DONE" }) })
+    await reload()
+  }
+  async function setRecurrence(freq: string | null) {
+    if (freq === null) await fetch(`/api/tasks/${task.id}/recur`, { method: "DELETE" })
+    else await fetch(`/api/tasks/${task.id}/recur`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ freq }) })
     await reload()
   }
   return (
@@ -416,6 +425,14 @@ function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, 
             </PropRow>
             <PropRow icon={<CalendarDays size={13} />} label="Prazo">
               <input type="date" value={task.dueDate ? task.dueDate.slice(0, 10) : ""} onChange={(e) => onPatch(task.id, { dueDate: e.target.value || null })} className={cn(inlineSel, "[color-scheme:dark]")} />
+            </PropRow>
+            <PropRow icon={<Repeat size={13} />} label="Repetir">
+              <Pop trigger={<span className={cn("flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[12px]", recur ? "bg-[#FF8F50]/15 text-[#FFB185]" : "text-zinc-500 hover:bg-white/5")}>{recur ? <><Repeat size={11} /> {REPEAT_LABEL[recur.freq]}</> : "Não repete"}</span>}>
+                {(close) => <>
+                  <MenuItem active={!recur} onClick={() => { setRecurrence(null); close() }}>Não repete</MenuItem>
+                  {Object.entries(REPEAT_LABEL).map(([v, l]) => <MenuItem key={v} active={recur?.freq === v} onClick={() => { setRecurrence(v); close() }}><Repeat size={12} /> {l}</MenuItem>)}
+                </>}
+              </Pop>
             </PropRow>
             <PropRow icon={<Folder size={13} />} label="Projeto">
               <Pop trigger={<span className="text-sm text-zinc-200">{task.project?.name ?? "—"}</span>}>

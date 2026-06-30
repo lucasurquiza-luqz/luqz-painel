@@ -22,7 +22,11 @@ export async function GET(_req: NextRequest, { params }: Params) {
   if (!task) return NextResponse.json({ error: "Tarefa não encontrada." }, { status: 404 })
 
   const activity = await prisma.activity.findMany({ where: { entity: "TASK", entityId: id }, orderBy: { createdAt: "desc" }, take: 100 })
-  return NextResponse.json({ task, activity })
+  // Molde de recorrência ligado a esta tarefa (recurrenceId é scalar, sem relação)
+  const recurrence = task.recurrenceId
+    ? await prisma.taskRecurrence.findUnique({ where: { id: task.recurrenceId }, select: { id: true, freq: true, interval: true, weekday: true, dayOfMonth: true, active: true, nextRunAt: true } })
+    : null
+  return NextResponse.json({ task, activity, recurrence })
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
