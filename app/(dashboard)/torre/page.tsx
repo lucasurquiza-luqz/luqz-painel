@@ -11,7 +11,11 @@ import {
   type Trend,
 } from "@/lib/client-health"
 import { PageHeader, Panel, StatusBadge } from "@/components/ui/primitives"
+import { getClientsMonthTotals, type MonthTotal } from "@/lib/ads/snapshot"
+import { formatInTimeZone } from "date-fns-tz"
 import { cn } from "@/lib/utils"
+
+const brl = (v: number | null) => (v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }))
 
 export default async function TorrePage() {
   const clients = await prisma.client.findMany({
@@ -19,6 +23,8 @@ export default async function TorrePage() {
     orderBy: { name: "asc" },
   })
   const health = await getClientsHealth(clients)
+  const month = formatInTimeZone(new Date(), "America/Sao_Paulo", "yyyy-MM")
+  const results = await getClientsMonthTotals(clients.map((c) => c.id), month)
 
   // Ativos primeiro, depois por atenção (crítico → saudável), depois por pendências.
   health.sort((a, b) => {
@@ -60,7 +66,7 @@ export default async function TorrePage() {
 
       <div className="space-y-2">
         {health.map((h) => (
-          <ClientRow key={h.id} health={h} />
+          <ClientRow key={h.id} health={h} result={results.get(h.id)} />
         ))}
         {health.length === 0 && (
           <Panel className="p-8 text-center text-sm text-zinc-600">Nenhum cliente na carteira ainda.</Panel>
@@ -70,7 +76,7 @@ export default async function TorrePage() {
   )
 }
 
-function ClientRow({ health }: { health: ClientHealth }) {
+function ClientRow({ health, result }: { health: ClientHealth; result?: MonthTotal }) {
   const activityDays = daysAgo(health.lastActivityAt)
   return (
     <Link
@@ -103,6 +109,16 @@ function ClientRow({ health }: { health: ClientHealth }) {
       </div>
 
       <div className="hidden shrink-0 items-center gap-4 sm:flex">
+        {result && (
+          result.spend === 0 ? (
+            <span className="rounded-md bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-300" title="Conta de Ads sem veiculação neste mês">sem veiculação</span>
+          ) : (
+            <span className="text-right text-[11px] text-zinc-500" title="Gasto · CPA no mês">
+              <span className="text-zinc-300">{brl(result.spend)}</span> · CPA {brl(result.cpa)}
+              {result.roas != null && <> · {result.roas.toFixed(1)}x</>}
+            </span>
+          )
+        )}
         {health.openRisks > 0 && (
           <span className="flex items-center gap-1 text-xs text-amber-300" title="Riscos/pendências abertos">
             <AlertTriangle size={13} /> {health.openRisks}

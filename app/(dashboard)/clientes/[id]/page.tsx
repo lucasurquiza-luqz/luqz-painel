@@ -23,6 +23,7 @@ import { sessionOptions, type SessionData, isEquipe } from "@/lib/auth"
 import { buildReading, daysAgo, LEVEL_LABEL, PERCEPTION, type Level } from "@/lib/client-health"
 import { PageHeader, Panel, StatusBadge } from "@/components/ui/primitives"
 import { NextActionCard } from "@/components/NextActionCard"
+import { PerformanceSummaryCard } from "@/components/PerformanceSummaryCard"
 import { cn } from "@/lib/utils"
 
 const TZ = "America/Sao_Paulo"
@@ -180,6 +181,9 @@ export default async function ClienteVisaoGeralPage({ params }: { params: Promis
       </Panel>
 
       <NextActionCard clientId={clientId} />
+
+      {/* Resultado do mês (performance dos Ads) */}
+      <PerformanceSummaryCard clientId={clientId} />
 
       {/* Sinais */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
