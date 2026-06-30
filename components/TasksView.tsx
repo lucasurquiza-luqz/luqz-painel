@@ -29,6 +29,20 @@ type Task = {
 type Subtask = { id: string; title: string; status: string; assignee: { name: string } | null }
 type Activity = { id: string; type: string; userName: string | null; payload: Record<string, unknown> | null; createdAt: string }
 
+// Avatar estilo ClickUp: iniciais em círculo colorido (cor derivada do nome).
+const AV_COLORS = ["#FF8F50", "#38bdf8", "#a78bfa", "#34d399", "#fbbf24", "#f472b6", "#22d3ee", "#fb7185"]
+function Avatar({ name, size = 22 }: { name: string | null; size?: number }) {
+  const n = name?.trim() || "?"
+  const initials = n === "?" ? "?" : n.split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase()
+  const color = AV_COLORS[[...n].reduce((a, c) => a + c.charCodeAt(0), 0) % AV_COLORS.length]
+  return (
+    <span style={{ width: size, height: size, background: `${color}26`, color, fontSize: size * 0.4 }}
+      className="flex shrink-0 items-center justify-center rounded-full font-semibold leading-none" title={name ?? undefined}>
+      {initials}
+    </span>
+  )
+}
+
 const isOverdue = (t: Task) => !!t.dueDate && t.status !== "DONE" && new Date(t.dueDate) < new Date(new Date().toDateString())
 const fmtDay = (d: string | null) => (d ? new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : null)
 
@@ -40,9 +54,13 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
   const [loading, setLoading] = useState(true)
   const [mine, setMine] = useState(false)
   const [onlyOpen, setOnlyOpen] = useState(true)
+  const [view, setView] = useState<"list" | "board">("list")
+  const [quickAdd, setQuickAdd] = useState("")
   const [creating, setCreating] = useState(false)
   const [selected, setSelected] = useState<Task | null>(null)
   const [closing, setClosing] = useState<string | null>(null) // tarefa aguardando o "resultado" pra fechar
+  const [meName, setMeName] = useState<string | null>(null)
+  useEffect(() => { fetch("/api/me").then((r) => r.json()).then((d) => setMeName(d.name ?? null)).catch(() => {}) }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -50,12 +68,12 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
     if (clientId) qs.set("clientId", clientId)
     if (projectId) qs.set("projectId", projectId)
     if (mine) qs.set("assignee", "me")
-    if (onlyOpen) qs.set("open", "1")
+    if (onlyOpen && view === "list") qs.set("open", "1") // no quadro, mostra todas (inclui coluna Concluído)
     const res = await fetch(`/api/tasks?${qs}`)
     const data = await res.json().catch(() => ({}))
     setTasks(data.tasks ?? [])
     setLoading(false)
-  }, [clientId, projectId, mine, onlyOpen])
+  }, [clientId, projectId, mine, onlyOpen, view])
   useEffect(() => { void load() }, [load])
 
   useEffect(() => {
@@ -85,6 +103,12 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
     await fetch(`/api/tasks/${id}`, { method: "DELETE" })
     setTasks((ts) => ts.filter((t) => t.id !== id)); setSelected(null)
   }
+  // Quick-add (só quando o projeto é fixo — a tarefa precisa de projeto).
+  async function createQuick(status?: string) {
+    if (!quickAdd.trim() || !projectId) return
+    const res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: quickAdd.trim(), projectId, status: status ?? "TODO" }) })
+    if (res.ok) { const d = await res.json(); setTasks((ts) => [d.task, ...ts]); setQuickAdd("") }
+  }
 
   const title = projectId ? (projectInfo?.name ?? "Projeto") : "Tarefas"
   const subtitle = projectId
@@ -100,15 +124,25 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
         {canCreate && <Button onClick={() => setCreating(true)}><Plus size={16} /> Nova tarefa</Button>}
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex gap-1 rounded-lg border border-white/8 bg-black/20 p-0.5">
+          <Toggle on={view === "list"} onClick={() => setView("list")}>Lista</Toggle>
+          <Toggle on={view === "board"} onClick={() => setView("board")}>Quadro</Toggle>
+        </div>
         <Toggle on={mine} onClick={() => setMine((v) => !v)}>Minhas</Toggle>
-        <Toggle on={onlyOpen} onClick={() => setOnlyOpen((v) => !v)}>Só abertas</Toggle>
+        {view === "list" && <Toggle on={onlyOpen} onClick={() => setOnlyOpen((v) => !v)}>Só abertas</Toggle>}
       </div>
+
+      {projectId && canCreate && (
+        <input value={quickAdd} onChange={(e) => setQuickAdd(e.target.value)} onKeyDown={(e) => e.key === "Enter" && createQuick()} placeholder="+ Adicionar tarefa rápida (Enter)" className="w-full rounded-lg border border-white/8 bg-black/20 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-[#FF8F50]/40 focus:outline-none" />
+      )}
 
       {loading ? (
         <div className="flex min-h-40 items-center justify-center"><Loader2 className="animate-spin text-[#FF8F50]" /></div>
       ) : !canCreate ? (
         <Panel className="p-8 text-center text-sm text-zinc-600">Crie um <b className="text-zinc-400">projeto</b> primeiro — tarefas vivem dentro de projetos.</Panel>
+      ) : view === "board" ? (
+        <Board tasks={tasks} showProject={!projectId} onOpen={setSelected} onDrop={changeStatus} />
       ) : tasks.length === 0 ? (
         <Panel className="p-8 text-center text-sm text-zinc-600">Nenhuma tarefa. Crie a primeira em “Nova tarefa”.</Panel>
       ) : (
@@ -128,14 +162,14 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
                 </span>
               </button>
               {t.dueDate && <span className={cn("shrink-0 text-[11px]", isOverdue(t) ? "text-red-300" : "text-zinc-500")}>{fmtDay(t.dueDate)}{isOverdue(t) ? " ⚠" : ""}</span>}
-              <span className="hidden shrink-0 text-[11px] text-zinc-500 sm:inline">{t.assignee?.name ?? "sem responsável"}</span>
+              {t.assignee ? <Avatar name={t.assignee.name} /> : <span className="hidden text-[11px] text-zinc-700 sm:inline">sem resp.</span>}
             </Panel>
           ))}
         </div>
       )}
 
       {creating && <CreateModal team={team} projects={projects} fixedProjectId={projectId} onClose={() => setCreating(false)} onCreated={(t) => { setTasks((ts) => [t, ...ts]); setCreating(false) }} />}
-      {selected && <TaskDrawer task={selected} team={team} projects={projects} onClose={() => setSelected(null)} onPatch={patch} onStatus={changeStatus} onRemove={remove} onChanged={load} />}
+      {selected && <TaskDrawer task={selected} team={team} projects={projects} meName={meName} onClose={() => setSelected(null)} onPatch={patch} onStatus={changeStatus} onRemove={remove} onChanged={load} />}
       {closing && <ResultModal onClose={() => setClosing(null)} onConfirm={confirmClose} />}
     </Wrapper>
   )
@@ -143,6 +177,48 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
 
 function Toggle({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
   return <button onClick={onClick} className={cn("rounded-lg px-3 py-1.5 text-xs font-medium", on ? "bg-[#FF8F50] text-black" : "bg-white/5 text-zinc-400 hover:bg-white/10")}>{children}</button>
+}
+
+// Kanban: colunas por status, cartões arrastáveis (drop → muda status; DONE pede resultado).
+function Board({ tasks, showProject, onOpen, onDrop }: { tasks: Task[]; showProject: boolean; onOpen: (t: Task) => void; onDrop: (id: string, status: string) => void }) {
+  const [over, setOver] = useState<string | null>(null)
+  return (
+    <div className="flex gap-3 overflow-x-auto pb-2">
+      {STATUS.map((col) => {
+        const items = tasks.filter((t) => t.status === col.v)
+        return (
+          <div key={col.v}
+            onDragOver={(e) => { e.preventDefault(); setOver(col.v) }}
+            onDragLeave={() => setOver((o) => (o === col.v ? null : o))}
+            onDrop={(e) => { const id = e.dataTransfer.getData("text/plain"); setOver(null); if (id) onDrop(id, col.v) }}
+            className={cn("flex w-64 shrink-0 flex-col rounded-xl border bg-black/20 p-2", over === col.v ? "border-[#FF8F50]/40" : "border-white/8")}>
+            <div className="mb-2 flex items-center justify-between px-1">
+              <span className={cn("text-xs font-semibold", col.tone)}>{col.label}</span>
+              <span className="text-[10px] text-zinc-600">{items.length}</span>
+            </div>
+            <div className="space-y-2">
+              {items.map((t) => (
+                <div key={t.id} draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", t.id)}
+                  onClick={() => onOpen(t)}
+                  className="cursor-pointer rounded-lg border border-white/8 bg-[#161616] p-2.5 hover:border-white/15">
+                  <p className={cn("text-[13px] font-medium", t.status === "DONE" ? "text-zinc-500 line-through" : "text-zinc-100")}>{t.title}</p>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5">
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] ${PRIORITY[t.priority]?.cls}`}>{PRIORITY[t.priority]?.label}</span>
+                      {t.dueDate && <span className={cn("text-[10px]", isOverdue(t) ? "text-red-300" : "text-zinc-600")}>{fmtDay(t.dueDate)}</span>}
+                    </span>
+                    {t.assignee && <Avatar name={t.assignee.name} size={20} />}
+                  </div>
+                  {showProject && t.project && <p className="mt-1.5 truncate text-[10px] text-zinc-600">{t.client ? t.client.name + " · " : ""}{t.project.name}</p>}
+                </div>
+              ))}
+              {!items.length && <p className="px-1 py-3 text-center text-[10px] text-zinc-700">—</p>}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 function projLabel(p: Proj) { return p.clientName ? `${p.clientName} · ${p.name}` : `Interno · ${p.name}` }
@@ -181,7 +257,7 @@ function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { t
   )
 }
 
-function TaskDrawer({ task, team, projects, onClose, onPatch, onStatus, onRemove, onChanged }: { task: Task; team: Ref[]; projects: Proj[]; onClose: () => void; onPatch: (id: string, d: Record<string, unknown>) => void; onStatus: (id: string, status: string) => void; onRemove: (id: string) => void; onChanged: () => void }) {
+function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, onRemove, onChanged }: { task: Task; team: Ref[]; projects: Proj[]; meName: string | null; onClose: () => void; onPatch: (id: string, d: Record<string, unknown>) => void; onStatus: (id: string, status: string) => void; onRemove: (id: string) => void; onChanged: () => void }) {
   const [activity, setActivity] = useState<Activity[]>([])
   const [subtasks, setSubtasks] = useState<Subtask[]>([])
   const [desc, setDesc] = useState("")
@@ -261,21 +337,30 @@ function TaskDrawer({ task, team, projects, onClose, onPatch, onStatus, onRemove
           {/* Atividade / Histórico */}
           <div>
             <p className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-600"><Clock size={13} /> Atividade & histórico</p>
-            <div className="flex gap-2">
-              <input value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendComment()} placeholder="Comentar…" className={cn(inp, "flex-1")} />
-              <Button onClick={sendComment} disabled={busy}><MessageSquare size={14} /></Button>
+            <div className="flex items-center gap-2">
+              <Avatar name={meName} size={26} />
+              <input value={comment} onChange={(e) => setComment(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendComment()} placeholder="Escreva um comentário…" className={cn(inp, "flex-1")} />
+              <Button onClick={sendComment} disabled={busy || !comment.trim()}><MessageSquare size={14} /></Button>
             </div>
-            <div className="mt-3 space-y-3">
-              {activity.map((a) => (
-                <div key={a.id} className="flex gap-2 text-[12px]">
-                  {a.type === "COMMENTED" ? <MessageSquare size={12} className="mt-0.5 shrink-0 text-sky-400/70" /> : <CircleDot size={12} className="mt-0.5 shrink-0 text-zinc-600" />}
-                  <div className="min-w-0">
-                    <p className={cn(a.type === "COMMENTED" || a.type === "COMPLETED" ? "text-zinc-200" : "text-zinc-400")}>{describe(a)}</p>
-                    <p className="text-[10px] text-zinc-600">{a.userName ?? "sistema"} · {new Date(a.createdAt).toLocaleString("pt-BR")}</p>
+            <div className="mt-4 space-y-3">
+              {activity.map((a) => a.type === "COMMENTED" ? (
+                // Comentário: card com avatar + nome + texto (estilo ClickUp)
+                <div key={a.id} className="flex gap-2.5">
+                  <Avatar name={a.userName} size={26} />
+                  <div className="min-w-0 flex-1 rounded-xl rounded-tl-sm bg-white/[0.04] px-3 py-2">
+                    <p className="text-[11px]"><span className="font-semibold text-zinc-200">{a.userName ?? "Alguém"}</span> <span className="text-zinc-600">· {new Date(a.createdAt).toLocaleString("pt-BR")}</span></p>
+                    <p className="mt-0.5 whitespace-pre-wrap text-[13px] leading-5 text-zinc-200">{String(a.payload?.body ?? "")}</p>
                   </div>
                 </div>
+              ) : (
+                // Evento do sistema: linha discreta com avatar pequeno
+                <div key={a.id} className="flex items-center gap-2 text-[11px] text-zinc-500">
+                  <Avatar name={a.userName} size={18} />
+                  <span className={cn(a.type === "COMPLETED" && "text-emerald-300")}>{describe(a)}</span>
+                  <span className="text-zinc-700">· {new Date(a.createdAt).toLocaleString("pt-BR")}</span>
+                </div>
               ))}
-              {!activity.length && <p className="text-[11px] text-zinc-600">Sem histórico ainda.</p>}
+              {!activity.length && <p className="text-[11px] text-zinc-600">Sem atividade ainda.</p>}
             </div>
           </div>
         </div>
