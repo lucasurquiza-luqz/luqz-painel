@@ -8,9 +8,9 @@ const headers = {
   "Content-Type": "application/json",
 }
 
-async function evoFetch(url: string, options: RequestInit): Promise<Response> {
+async function evoFetch(url: string, options: RequestInit, timeoutMs = TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
     return await fetch(url, { ...options, signal: controller.signal })
   } finally {
@@ -43,20 +43,23 @@ export async function fetchGroups(): Promise<EvoGroup[]> {
 
 // Envio com retry: a Evolution às vezes reporta "open" mas o socket Baileys
 // fecha por um instante ("Connection Closed"). Reenviar após um respiro resolve.
-async function evoSend(path: string, body: Record<string, unknown>, tries = 2): Promise<unknown> {
-  let lastErr: unknown
-  for (let attempt = 1; attempt <= tries; attempt++) {
+// Envio com timeout curto (12s) — a rota SEMPRE responde JSON antes de o proxy
+// cortar com 504. Reenvia só se a 1ª tentativa falhou RÁPIDO (blip "Connection
+// Closed"), nunca se travou (retry num socket pendurado só estouraria o tempo).
+const SEND_TIMEOUT_MS = 12_000
+async function evoSend(path: string, body: Record<string, unknown>): Promise<unknown> {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const t0 = Date.now()
     try {
-      const res = await evoFetch(`${BASE_URL}/${path}/${INSTANCE}`, { method: "POST", headers, body: JSON.stringify(body) })
+      const res = await evoFetch(`${BASE_URL}/${path}/${INSTANCE}`, { method: "POST", headers, body: JSON.stringify(body) }, SEND_TIMEOUT_MS)
       return await evoJSON(res)
     } catch (err) {
-      lastErr = err
-      const transient = /connection closed|connection lost|timed out|socket|ECONNRESET|aborted/i.test(err instanceof Error ? err.message : String(err))
-      if (!transient || attempt === tries) break
-      await new Promise((r) => setTimeout(r, 800)) // um respiro curto antes do reenvio
+      const fast = Date.now() - t0 < 3000
+      const transient = /connection closed|connection lost|socket|ECONNRESET/i.test(err instanceof Error ? err.message : String(err))
+      if (attempt === 1 && fast && transient) { await new Promise((r) => setTimeout(r, 700)); continue }
+      throw err
     }
   }
-  throw lastErr
 }
 
 export async function sendText(remoteJid: string, text: string) {
