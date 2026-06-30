@@ -70,6 +70,14 @@ const clientNav: NavGroup[] = [
     ],
   },
   {
+    label: "Execução",
+    internalOnly: true,
+    items: [
+      { href: "/tarefas", label: "Tarefas", icon: ListTodo },
+      { href: "/projetos", label: "Projetos", icon: FolderKanban },
+    ],
+  },
+  {
     label: "Mensageria",
     items: [
       { href: "/chat", label: "Chat", icon: MessageSquare },
