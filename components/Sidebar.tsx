@@ -21,6 +21,7 @@ import {
   Search,
   Settings,
   Sparkles,
+  Sun,
   Target,
   Users,
   Video,
@@ -131,6 +132,12 @@ export function Sidebar({ role, name }: SidebarProps) {
         ) : (
           <>
             <NavSection label="Operação">
+              <NavItem
+                href="/resumo"
+                label="Resumo diário"
+                icon={Sun}
+                active={pathname.startsWith("/resumo")}
+              />
               <NavItem
                 href="/torre"
                 label="Torre de controle"

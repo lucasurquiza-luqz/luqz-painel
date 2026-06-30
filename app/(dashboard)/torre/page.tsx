@@ -11,13 +11,12 @@ import {
   type Trend,
 } from "@/lib/client-health"
 import { PageHeader, Panel, StatusBadge } from "@/components/ui/primitives"
-import { getClientsMonthTotals, type MonthTotal } from "@/lib/ads/snapshot"
-import { computeAlerts, type Alert } from "@/lib/alerts"
-import { formatInTimeZone } from "date-fns-tz"
+import { type MonthTotal } from "@/lib/ads/snapshot"
+import { type Alert } from "@/lib/alerts"
+import { getPortfolioPerformance } from "@/lib/portfolio"
 import { cn } from "@/lib/utils"
 
 const brl = (v: number | null) => (v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }))
-const TZ = "America/Sao_Paulo"
 
 export default async function TorrePage() {
   const clients = await prisma.client.findMany({
@@ -25,29 +24,8 @@ export default async function TorrePage() {
     orderBy: { name: "asc" },
   })
   const health = await getClientsHealth(clients)
-  const month = formatInTimeZone(new Date(), TZ, "yyyy-MM")
-  const results = await getClientsMonthTotals(clients.map((c) => c.id), month)
-
-  // Metas do mês (plano TOTAL por cliente) + contexto de data → alertas proativos.
-  const plans = await prisma.mediaPlan.findMany({ where: { month }, select: { clientId: true, platform: true, budget: true, targetCpa: true, targetRoas: true } })
-  const planByClient = new Map<string, (typeof plans)[number]>()
-  for (const p of plans) { if (!planByClient.has(p.clientId) || p.platform === "TOTAL") planByClient.set(p.clientId, p) }
-  const dayOfMonth = Number(formatInTimeZone(new Date(), TZ, "d"))
-  const daysInMonth = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate()
-  const alertsByClient = new Map<string, Alert[]>()
-  for (const c of clients) {
-    const r = results.get(c.id)
-    if (!r || !c.active) continue
-    const p = planByClient.get(c.id)
-    alertsByClient.set(c.id, computeAlerts({
-      configured: r.configured, spend: r.spend, cpa: r.cpa, roas: r.roas,
-      targetCpa: p?.targetCpa != null ? Number(p.targetCpa) : null,
-      targetRoas: p?.targetRoas != null ? Number(p.targetRoas) : null,
-      budget: p?.budget != null ? Number(p.budget) : null,
-      dayOfMonth, daysInMonth,
-    }))
-  }
-  const totalAlerts = [...alertsByClient.values()].reduce((s, a) => s + a.length, 0)
+  const { results, alertsByClient, totals } = await getPortfolioPerformance(clients)
+  const totalAlerts = totals.totalAlerts
 
   // Ativos primeiro, depois por atenção (crítico → saudável), depois por pendências.
   health.sort((a, b) => {
