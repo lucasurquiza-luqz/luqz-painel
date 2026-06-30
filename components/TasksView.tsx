@@ -308,7 +308,7 @@ function Board({ tasks, showProject, onOpen, onDrop }: { tasks: Task[]; showProj
 function projLabel(p: Proj) { return p.clientName ? `${p.clientName} · ${p.name}` : `Interno · ${p.name}` }
 
 function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { team: Ref[]; projects: Proj[]; fixedProjectId?: string; onClose: () => void; onCreated: (t: Task) => void }) {
-  const [f, setF] = useState({ title: "", description: "", assigneeId: "", projectId: fixedProjectId ?? "", priority: "MEDIA", dueDate: "" })
+  const [f, setF] = useState({ title: "", description: "", assigneeId: "", projectId: fixedProjectId ?? "", priority: "MEDIA", dueDate: "", repeat: "" })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState("")
 
@@ -318,8 +318,10 @@ function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { t
     setBusy(true); setErr("")
     const res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(f) })
     const d = await res.json().catch(() => ({}))
+    if (!res.ok) { setBusy(false); setErr(d.error ?? "Erro ao criar."); return }
+    // Recorrência definida já na criação (cadência puxada do prazo).
+    if (f.repeat && d.task?.id) await fetch(`/api/tasks/${d.task.id}/recur`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ freq: f.repeat }) })
     setBusy(false)
-    if (!res.ok) { setErr(d.error ?? "Erro ao criar."); return }
     onCreated(d.task)
   }
 
@@ -333,7 +335,9 @@ function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { t
           <Field label="Responsável"><select value={f.assigneeId} onChange={(e) => setF({ ...f, assigneeId: e.target.value })} className={inp}><option value="">—</option>{team.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
           <Field label="Prioridade"><select value={f.priority} onChange={(e) => setF({ ...f, priority: e.target.value })} className={inp}>{Object.entries(PRIORITY).map(([v, p]) => <option key={v} value={v}>{p.label}</option>)}</select></Field>
           <Field label="Prazo"><input type="date" value={f.dueDate} onChange={(e) => setF({ ...f, dueDate: e.target.value })} className={cn(inp, "[color-scheme:dark]")} /></Field>
+          <Field label="Repetir"><select value={f.repeat} onChange={(e) => setF({ ...f, repeat: e.target.value })} className={inp}><option value="">Não repete</option>{Object.entries(REPEAT_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
         </div>
+        {f.repeat && <p className="-mt-1 text-[11px] text-zinc-500">A cadência segue o prazo da tarefa{!f.dueDate ? " (defina um prazo, ou usa a data de hoje como base)" : ""}.</p>}
         {err && <p className="text-xs text-red-400">{err}</p>}
         <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={submit} disabled={busy}>{busy ? <Loader2 size={15} className="animate-spin" /> : "Criar tarefa"}</Button></div>
       </div>

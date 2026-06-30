@@ -33,11 +33,20 @@ export async function POST(req: NextRequest) {
   if (!clientId) return NextResponse.json({ error: "Todo projeto precisa de um cliente." }, { status: 400 })
 
   const KINDS = ["CONTEUDO", "TRAFEGO", "ONBOARDING", "WEB", "COMERCIAL", "OUTRO"]
+  const links = Array.isArray(body.links)
+    ? body.links.filter((l: { url?: string }) => l && typeof l.url === "string" && l.url.trim()).map((l: { label?: string; url: string }) => ({ label: (l.label ?? "").trim() || l.url.trim(), url: l.url.trim() }))
+    : []
   const project = await prisma.project.create({
     data: {
       name,
       description: typeof body.description === "string" ? body.description.trim() || null : null,
       kind: KINDS.includes(body.kind) ? body.kind : "OUTRO",
+      notes: typeof body.notes === "string" ? body.notes.trim() || null : null,
+      objectives: typeof body.objectives === "string" ? body.objectives.trim() || null : null,
+      links: links.length ? links : undefined,
+      memberIds: Array.isArray(body.memberIds) ? body.memberIds.filter((x: unknown) => typeof x === "string") : [],
+      startDate: body.startDate ? new Date(body.startDate) : null,
+      dueDate: body.dueDate ? new Date(body.dueDate) : null,
       clientId,
       ownerId: typeof body.ownerId === "string" && body.ownerId ? body.ownerId : null,
       createdById: auth.user.userId,
