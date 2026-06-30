@@ -57,14 +57,14 @@ export async function refreshActiveSnapshots(): Promise<{ refreshed: number; fai
 
 // Totais do mês (só do que já está em snapshot — sem chamar API) para vários clientes.
 // Usado na Torre pra mostrar Resultado por cliente de forma barata.
-export type MonthTotal = { spend: number; results: number; cpa: number | null; roas: number | null }
+export type MonthTotal = { spend: number; results: number; cpa: number | null; roas: number | null; configured: boolean }
 export async function getClientsMonthTotals(clientIds: string[], month: string): Promise<Map<string, MonthTotal>> {
   if (!clientIds.length) return new Map()
   const snaps = await prisma.performanceSnapshot.findMany({ where: { clientId: { in: clientIds }, month } })
   const out = new Map<string, MonthTotal>()
   for (const s of snaps) {
-    const t = (s.data as unknown as Performance).current?.total
-    if (t) out.set(s.clientId, { spend: t.spend, results: t.results, cpa: t.cpa, roas: t.roas })
+    const cur = (s.data as unknown as Performance).current
+    if (cur?.total) out.set(s.clientId, { spend: cur.total.spend, results: cur.total.results, cpa: cur.total.cpa, roas: cur.total.roas, configured: !!cur.configured })
   }
   return out
 }

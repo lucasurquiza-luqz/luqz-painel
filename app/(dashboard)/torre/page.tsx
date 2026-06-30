@@ -12,10 +12,12 @@ import {
 } from "@/lib/client-health"
 import { PageHeader, Panel, StatusBadge } from "@/components/ui/primitives"
 import { getClientsMonthTotals, type MonthTotal } from "@/lib/ads/snapshot"
+import { computeAlerts, type Alert } from "@/lib/alerts"
 import { formatInTimeZone } from "date-fns-tz"
 import { cn } from "@/lib/utils"
 
 const brl = (v: number | null) => (v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }))
+const TZ = "America/Sao_Paulo"
 
 export default async function TorrePage() {
   const clients = await prisma.client.findMany({
@@ -23,8 +25,29 @@ export default async function TorrePage() {
     orderBy: { name: "asc" },
   })
   const health = await getClientsHealth(clients)
-  const month = formatInTimeZone(new Date(), "America/Sao_Paulo", "yyyy-MM")
+  const month = formatInTimeZone(new Date(), TZ, "yyyy-MM")
   const results = await getClientsMonthTotals(clients.map((c) => c.id), month)
+
+  // Metas do mês (plano TOTAL por cliente) + contexto de data → alertas proativos.
+  const plans = await prisma.mediaPlan.findMany({ where: { month }, select: { clientId: true, platform: true, budget: true, targetCpa: true, targetRoas: true } })
+  const planByClient = new Map<string, (typeof plans)[number]>()
+  for (const p of plans) { if (!planByClient.has(p.clientId) || p.platform === "TOTAL") planByClient.set(p.clientId, p) }
+  const dayOfMonth = Number(formatInTimeZone(new Date(), TZ, "d"))
+  const daysInMonth = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate()
+  const alertsByClient = new Map<string, Alert[]>()
+  for (const c of clients) {
+    const r = results.get(c.id)
+    if (!r || !c.active) continue
+    const p = planByClient.get(c.id)
+    alertsByClient.set(c.id, computeAlerts({
+      configured: r.configured, spend: r.spend, cpa: r.cpa, roas: r.roas,
+      targetCpa: p?.targetCpa != null ? Number(p.targetCpa) : null,
+      targetRoas: p?.targetRoas != null ? Number(p.targetRoas) : null,
+      budget: p?.budget != null ? Number(p.budget) : null,
+      dayOfMonth, daysInMonth,
+    }))
+  }
+  const totalAlerts = [...alertsByClient.values()].reduce((s, a) => s + a.length, 0)
 
   // Ativos primeiro, depois por atenção (crítico → saudável), depois por pendências.
   health.sort((a, b) => {
@@ -58,6 +81,12 @@ export default async function TorrePage() {
         <CountCard label="Sem leitura" value={counts.unknown} tone="unknown" />
       </div>
 
+      {totalAlerts > 0 && (
+        <Panel className="border-amber-400/20 bg-amber-500/[0.06] p-4 text-sm text-amber-200">
+          ⚠ {totalAlerts} alerta(s) de performance na carteira (CPA acima da meta, verba ociosa ou sem veiculação).
+        </Panel>
+      )}
+
       {totalPending > 0 && (
         <Panel className="border-[#FFD482]/20 bg-[#FFD482]/[0.06] p-4 text-sm text-[#FFD482]">
           {totalPending} item(ns) aguardando revisão em toda a carteira.
@@ -66,7 +95,7 @@ export default async function TorrePage() {
 
       <div className="space-y-2">
         {health.map((h) => (
-          <ClientRow key={h.id} health={h} result={results.get(h.id)} />
+          <ClientRow key={h.id} health={h} result={results.get(h.id)} alerts={alertsByClient.get(h.id) ?? []} />
         ))}
         {health.length === 0 && (
           <Panel className="p-8 text-center text-sm text-zinc-600">Nenhum cliente na carteira ainda.</Panel>
@@ -76,7 +105,7 @@ export default async function TorrePage() {
   )
 }
 
-function ClientRow({ health, result }: { health: ClientHealth; result?: MonthTotal }) {
+function ClientRow({ health, result, alerts = [] }: { health: ClientHealth; result?: MonthTotal; alerts?: Alert[] }) {
   const activityDays = daysAgo(health.lastActivityAt)
   return (
     <Link
@@ -109,15 +138,16 @@ function ClientRow({ health, result }: { health: ClientHealth; result?: MonthTot
       </div>
 
       <div className="hidden shrink-0 items-center gap-4 sm:flex">
-        {result && (
-          result.spend === 0 ? (
-            <span className="rounded-md bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-300" title="Conta de Ads sem veiculação neste mês">sem veiculação</span>
-          ) : (
-            <span className="text-right text-[11px] text-zinc-500" title="Gasto · CPA no mês">
-              <span className="text-zinc-300">{brl(result.spend)}</span> · CPA {brl(result.cpa)}
-              {result.roas != null && <> · {result.roas.toFixed(1)}x</>}
-            </span>
-          )
+        {alerts.map((a) => (
+          <span key={a.code} className={cn("rounded-md px-2 py-0.5 text-[11px] font-medium", a.level === "critical" ? "bg-red-500/15 text-red-300" : "bg-amber-500/15 text-amber-300")} title="Alerta de performance">
+            {a.label}
+          </span>
+        ))}
+        {result && result.spend > 0 && (
+          <span className="text-right text-[11px] text-zinc-500" title="Gasto · CPA no mês">
+            <span className="text-zinc-300">{brl(result.spend)}</span> · CPA {brl(result.cpa)}
+            {result.roas != null && <> · {result.roas.toFixed(1)}x</>}
+          </span>
         )}
         {health.openRisks > 0 && (
           <span className="flex items-center gap-1 text-xs text-amber-300" title="Riscos/pendências abertos">
