@@ -21,7 +21,21 @@ const s3 = new S3Client({
   forcePathStyle: true, // obrigatorio para MinIO
 })
 
-// Garante que o bucket existe e e publico na primeira chamada
+// Politica de leitura publica (anonima) para servir arquivos direto pelo navegador.
+const PUBLIC_READ_POLICY = JSON.stringify({
+  Version: "2012-10-17",
+  Statement: [
+    {
+      Effect: "Allow",
+      Principal: { AWS: ["*"] },
+      Action: ["s3:GetObject"],
+      Resource: [`arn:aws:s3:::${BUCKET}/*`],
+    },
+  ],
+})
+
+// Garante que o bucket existe E que a leitura publica esta aplicada.
+// Idempotente: aplica a politica mesmo em bucket pre-existente (criado na mao).
 let bucketReady = false
 export async function ensureBucket() {
   if (bucketReady) return
@@ -29,23 +43,12 @@ export async function ensureBucket() {
     await s3.send(new HeadBucketCommand({ Bucket: BUCKET }))
   } catch {
     await s3.send(new CreateBucketCommand({ Bucket: BUCKET }))
-    // Politica de leitura publica para servir arquivos diretamente
-    await s3.send(
-      new PutBucketPolicyCommand({
-        Bucket: BUCKET,
-        Policy: JSON.stringify({
-          Version: "2012-10-17",
-          Statement: [
-            {
-              Effect: "Allow",
-              Principal: { AWS: ["*"] },
-              Action: ["s3:GetObject"],
-              Resource: [`arn:aws:s3:::${BUCKET}/*`],
-            },
-          ],
-        }),
-      })
-    )
+  }
+  // Sempre (re)aplica a politica de leitura publica — cobre bucket criado manualmente.
+  try {
+    await s3.send(new PutBucketPolicyCommand({ Bucket: BUCKET, Policy: PUBLIC_READ_POLICY }))
+  } catch (err) {
+    console.error("[storage] Falha ao aplicar politica de leitura publica:", err)
   }
   bucketReady = true
 }
