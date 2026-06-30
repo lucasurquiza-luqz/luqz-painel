@@ -71,7 +71,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   } catch (err) {
     const raw = err instanceof Error ? err.message : "Erro ao enviar"
     // Erros conhecidos da Evolution → mensagem acionável.
-    const friendly = /connection closed|not connected|close/i.test(raw)
+    const friendly = /abort|timed out|timeout/i.test(raw)
+      ? "O WhatsApp não respondeu a tempo. A sessão pode estar instável — tente novamente em instantes."
+      : /connection closed|not connected|close/i.test(raw)
       ? "WhatsApp desconectado: a sessão da instância caiu. Reconecte em Configurações → WhatsApp e tente de novo."
       : raw
     return NextResponse.json({ error: friendly }, { status: 502 })
