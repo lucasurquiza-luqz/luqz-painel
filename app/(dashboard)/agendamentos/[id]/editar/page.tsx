@@ -149,7 +149,7 @@ export default function EditarAgendamentoPage() {
                 onClick={() => toggleGroup(g.id)}
                 className={`flex items-center justify-between px-4 py-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
                   selectedGroups.includes(g.id)
-                    ? "border-blue-500/50 bg-blue-600/10 text-zinc-100"
+                    ? "border-orange-500/40 bg-orange-500/10 text-zinc-100"
                     : "border-white/8 bg-zinc-800/50 text-zinc-400 hover:text-zinc-100 hover:border-white/15"
                 }`}
               >
@@ -170,7 +170,7 @@ export default function EditarAgendamentoPage() {
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={5}
-            className="w-full bg-zinc-800 border border-white/8 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            className="w-full bg-zinc-800 border border-white/8 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-orange-500/50 resize-none"
           />
         </div>
 
@@ -191,7 +191,7 @@ export default function EditarAgendamentoPage() {
             <div className="flex items-center gap-3 px-4 py-3 bg-zinc-800 rounded-xl border border-white/8">
               <Paperclip size={16} className="text-zinc-400" />
               <span className="text-sm text-zinc-400 flex-1 truncate">Atual: {currentMedia}</span>
-              <label className="text-xs text-blue-400 hover:underline cursor-pointer">
+              <label className="text-xs text-orange-400 hover:underline cursor-pointer">
                 Trocar
                 <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
               </label>
@@ -215,7 +215,7 @@ export default function EditarAgendamentoPage() {
             required
             value={scheduledAt}
             onChange={(e) => setScheduledAt(e.target.value)}
-            className="w-full bg-zinc-800 border border-white/8 rounded-xl px-4 py-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]"
+            className="w-full bg-zinc-800 border border-white/8 rounded-xl px-4 py-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-orange-500/50 [color-scheme:dark]"
           />
         </div>
 
@@ -235,7 +235,7 @@ export default function EditarAgendamentoPage() {
           <button
             type="submit"
             disabled={saving}
-            className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors cursor-pointer"
+            className="flex-1 py-3 bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors cursor-pointer"
           >
             {saving ? "Salvando..." : "Salvar alteracoes"}
           </button>

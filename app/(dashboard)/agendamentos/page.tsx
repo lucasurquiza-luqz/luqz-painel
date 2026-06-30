@@ -9,7 +9,7 @@ const TZ = "America/Sao_Paulo"
 
 const STATUS_CONFIG = {
   PENDING:   { label: "Pendente",  color: "bg-yellow-500/15 text-yellow-400",  icon: Clock },
-  SENDING:   { label: "Enviando",  color: "bg-blue-500/15 text-orange-400",      icon: CalendarClock },
+  SENDING:   { label: "Enviando",  color: "bg-orange-500/15 text-orange-400",  icon: CalendarClock },
   SENT:      { label: "Enviado",   color: "bg-green-500/15 text-green-400",     icon: CheckCircle2 },
   FAILED:    { label: "Falhou",    color: "bg-red-500/15 text-red-400",         icon: XCircle },
   CANCELLED: { label: "Cancelado", color: "bg-zinc-500/15 text-zinc-400",       icon: Ban },
