@@ -17,7 +17,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
   const copy = await prisma.task.create({
     data: {
       title: `${src.title} (cópia)`, description: src.description, status: "TODO", priority: src.priority,
-      assigneeId: src.assigneeId, assigneeIds: src.assigneeIds, projectId: src.projectId, clientId: src.clientId, dueDate: src.dueDate,
+      assigneeId: src.assigneeId, assigneeIds: src.assigneeIds, tagIds: src.tagIds, estimateMin: src.estimateMin,
+      projectId: src.projectId, clientId: src.clientId, dueDate: src.dueDate, dueHasTime: src.dueHasTime,
       createdById: auth.user.userId,
     },
     select: { id: true },

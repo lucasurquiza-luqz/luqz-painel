@@ -8,8 +8,8 @@ const STATUSES = ["BACKLOG", "TODO", "DOING", "REVIEW", "DONE"]
 const PRIORITIES = ["BAIXA", "MEDIA", "ALTA", "URGENTE"]
 
 const taskSelect = {
-  id: true, title: true, status: true, priority: true, dueDate: true, completedAt: true,
-  clientId: true, projectId: true, assigneeId: true, assigneeIds: true, order: true, createdAt: true,
+  id: true, title: true, status: true, priority: true, dueDate: true, dueHasTime: true, completedAt: true,
+  clientId: true, projectId: true, assigneeId: true, assigneeIds: true, tagIds: true, estimateMin: true, order: true, createdAt: true,
   assignee: { select: { id: true, name: true } },
   project: { select: { id: true, name: true } },
   client: { select: { id: true, name: true } },
@@ -79,10 +79,13 @@ export async function POST(req: NextRequest) {
       priority: PRIORITIES.includes(b.priority) ? (b.priority as TaskPriority) : "MEDIA",
       assigneeIds,
       assigneeId: assigneeIds[0] ?? null,
+      tagIds: Array.isArray(b.tagIds) ? b.tagIds.filter((x: unknown): x is string => typeof x === "string") : [],
+      estimateMin: Number.isFinite(b.estimateMin) && b.estimateMin > 0 ? Math.floor(b.estimateMin) : null,
       projectId,
       parentTaskId,
       clientId: project.clientId, // derivado do projeto
       dueDate: b.dueDate ? new Date(b.dueDate) : null,
+      dueHasTime: !!b.dueHasTime,
       createdById: auth.user.userId,
     },
     select: taskSelect,

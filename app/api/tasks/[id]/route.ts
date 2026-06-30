@@ -73,7 +73,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const newDue = b.dueDate ? new Date(b.dueDate) : null
     const changed = (newDue?.getTime() ?? null) !== (before.dueDate?.getTime() ?? null)
     if (changed) { data.dueDate = newDue; logs.push({ type: "DUE_DATE", payload: { to: b.dueDate ?? null } }) }
+    if ("dueHasTime" in b) data.dueHasTime = !!b.dueHasTime
+    if (!newDue) data.dueHasTime = false
   }
+  if (Array.isArray(b.tagIds)) data.tagIds = b.tagIds.filter((x: unknown): x is string => typeof x === "string")
+  if ("estimateMin" in b) data.estimateMin = Number.isFinite(b.estimateMin) && b.estimateMin > 0 ? Math.floor(b.estimateMin) : null
   // Mover de projeto: recalcula o cliente a partir do novo projeto.
   if ("projectId" in b && (b.projectId || null) !== before.projectId && b.projectId) {
     const proj = await prisma.project.findUnique({ where: { id: b.projectId }, select: { clientId: true } })

@@ -953,9 +953,12 @@ model Task {
   priority    TaskPriority @default(MEDIA)
   assigneeId   String? // responsável principal (= assigneeIds[0]), mantido p/ filtros/sort legados
   assigneeIds  String[]     @default([]) // múltiplos responsáveis (estilo ClickUp)
+  tagIds       String[]     @default([]) // etiquetas (reutilizáveis, ver model Tag)
+  estimateMin  Int? // estimativa de tempo em minutos
   parentTaskId String? // subtarefa: aponta pra tarefa-mãe (mesmo projeto)
   recurrenceId String? // instância gerada por um molde recorrente
-  dueDate      DateTime?
+  dueDate      DateTime? // prazo; pode conter hora (dueHasTime indica se a hora é significativa)
+  dueHasTime   Boolean      @default(false)
   completedAt  DateTime?
   order        Int          @default(0)
   createdById  String?
@@ -990,6 +993,14 @@ model TaskAttachment {
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([taskId])
+}
+
+// Etiquetas reutilizáveis de tarefas (nome + cor), referenciadas por Task.tagIds.
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String // hex (#RRGGBB)
+  createdAt DateTime @default(now())
 }
 
 // Histórico genérico (tarefa OU projeto): criação, mudança de status, comentário, etc.

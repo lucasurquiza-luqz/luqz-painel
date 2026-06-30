@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Loader2, Plus, X, Clock, MessageSquare, Trash2, CornerDownRight, Check, Copy, Circle, User, Flag, CalendarDays, Folder, AlignLeft, Repeat, ChevronDown, GripVertical, Paperclip, Upload, Link2, FileText } from "lucide-react"
+import { Loader2, Plus, X, Clock, MessageSquare, Trash2, CornerDownRight, Check, Copy, Circle, User, Flag, CalendarDays, Folder, AlignLeft, Repeat, ChevronDown, GripVertical, Paperclip, Upload, Link2, FileText, Tag as TagIcon } from "lucide-react"
 import { PageHeader, Panel, Button } from "@/components/ui/primitives"
 import { Pop, MenuItem, PickerSelect } from "@/components/ui/Picker"
 import { cn } from "@/lib/utils"
@@ -93,9 +93,10 @@ function RecurEditor({ initial, onClose, onSave }: { initial: RecurPayload | nul
 type Ref = { id: string; name: string }
 type Proj = { id: string; name: string; clientName: string | null }
 type Task = {
-  id: string; title: string; status: string; priority: string; dueDate: string | null; completedAt: string | null
-  assignee: Ref | null; assigneeIds: string[]; order: number; project: Ref | null; client: Ref | null; createdAt: string
+  id: string; title: string; status: string; priority: string; dueDate: string | null; dueHasTime: boolean; completedAt: string | null
+  assignee: Ref | null; assigneeIds: string[]; tagIds: string[]; estimateMin: number | null; order: number; project: Ref | null; client: Ref | null; createdAt: string
 }
+type Tag = { id: string; name: string; color: string }
 type Subtask = { id: string; title: string; status: string; assignee: { name: string } | null }
 type Activity = { id: string; type: string; userName: string | null; payload: Record<string, unknown> | null; createdAt: string }
 type Attachment = { id: string; name: string; url: string; type: string | null; uploadedByName: string | null; createdAt: string }
@@ -140,12 +141,97 @@ function AssigneePicker({ value, team, onChange, trigger }: { value: string[]; t
 }
 const assigneesLabel = (ids: string[], team: Ref[]) => ids.length === 1 ? (team.find((u) => u.id === ids[0])?.name ?? "1 pessoa") : `${ids.length} pessoas`
 
+// ===== Tags / etiquetas =====
+const TAG_COLORS = ["#FF8F50", "#38bdf8", "#a78bfa", "#34d399", "#fbbf24", "#f472b6", "#22d3ee", "#fb7185", "#a3e635", "#94a3b8"]
+function TagChips({ ids, tags, onRemove }: { ids: string[]; tags: Tag[]; onRemove?: (id: string) => void }) {
+  const list = ids.map((id) => tags.find((t) => t.id === id)).filter(Boolean) as Tag[]
+  if (!list.length) return null
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {list.map((t) => (
+        <span key={t.id} style={{ background: `${t.color}26`, color: t.color }} className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium">
+          {t.name}
+          {onRemove && <button onClick={(e) => { e.stopPropagation(); onRemove(t.id) }} className="opacity-60 hover:opacity-100">×</button>}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+function TagPicker({ value, tags, onChange, onCreated, trigger }: { value: string[]; tags: Tag[]; onChange: (ids: string[]) => void; onCreated: () => void; trigger: React.ReactNode }) {
+  const [q, setQ] = useState("")
+  const [color, setColor] = useState(TAG_COLORS[0])
+  const [busy, setBusy] = useState(false)
+  const toggle = (id: string) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id])
+  const filtered = tags.filter((t) => t.name.toLowerCase().includes(q.trim().toLowerCase()))
+  const exact = tags.find((t) => t.name.toLowerCase() === q.trim().toLowerCase())
+  async function create() {
+    if (!q.trim() || busy) return
+    setBusy(true)
+    const r = await fetch("/api/tags", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: q.trim(), color }) })
+    const d = await r.json().catch(() => ({}))
+    setBusy(false)
+    if (d.tag) { onChange([...value, d.tag.id]); setQ(""); onCreated() }
+  }
+  return (
+    <Pop trigger={trigger}>
+      {() => <div className="w-60">
+        <div className="mb-1.5 flex items-center gap-1.5 px-1">
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !exact && create()} placeholder="Buscar ou criar…" className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[12px] text-zinc-200 focus:outline-none" />
+        </div>
+        <div className="max-h-44 overflow-y-auto">
+          {filtered.map((t) => (
+            <MenuItem key={t.id} active={value.includes(t.id)} onClick={() => toggle(t.id)}>
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: t.color }} /> {t.name}
+            </MenuItem>
+          ))}
+        </div>
+        {q.trim() && !exact && (
+          <div className="mt-1 border-t border-white/10 pt-1">
+            <div className="mb-1 flex flex-wrap gap-1 px-2">
+              {TAG_COLORS.map((c) => <button key={c} type="button" onClick={() => setColor(c)} style={{ background: c }} className={cn("h-4 w-4 rounded-full", color === c && "ring-2 ring-white/60")} />)}
+            </div>
+            <MenuItem onClick={create}><Plus size={12} /> Criar “{q.trim()}”</MenuItem>
+          </div>
+        )}
+      </div>}
+    </Pop>
+  )
+}
+
+// ===== Estimativa de tempo =====
+function fmtEstimate(min: number | null): string {
+  if (!min) return ""
+  const h = Math.floor(min / 60), m = min % 60
+  return h && m ? `${h}h ${m}m` : h ? `${h}h` : `${m}m`
+}
+// "1h30", "90m", "2h", "45" → minutos
+function parseEstimate(s: string): number | null {
+  const str = s.trim().toLowerCase()
+  if (!str) return null
+  const hm = str.match(/^(\d+)\s*h\s*(\d+)?\s*m?$/)
+  if (hm) return parseInt(hm[1]) * 60 + (hm[2] ? parseInt(hm[2]) : 0)
+  const mOnly = str.match(/^(\d+)\s*m$/)
+  if (mOnly) return parseInt(mOnly[1])
+  const n = parseInt(str)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+// ===== Prazo com hora =====
+const hasTime = (t: Task) => t.dueHasTime && !!t.dueDate
+function fmtDue(t: Task): string {
+  if (!t.dueDate) return ""
+  const d = new Date(t.dueDate)
+  const day = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+  return hasTime(t) ? `${day} ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : day
+}
+
 const isOverdue = (t: Task) => !!t.dueDate && t.status !== "DONE" && new Date(t.dueDate) < new Date(new Date().toDateString())
-const fmtDay = (d: string | null) => (d ? new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : null)
 
 export function TasksView({ clientId, projectId, embedded }: { clientId?: string; projectId?: string; embedded?: boolean }) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [team, setTeam] = useState<Ref[]>([])
+  const [tags, setTags] = useState<Tag[]>([])
   const [projects, setProjects] = useState<Proj[]>([])
   const [projectInfo, setProjectInfo] = useState<{ name: string; clientName: string | null } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -154,7 +240,8 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
   const [view, setView] = useState<"list" | "board">("list")
   const [quickAdd, setQuickAdd] = useState("")
   const [fPriority, setFPriority] = useState("")        // filtro por prioridade
-  const [sortBy, setSortBy] = useState("due")           // due | priority | recent
+  const [fTag, setFTag] = useState("")                  // filtro por etiqueta
+  const [sortBy, setSortBy] = useState("due")           // due | priority | recent | manual
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [dragId, setDragId] = useState<string | null>(null)
   const [err, setErr] = useState("")
@@ -178,6 +265,9 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
     setLoading(false)
   }, [clientId, projectId, mine, onlyOpen, view])
   useEffect(() => { void load() }, [load])
+
+  const loadTags = useCallback(() => { fetch("/api/tags").then((r) => r.json()).then((d) => setTags(d.tags ?? [])).catch(() => {}) }, [])
+  useEffect(() => { loadTags() }, [loadTags])
 
   useEffect(() => {
     fetch("/api/team").then((r) => r.json()).then((d) => setTeam(d.users ?? [])).catch(() => {})
@@ -220,6 +310,7 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
   const PRIO_ORDER: Record<string, number> = { URGENTE: 0, ALTA: 1, MEDIA: 2, BAIXA: 3 }
   const visibleTasks = tasks
     .filter((t) => !fPriority || t.priority === fPriority)
+    .filter((t) => !fTag || (t.tagIds ?? []).includes(fTag))
     .slice()
     .sort((a, b) => {
       if (sortBy === "manual") return (a.order ?? 0) - (b.order ?? 0) || b.createdAt.localeCompare(a.createdAt)
@@ -279,6 +370,11 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
         <span className="rounded-lg border border-white/8 bg-black/20 px-1">
           <PickerSelect value={fPriority} onChange={setFPriority} placeholder="Prioridade: todas" options={[{ value: "", label: "Prioridade: todas" }, ...Object.entries(PRIORITY).map(([v, p]) => ({ value: v, label: p.label }))]} />
         </span>
+        {tags.length > 0 && (
+          <span className="rounded-lg border border-white/8 bg-black/20 px-1">
+            <PickerSelect value={fTag} onChange={setFTag} placeholder="Etiqueta: todas" options={[{ value: "", label: "Etiqueta: todas" }, ...tags.map((t) => ({ value: t.id, label: t.name }))]} />
+          </span>
+        )}
         <span className="rounded-lg border border-white/8 bg-black/20 px-1">
           <PickerSelect value={sortBy} onChange={setSortBy} options={[{ value: "due", label: "Ordenar: prazo" }, { value: "priority", label: "Ordenar: prioridade" }, { value: "recent", label: "Ordenar: recentes" }, { value: "manual", label: "Ordenar: manual (arrastar)" }]} />
         </span>
@@ -318,7 +414,7 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
       ) : !canCreate ? (
         <Panel className="p-8 text-center text-sm text-zinc-600">Crie um <b className="text-zinc-400">projeto</b> primeiro — tarefas vivem dentro de projetos.</Panel>
       ) : view === "board" ? (
-        <Board tasks={visibleTasks} team={team} showProject={!projectId} onOpen={setSelected} onDrop={changeStatus} />
+        <Board tasks={visibleTasks} team={team} tags={tags} showProject={!projectId} onOpen={setSelected} onDrop={changeStatus} />
       ) : visibleTasks.length === 0 ? (
         <Panel className="p-8 text-center text-sm text-zinc-600">Nenhuma tarefa{fPriority ? " com esse filtro" : ""}.</Panel>
       ) : (
@@ -356,9 +452,11 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
                           {!projectId && t.project && <span className="rounded bg-white/5 px-1.5 py-0.5">{t.project.name}</span>}
                           {!clientId && !projectId && t.client && <span className="text-orange-400/70">{t.client.name}</span>}
                           <span className={`rounded px-1.5 py-0.5 ${PRIORITY[t.priority]?.cls}`}>{PRIORITY[t.priority]?.label}</span>
+                          <TagChips ids={t.tagIds ?? []} tags={tags} />
+                          {t.estimateMin ? <span className="flex items-center gap-1 text-zinc-500"><Clock size={11} />{fmtEstimate(t.estimateMin)}</span> : null}
                         </span>
                       </button>
-                      {t.dueDate && <span className={cn("shrink-0 text-[11px]", isOverdue(t) ? "text-red-300" : "text-zinc-500")}>{fmtDay(t.dueDate)}{isOverdue(t) ? " ⚠" : ""}</span>}
+                      {t.dueDate && <span className={cn("shrink-0 text-[11px]", isOverdue(t) ? "text-red-300" : "text-zinc-500")}>{fmtDue(t)}{isOverdue(t) ? " ⚠" : ""}</span>}
                       <AvatarStack ids={t.assigneeIds ?? []} team={team} />
                     </Panel>
                     </div>
@@ -372,8 +470,8 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
 
       {err && <div className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-lg border border-red-500/30 bg-red-950/80 px-4 py-2 text-sm text-red-200 shadow-xl backdrop-blur">{err}</div>}
 
-      {creating && <CreateModal team={team} projects={projects} fixedProjectId={projectId} onClose={() => setCreating(false)} onCreated={(t) => { setTasks((ts) => [t, ...ts]); setCreating(false) }} />}
-      {selected && <TaskDrawer task={selected} team={team} projects={projects} meName={meName} onClose={() => setSelected(null)} onPatch={patch} onStatus={changeStatus} onRemove={remove} onChanged={load} />}
+      {creating && <CreateModal team={team} tags={tags} projects={projects} fixedProjectId={projectId} onClose={() => setCreating(false)} onCreated={(t) => { setTasks((ts) => [t, ...ts]); setCreating(false) }} onTagsChange={loadTags} />}
+      {selected && <TaskDrawer task={selected} team={team} tags={tags} projects={projects} meName={meName} onClose={() => setSelected(null)} onPatch={patch} onStatus={changeStatus} onRemove={remove} onChanged={load} onTagsChange={loadTags} />}
       {closing && <ResultModal onClose={() => setClosing(null)} onConfirm={confirmClose} />}
     </Wrapper>
   )
@@ -384,7 +482,7 @@ function Toggle({ on, onClick, children }: { on: boolean; onClick: () => void; c
 }
 
 // Kanban: colunas por status, cartões arrastáveis (drop → muda status; DONE pede resultado).
-function Board({ tasks, team, showProject, onOpen, onDrop }: { tasks: Task[]; team: Ref[]; showProject: boolean; onOpen: (t: Task) => void; onDrop: (id: string, status: string) => void }) {
+function Board({ tasks, team, tags, showProject, onOpen, onDrop }: { tasks: Task[]; team: Ref[]; tags: Tag[]; showProject: boolean; onOpen: (t: Task) => void; onDrop: (id: string, status: string) => void }) {
   const [over, setOver] = useState<string | null>(null)
   return (
     <div className="flex gap-3 overflow-x-auto pb-2">
@@ -406,10 +504,12 @@ function Board({ tasks, team, showProject, onOpen, onDrop }: { tasks: Task[]; te
                   onClick={() => onOpen(t)}
                   className="cursor-pointer rounded-lg border border-white/8 bg-[#161616] p-2.5 hover:border-white/15">
                   <p className={cn("text-[13px] font-medium", t.status === "DONE" ? "text-zinc-500 line-through" : "text-zinc-100")}>{t.title}</p>
+                  {(t.tagIds?.length ?? 0) > 0 && <div className="mt-1.5"><TagChips ids={t.tagIds} tags={tags} /></div>}
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <span className="flex items-center gap-1.5">
                       <span className={`rounded px-1.5 py-0.5 text-[10px] ${PRIORITY[t.priority]?.cls}`}>{PRIORITY[t.priority]?.label}</span>
-                      {t.dueDate && <span className={cn("text-[10px]", isOverdue(t) ? "text-red-300" : "text-zinc-600")}>{fmtDay(t.dueDate)}</span>}
+                      {t.dueDate && <span className={cn("text-[10px]", isOverdue(t) ? "text-red-300" : "text-zinc-600")}>{fmtDue(t)}</span>}
+                      {t.estimateMin ? <span className="text-[10px] text-zinc-600">{fmtEstimate(t.estimateMin)}</span> : null}
                     </span>
                     <AvatarStack ids={t.assigneeIds ?? []} team={team} size={20} />
                   </div>
@@ -427,9 +527,10 @@ function Board({ tasks, team, showProject, onOpen, onDrop }: { tasks: Task[]; te
 
 function projLabel(p: Proj) { return p.clientName ? `${p.clientName} · ${p.name}` : `Interno · ${p.name}` }
 
-function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { team: Ref[]; projects: Proj[]; fixedProjectId?: string; onClose: () => void; onCreated: (t: Task) => void }) {
-  const [f, setF] = useState({ title: "", description: "", projectId: fixedProjectId ?? "", priority: "MEDIA", dueDate: "" })
+function CreateModal({ team, tags, projects, fixedProjectId, onClose, onCreated, onTagsChange }: { team: Ref[]; tags: Tag[]; projects: Proj[]; fixedProjectId?: string; onClose: () => void; onCreated: (t: Task) => void; onTagsChange: () => void }) {
+  const [f, setF] = useState({ title: "", description: "", projectId: fixedProjectId ?? "", priority: "MEDIA", dueDate: "", dueTime: "", estimate: "" })
   const [assigneeIds, setAssigneeIds] = useState<string[]>([])
+  const [tagIds, setTagIds] = useState<string[]>([])
   const [repeat, setRepeat] = useState<RecurPayload | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState("")
@@ -438,7 +539,9 @@ function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { t
     if (!f.title.trim()) { setErr("Informe o título."); return }
     if (!f.projectId) { setErr("Escolha um projeto."); return }
     setBusy(true); setErr("")
-    const res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...f, assigneeIds }) })
+    const dueDate = f.dueDate ? new Date(`${f.dueDate}T${f.dueTime || "00:00:00"}`).toISOString() : null
+    const body = { ...f, assigneeIds, tagIds, dueDate, dueHasTime: !!(f.dueDate && f.dueTime), estimateMin: parseEstimate(f.estimate) }
+    const res = await fetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
     const d = await res.json().catch(() => ({}))
     if (!res.ok) { setBusy(false); setErr(d.error ?? "Erro ao criar."); return }
     // Recorrência definida já na criação (cadência puxada do prazo ou dos dias escolhidos).
@@ -460,7 +563,13 @@ function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { t
             </div>
           </Field>
           <Field label="Prioridade"><select value={f.priority} onChange={(e) => setF({ ...f, priority: e.target.value })} className={inp}>{Object.entries(PRIORITY).map(([v, p]) => <option key={v} value={v}>{p.label}</option>)}</select></Field>
-          <Field label="Prazo"><input type="date" value={f.dueDate} onChange={(e) => setF({ ...f, dueDate: e.target.value })} className={cn(inp, "[color-scheme:dark]")} /></Field>
+          <Field label="Prazo"><div className="flex gap-1.5"><input type="date" value={f.dueDate} onChange={(e) => setF({ ...f, dueDate: e.target.value })} className={cn(inp, "[color-scheme:dark]")} /><input type="time" value={f.dueTime} disabled={!f.dueDate} onChange={(e) => setF({ ...f, dueTime: e.target.value })} className={cn(inp, "w-28 [color-scheme:dark]", !f.dueDate && "opacity-40")} /></div></Field>
+          <Field label="Estimativa"><input value={f.estimate} onChange={(e) => setF({ ...f, estimate: e.target.value })} placeholder="ex: 2h 30m" className={inp} /></Field>
+          <Field label="Etiquetas">
+            <div className={cn(inp, "flex items-center py-1")}>
+              <TagPicker value={tagIds} tags={tags} onChange={setTagIds} onCreated={onTagsChange} trigger={<span className="flex items-center gap-1.5 text-sm">{tagIds.length ? <TagChips ids={tagIds} tags={tags} /> : <span className="text-zinc-500">—</span>}<ChevronDown size={13} className="text-zinc-600" /></span>} />
+            </div>
+          </Field>
           <Field label="Repetir">
             <div className={cn(inp, "flex items-center py-1")}>
               <RecurField value={repeat} onChange={setRepeat} trigger={<span className="flex items-center gap-1.5 text-sm text-zinc-200">{recurLabel(repeat)}<ChevronDown size={13} className="text-zinc-600" /></span>} />
@@ -475,7 +584,7 @@ function CreateModal({ team, projects, fixedProjectId, onClose, onCreated }: { t
   )
 }
 
-function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, onRemove, onChanged }: { task: Task; team: Ref[]; projects: Proj[]; meName: string | null; onClose: () => void; onPatch: (id: string, d: Record<string, unknown>) => void; onStatus: (id: string, status: string) => void; onRemove: (id: string) => void; onChanged: () => void }) {
+function TaskDrawer({ task, team, tags, projects, meName, onClose, onPatch, onStatus, onRemove, onChanged, onTagsChange }: { task: Task; team: Ref[]; tags: Tag[]; projects: Proj[]; meName: string | null; onClose: () => void; onPatch: (id: string, d: Record<string, unknown>) => void; onStatus: (id: string, status: string) => void; onRemove: (id: string) => void; onChanged: () => void; onTagsChange: () => void }) {
   const [activity, setActivity] = useState<Activity[]>([])
   const [subtasks, setSubtasks] = useState<Subtask[]>([])
   const [attachments, setAttachments] = useState<Attachment[]>([])
@@ -573,7 +682,14 @@ function TaskDrawer({ task, team, projects, meName, onClose, onPatch, onStatus, 
               </Pop>
             </PropRow>
             <PropRow icon={<CalendarDays size={13} />} label="Prazo">
-              <input type="date" value={task.dueDate ? task.dueDate.slice(0, 10) : ""} onChange={(e) => onPatch(task.id, { dueDate: e.target.value || null })} className={cn(inlineSel, "[color-scheme:dark]")} />
+              <DueEditor task={task} onSave={(p) => onPatch(task.id, p)} />
+            </PropRow>
+            <PropRow icon={<Clock size={13} />} label="Estimativa">
+              <EstimateInput value={task.estimateMin} onSave={(min) => onPatch(task.id, { estimateMin: min })} />
+            </PropRow>
+            <PropRow icon={<TagIcon size={13} />} label="Etiquetas">
+              <TagPicker value={task.tagIds ?? []} tags={tags} onChange={(ids) => onPatch(task.id, { tagIds: ids })} onCreated={onTagsChange}
+                trigger={<span className="flex items-center gap-1.5 text-sm">{task.tagIds?.length ? <TagChips ids={task.tagIds} tags={tags} /> : <span className="text-zinc-500">Sem etiquetas</span>}</span>} />
             </PropRow>
             <PropRow icon={<Repeat size={13} />} label="Repetir">
               <RecurField value={recur} onChange={setRecurrence} trigger={<span className={cn("flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[12px]", recur ? "bg-[#FF8F50]/15 text-[#FFB185]" : "text-zinc-500 hover:bg-white/5")}>{recur ? <><Repeat size={11} /> {recurLabel(recur)}</> : "Não repete"}</span>} />
@@ -692,6 +808,35 @@ function PropRow({ icon, label, children }: { icon: React.ReactNode; label: stri
   )
 }
 const inlineSel = "max-w-full cursor-pointer rounded-md bg-transparent px-2 py-1 text-sm text-zinc-200 hover:bg-white/5 focus:bg-white/5 focus:outline-none [color-scheme:dark]"
+const pad2 = (n: number) => String(n).padStart(2, "0")
+
+function EstimateInput({ value, onSave }: { value: number | null; onSave: (min: number | null) => void }) {
+  const [v, setV] = useState(fmtEstimate(value))
+  useEffect(() => { setV(fmtEstimate(value)) }, [value])
+  return (
+    <input value={v} onChange={(e) => setV(e.target.value)}
+      onBlur={() => { const m = parseEstimate(v); if ((m ?? null) !== (value ?? null)) onSave(m); setV(fmtEstimate(m)) }}
+      onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+      placeholder="ex: 2h 30m" className={cn(inlineSel, "w-32")} />
+  )
+}
+
+function DueEditor({ task, onSave }: { task: Task; onSave: (p: Record<string, unknown>) => void }) {
+  const d = task.dueDate ? new Date(task.dueDate) : null
+  const dateStr = d ? `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` : ""
+  const timeStr = task.dueHasTime && d ? `${pad2(d.getHours())}:${pad2(d.getMinutes())}` : ""
+  function apply(date: string, time: string) {
+    if (!date) return onSave({ dueDate: null, dueHasTime: false })
+    if (time) onSave({ dueDate: new Date(`${date}T${time}`).toISOString(), dueHasTime: true })
+    else onSave({ dueDate: new Date(`${date}T00:00:00`).toISOString(), dueHasTime: false })
+  }
+  return (
+    <span className="flex items-center gap-1">
+      <input type="date" value={dateStr} onChange={(e) => apply(e.target.value, timeStr)} className={cn(inlineSel, "[color-scheme:dark]")} />
+      <input type="time" value={timeStr} disabled={!dateStr} onChange={(e) => apply(dateStr, e.target.value)} className={cn(inlineSel, "[color-scheme:dark]", !dateStr && "opacity-40")} />
+    </span>
+  )
+}
 function relTime(iso: string) {
   const diff = Date.now() - new Date(iso).getTime()
   const m = Math.floor(diff / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24)
