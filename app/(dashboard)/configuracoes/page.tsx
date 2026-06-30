@@ -29,7 +29,7 @@ const FUNCTION_LABEL: Record<string, string> = {
 
 type WhatsAppDiagnostics = {
   connectionState: string | null
-  runtime: { lastWebhookAt: string | null; lastMessageAt: string | null; connectionState: string | null } | null
+  runtime: { lastWebhookAt: string | null; lastMessageAt: string | null; connectionState: string | null; lastWebhookSecretOk: boolean | null } | null
   webhook: { enabled: unknown; url: unknown; events: unknown } | null
   totals: { messages: number; groups: number; groupsLinkedToClient: number }
   conversations: { id: string; group: string; client: string; lastMessageAt: string | null; messageCount: number }[]
@@ -306,6 +306,11 @@ function WhatsAppPanel({ onError, onNotice }: { onError: (value: string) => void
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Metric label="Conexão" value={connectionState ?? "desconhecida"} tone={isConnected ? "good" : "warn"} />
             <Metric label="Último webhook" value={formatDateTime(diagnostics.runtime?.lastWebhookAt)} />
+            <Metric
+              label="Segredo do webhook"
+              value={diagnostics.runtime?.lastWebhookSecretOk == null ? "não verificado" : diagnostics.runtime.lastWebhookSecretOk ? "recebido ✓" : "ausente/errado"}
+              tone={diagnostics.runtime?.lastWebhookSecretOk == null ? undefined : diagnostics.runtime.lastWebhookSecretOk ? "good" : "warn"}
+            />
             <Metric label="Grupos vinculados" value={`${diagnostics.totals.groupsLinkedToClient}/${diagnostics.totals.groups}`} />
             <Metric label="Mensagens armazenadas" value={String(diagnostics.totals.messages)} />
           </div>

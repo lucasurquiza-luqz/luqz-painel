@@ -60,7 +60,7 @@ async function downloadMediaFromEvolution(
 }
 
 // Registra que um webhook chegou e (opcionalmente) o estado da conexao.
-async function touchRuntime(patch: { connectionState?: string; messageAt?: Date } = {}) {
+async function touchRuntime(patch: { connectionState?: string; messageAt?: Date; secretOk?: boolean } = {}) {
   const now = new Date()
   try {
     await prisma.whatsAppRuntime.upsert({
@@ -70,11 +70,13 @@ async function touchRuntime(patch: { connectionState?: string; messageAt?: Date 
         lastWebhookAt: now,
         connectionState: patch.connectionState ?? null,
         lastMessageAt: patch.messageAt ?? null,
+        lastWebhookSecretOk: patch.secretOk ?? null,
       },
       update: {
         lastWebhookAt: now,
         ...(patch.connectionState ? { connectionState: patch.connectionState } : {}),
         ...(patch.messageAt ? { lastMessageAt: patch.messageAt } : {}),
+        ...("secretOk" in patch ? { lastWebhookSecretOk: patch.secretOk } : {}),
       },
     })
   } catch {
@@ -83,18 +85,17 @@ async function touchRuntime(patch: { connectionState?: string; messageAt?: Date 
 }
 
 export async function POST(req: NextRequest) {
-  // Registra que ALGUM POST chegou a este endpoint, antes de qualquer validacao.
-  // Torna "Ultimo webhook" um teste confiavel de conectividade Evolution -> Dash:
-  // se atualizar, a Evolution alcanca o Dash; se ficar em branco, nao alcanca.
-  await touchRuntime()
-
   // Valida o secret. Modo padrão (compatível): só rejeita secret ERRADO — algumas versões
   // da Evolution não anexam secret à URL, então POST sem secret é aceito.
-  // Modo estrito (EVOLUTION_WEBHOOK_REQUIRE_SECRET=true): exige o secret correto sempre —
-  // fecha o buraco de injeção. Ligar SÓ depois de confirmar que a URL registrada leva ?secret=.
+  // Modo estrito (EVOLUTION_WEBHOOK_REQUIRE_SECRET=true): exige o secret correto sempre.
   const webhookSecret = process.env.EVOLUTION_WEBHOOK_SECRET
+  const provided = req.nextUrl.searchParams.get("secret") ?? req.headers.get("x-webhook-secret")
+
+  // Registra que ALGUM POST chegou (teste de conectividade) + se o secret veio correto
+  // (verificação pra ligar o modo estrito com segurança).
+  await touchRuntime(webhookSecret ? { secretOk: provided === webhookSecret } : {})
+
   if (webhookSecret) {
-    const provided = req.nextUrl.searchParams.get("secret") ?? req.headers.get("x-webhook-secret")
     const strict = process.env.EVOLUTION_WEBHOOK_REQUIRE_SECRET === "true"
     const bad = strict ? provided !== webhookSecret : (provided != null && provided !== webhookSecret)
     if (bad) return NextResponse.json({ error: "Nao autorizado" }, { status: 401 })

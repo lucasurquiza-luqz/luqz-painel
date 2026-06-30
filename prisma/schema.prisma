@@ -488,11 +488,12 @@ model ClientNextAction {
 // Estado de runtime da integracao WhatsApp (singleton). Usado para diagnostico:
 // ultimo estado de conexao e quando o ultimo webhook foi efetivamente recebido.
 model WhatsAppRuntime {
-  id              String    @id @default("singleton")
-  connectionState String?
-  lastWebhookAt   DateTime?
-  lastMessageAt   DateTime?
-  updatedAt       DateTime  @updatedAt
+  id                  String    @id @default("singleton")
+  connectionState     String?
+  lastWebhookAt       DateTime?
+  lastMessageAt       DateTime?
+  lastWebhookSecretOk Boolean? // último POST trouxe o secret correto? (verificação p/ ligar modo estrito)
+  updatedAt           DateTime  @updatedAt
 }
 
 enum ContextDomain {
