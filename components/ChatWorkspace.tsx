@@ -243,8 +243,8 @@ export function ChatWorkspace({ clientId }: { clientId?: string }) {
       })
 
       if (!res.ok) {
-        const d = await res.json()
-        throw new Error(d.error ?? "Erro ao enviar mensagem.")
+        const d = await res.json().catch(() => null) // resposta pode ser HTML (gateway/deploy)
+        throw new Error(d?.error ?? (res.status >= 502 ? "Servidor reiniciando, tente em instantes." : "Erro ao enviar mensagem."))
       }
 
       setText("")

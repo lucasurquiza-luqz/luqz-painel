@@ -43,7 +43,7 @@ export async function fetchGroups(): Promise<EvoGroup[]> {
 
 // Envio com retry: a Evolution às vezes reporta "open" mas o socket Baileys
 // fecha por um instante ("Connection Closed"). Reenviar após um respiro resolve.
-async function evoSend(path: string, body: Record<string, unknown>, tries = 3): Promise<unknown> {
+async function evoSend(path: string, body: Record<string, unknown>, tries = 2): Promise<unknown> {
   let lastErr: unknown
   for (let attempt = 1; attempt <= tries; attempt++) {
     try {
@@ -53,7 +53,7 @@ async function evoSend(path: string, body: Record<string, unknown>, tries = 3): 
       lastErr = err
       const transient = /connection closed|connection lost|timed out|socket|ECONNRESET|aborted/i.test(err instanceof Error ? err.message : String(err))
       if (!transient || attempt === tries) break
-      await new Promise((r) => setTimeout(r, attempt * 900)) // backoff: 0.9s, 1.8s
+      await new Promise((r) => setTimeout(r, 800)) // um respiro curto antes do reenvio
     }
   }
   throw lastErr
