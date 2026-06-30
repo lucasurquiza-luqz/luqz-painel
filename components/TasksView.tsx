@@ -32,7 +32,7 @@ type Activity = { id: string; type: string; userName: string | null; payload: Re
 const isOverdue = (t: Task) => !!t.dueDate && t.status !== "DONE" && new Date(t.dueDate) < new Date(new Date().toDateString())
 const fmtDay = (d: string | null) => (d ? new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : null)
 
-export function TasksView({ clientId, projectId }: { clientId?: string; projectId?: string }) {
+export function TasksView({ clientId, projectId, embedded }: { clientId?: string; projectId?: string; embedded?: boolean }) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [team, setTeam] = useState<Ref[]>([])
   const [projects, setProjects] = useState<Proj[]>([])
@@ -80,10 +80,11 @@ export function TasksView({ clientId, projectId }: { clientId?: string; projectI
     : "Toda tarefa vive num projeto. Cliente vem do projeto. Cada tarefa tem histórico e subtarefas."
   const canCreate = projectId || projects.length > 0
 
+  const Wrapper = embedded ? "div" : "main"
   return (
-    <main className="mx-auto max-w-6xl space-y-5 p-6 lg:p-8">
+    <Wrapper className={embedded ? "space-y-4" : "mx-auto max-w-6xl space-y-5 p-6 lg:p-8"}>
       <div className="flex items-center justify-between gap-3">
-        <PageHeader eyebrow={projectId ? "Projeto" : "Operação"} title={title} description={subtitle} />
+        {embedded ? <span /> : <PageHeader eyebrow={projectId ? "Projeto" : "Operação"} title={title} description={subtitle} />}
         {canCreate && <Button onClick={() => setCreating(true)}><Plus size={16} /> Nova tarefa</Button>}
       </div>
 
@@ -123,7 +124,7 @@ export function TasksView({ clientId, projectId }: { clientId?: string; projectI
 
       {creating && <CreateModal team={team} projects={projects} fixedProjectId={projectId} onClose={() => setCreating(false)} onCreated={(t) => { setTasks((ts) => [t, ...ts]); setCreating(false) }} />}
       {selected && <TaskDrawer task={selected} team={team} onClose={() => setSelected(null)} onPatch={patch} onRemove={remove} />}
-    </main>
+    </Wrapper>
   )
 }
 

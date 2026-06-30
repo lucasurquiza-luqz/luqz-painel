@@ -215,17 +215,20 @@ model ClientDocument {
   fileType     String?
   externalUrl  String?
   notes        String?
+  projectId    String? // atrelado a um projeto (opcional)
   uploadedById String
   approvedById String?
   approvedAt   DateTime?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
-  client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  uploadedBy User   @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
-  approvedBy User?  @relation("DocumentApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  project    Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  uploadedBy User     @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  approvedBy User?    @relation("DocumentApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
 
   @@index([clientId, category])
+  @@index([projectId])
 }
 
 // Contatos do lado do cliente (quem fala com a gente).
@@ -869,19 +872,36 @@ enum ActivityEntity {
   PROJECT
 }
 
+enum ProjectKind {
+  CONTEUDO
+  TRAFEGO
+  ONBOARDING
+  WEB
+  COMERCIAL
+  INTERNO
+  OUTRO
+}
+
 model Project {
   id          String        @id @default(cuid())
   clientId    String? // projeto de cliente ou interno (null)
   name        String
   description String?
+  kind        ProjectKind   @default(OUTRO)
+  notes       String? // documentação do projeto (markdown)
+  color       String?
   status      ProjectStatus @default(ATIVO)
+  startDate   DateTime?
+  dueDate     DateTime?
+  ownerId     String? // responsável (scalar; nome resolvido pela equipe)
   order       Int           @default(0)
   createdById String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
-  client Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tasks  Task[]
+  client    Client?          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tasks     Task[]
+  documents ClientDocument[]
 
   @@index([clientId])
 }

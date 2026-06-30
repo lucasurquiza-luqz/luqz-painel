@@ -28,11 +28,14 @@ export async function POST(req: NextRequest) {
   const name = typeof body.name === "string" ? body.name.trim() : ""
   if (!name) return NextResponse.json({ error: "Informe o nome do projeto." }, { status: 400 })
 
+  const KINDS = ["CONTEUDO", "TRAFEGO", "ONBOARDING", "WEB", "COMERCIAL", "INTERNO", "OUTRO"]
   const project = await prisma.project.create({
     data: {
       name,
       description: typeof body.description === "string" ? body.description.trim() || null : null,
+      kind: KINDS.includes(body.kind) ? body.kind : "OUTRO",
       clientId: typeof body.clientId === "string" && body.clientId ? body.clientId : null,
+      ownerId: typeof body.ownerId === "string" && body.ownerId ? body.ownerId : null,
       createdById: auth.user.userId,
     },
   })
