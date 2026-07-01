@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter, useParams, useSearchParams } from "next/navigation"
-import { ArrowLeft, X, ImagePlus } from "lucide-react"
+import { ArrowLeft, X, ImagePlus, Film } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { dateSuggestions } from "@/lib/date-suggestions"
@@ -28,7 +28,9 @@ export default function NovoInstagramPostPage() {
   const { id: clientId } = useParams<{ id: string }>()
   const dateParam = useSearchParams().get("date")
 
+  const [mode, setMode] = useState<"image" | "reel">("image")
   const [slides, setSlides] = useState<Slide[]>([])
+  const [video, setVideo] = useState<File | null>(null)
   const [caption, setCaption] = useState("")
   const [pillar, setPillar] = useState("")
   const [pillars, setPillars] = useState<{ id: string; label: string; color: string }[]>([])
@@ -58,29 +60,41 @@ export default function NovoInstagramPostPage() {
     e.preventDefault()
     setError("")
 
-    if (slides.length < 1) {
-      setError("Adicione ao menos 1 imagem.")
+    if (mode === "image" && (slides.length < 1 || slides.length > 10)) {
+      setError("Adicione de 1 a 10 imagens.")
       return
     }
-    if (slides.length > 10) {
-      setError("Máximo de 10 imagens por post.")
+    if (mode === "reel" && !video) {
+      setError("Selecione o vídeo do Reel.")
       return
     }
 
     setLoading(true)
     try {
-      const images = await Promise.all(slides.map((s) => fileToJpegBase64(s.file)))
+      const body: { clientId: string; caption: string; scheduledAt: string; pillar?: string; images?: string[]; videoUrl?: string } = {
+        clientId,
+        caption,
+        scheduledAt: new Date(scheduledAt).toISOString(),
+        pillar: pillar || undefined,
+      }
+
+      if (mode === "reel") {
+        const form = new FormData()
+        form.append("file", video as File)
+        const up = await fetch(`/api/instagram/upload-video?clientId=${clientId}`, { method: "POST", body: form })
+        if (!up.ok) {
+          const d = await up.json().catch(() => ({}))
+          throw new Error(d.error ?? "Falha ao enviar o vídeo.")
+        }
+        body.videoUrl = (await up.json()).url
+      } else {
+        body.images = await Promise.all(slides.map((s) => fileToJpegBase64(s.file)))
+      }
 
       const res = await fetch("/api/instagram/schedules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientId,
-          caption,
-          scheduledAt: new Date(scheduledAt).toISOString(),
-          images,
-          pillar: pillar || undefined,
-        }),
+        body: JSON.stringify(body),
       })
 
       if (!res.ok) {
@@ -115,7 +129,20 @@ export default function NovoInstagramPostPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Tipo de post */}
+        <div className="flex items-center gap-1 bg-zinc-900 border border-white/8 rounded-xl p-1 w-fit">
+          <button type="button" onClick={() => setMode("image")}
+            className={cn("px-4 py-1.5 text-xs font-medium rounded-lg transition-colors", mode === "image" ? "bg-orange-500 text-white" : "text-zinc-400 hover:text-zinc-200")}>
+            Imagem / Carrossel
+          </button>
+          <button type="button" onClick={() => setMode("reel")}
+            className={cn("px-4 py-1.5 text-xs font-medium rounded-lg transition-colors", mode === "reel" ? "bg-orange-500 text-white" : "text-zinc-400 hover:text-zinc-200")}>
+            Reel (vídeo)
+          </button>
+        </div>
+
         {/* Imagens */}
+        {mode === "image" && (
         <div className="bg-zinc-900 border border-white/8 rounded-2xl p-5">
           <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wide mb-3">
             Imagens ({slides.length}/10) {isCarousel ? "· carrossel" : slides.length === 1 ? "· imagem única" : ""}
@@ -155,6 +182,29 @@ export default function NovoInstagramPostPage() {
           )}
           <p className="text-xs text-zinc-600 mt-2">A ordem de cima pra baixo é a ordem do carrossel. Convertidas para JPEG automaticamente.</p>
         </div>
+        )}
+
+        {/* Vídeo (Reel) */}
+        {mode === "reel" && (
+        <div className="bg-zinc-900 border border-white/8 rounded-2xl p-5">
+          <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wide mb-3">Vídeo do Reel</label>
+          {video ? (
+            <div className="flex items-center gap-3 px-4 py-3 bg-zinc-800 rounded-xl border border-white/8">
+              <Film size={16} className="text-zinc-400" />
+              <span className="text-sm text-zinc-300 flex-1 truncate">{video.name}</span>
+              <span className="text-xs text-zinc-600">{(video.size / 1_000_000).toFixed(1)} MB</span>
+              <button type="button" onClick={() => setVideo(null)} className="text-zinc-500 hover:text-red-400 cursor-pointer"><X size={16} /></button>
+            </div>
+          ) : (
+            <label className="flex items-center gap-3 px-4 py-3 bg-zinc-800 rounded-xl border border-dashed border-white/15 cursor-pointer hover:border-white/25 transition-colors">
+              <Film size={16} className="text-zinc-500" />
+              <span className="text-sm text-zinc-500">Selecionar vídeo (MP4, 9:16 recomendado)</span>
+              <input type="file" accept="video/mp4,video/*" className="hidden" onChange={(e) => setVideo(e.target.files?.[0] ?? null)} />
+            </label>
+          )}
+          <p className="text-xs text-zinc-600 mt-2">O Reel processa alguns minutos ao publicar. Formato vertical 9:16, até ~90s.</p>
+        </div>
+        )}
 
         {/* Legenda */}
         <div className="bg-zinc-900 border border-white/8 rounded-2xl p-5">

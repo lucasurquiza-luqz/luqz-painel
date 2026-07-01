@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   const auth = await requireApiKeyOrUser(req, ["ADMIN", "OPERADOR"])
   if (!auth.ok) return auth.response
 
-  const { clientId, caption, scheduledAt, images, imageUrls, ref, pillar } = await req.json()
+  const { clientId, caption, scheduledAt, images, imageUrls, videoUrl, ref, pillar } = await req.json()
   if (!clientId || !caption || !scheduledAt) {
     return NextResponse.json({ error: "Campos obrigatórios: clientId, caption, scheduledAt." }, { status: 400 })
   }
@@ -59,19 +59,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "scheduledAt inválido (use ISO 8601)." }, { status: 400 })
   }
 
-  // Resolve as imagens.
+  // Reel (vídeo) OU imagens.
   let urls: string[] = []
-  if (Array.isArray(images) && images.length > 0) {
-    const folder = randomUUID()
-    for (let i = 0; i < images.length; i++) {
-      const key = `clients/${clientId}/instagram/${folder}/slide-${String(i + 1).padStart(2, "0")}.jpg`
-      urls.push(await uploadBase64ToMinIO(key, String(images[i]), "image/jpeg"))
+  if (!videoUrl) {
+    if (Array.isArray(images) && images.length > 0) {
+      const folder = randomUUID()
+      for (let i = 0; i < images.length; i++) {
+        const key = `clients/${clientId}/instagram/${folder}/slide-${String(i + 1).padStart(2, "0")}.jpg`
+        urls.push(await uploadBase64ToMinIO(key, String(images[i]), "image/jpeg"))
+      }
+    } else if (Array.isArray(imageUrls) && imageUrls.length > 0) {
+      urls = imageUrls.map(String)
     }
-  } else if (Array.isArray(imageUrls) && imageUrls.length > 0) {
-    urls = imageUrls.map(String)
-  }
-  if (urls.length < 1 || urls.length > 10) {
-    return NextResponse.json({ error: "Envie 1 a 10 imagens (images base64 ou imageUrls)." }, { status: 400 })
+    if (urls.length < 1 || urls.length > 10) {
+      return NextResponse.json({ error: "Envie 1 a 10 imagens, ou um vídeo (videoUrl) para Reel." }, { status: 400 })
+    }
   }
 
   const post = await prisma.instagramScheduledPost.create({
@@ -80,6 +82,7 @@ export async function POST(req: NextRequest) {
       accountId: account.id,
       caption: String(caption),
       imageUrls: urls,
+      videoUrl: videoUrl ? String(videoUrl) : null,
       scheduledAt: scheduled,
       ref: ref ? String(ref) : null,
       pillar: pillar ? String(pillar) : null,

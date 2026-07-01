@@ -19,6 +19,7 @@ async function publishPost(post: PostWithAccount): Promise<InstagramScheduledPos
       token,
       imageUrls: post.imageUrls,
       caption: post.caption,
+      videoUrl: post.videoUrl,
     })
     return await prisma.instagramScheduledPost.update({
       where: { id: post.id },

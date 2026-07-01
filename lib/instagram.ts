@@ -37,19 +37,31 @@ export async function publishToInstagram(opts: {
   token: string
   imageUrls: string[]
   caption: string
+  videoUrl?: string | null
 }): Promise<PublishResult> {
-  const { igUserId, token, imageUrls, caption } = opts
+  const { igUserId, token, imageUrls, caption, videoUrl } = opts
 
-  if (imageUrls.length < 1 || imageUrls.length > 10) {
-    throw new Error(`Instagram aceita 1-10 imagens (recebi ${imageUrls.length})`)
-  }
   if (caption.length > 2200) {
     throw new Error(`Legenda passa de 2200 chars (${caption.length})`)
+  }
+  if (!videoUrl && (imageUrls.length < 1 || imageUrls.length > 10)) {
+    throw new Error(`Instagram aceita 1-10 imagens (recebi ${imageUrls.length})`)
   }
 
   let creationId: string
 
-  if (imageUrls.length === 1) {
+  if (videoUrl) {
+    // Reel (video). O container processa de forma assincrona e pode levar minutos.
+    const { id } = await apiPost(`${igUserId}/media`, {
+      media_type: "REELS",
+      video_url: videoUrl,
+      caption,
+      share_to_feed: "true",
+      access_token: token,
+    })
+    await pollUntilFinished(id, token, 300_000) // ate 5 min
+    creationId = id
+  } else if (imageUrls.length === 1) {
     // Imagem única (frase)
     const { id } = await apiPost(`${igUserId}/media`, {
       image_url: imageUrls[0],

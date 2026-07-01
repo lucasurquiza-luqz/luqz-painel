@@ -1180,7 +1180,8 @@ model InstagramScheduledPost {
   clientId    String
   accountId   String
   caption     String
-  imageUrls   String[]            @default([])
+  imageUrls   String[]            @default([]) // 1 = imagem unica, 2-10 = carrossel
+  videoUrl    String? // se preenchido, publica como REELS (video)
   scheduledAt DateTime
   status      InstagramPostStatus @default(PENDING)
   igMediaId   String? // ID do post publicado
