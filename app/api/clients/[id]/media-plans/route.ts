@@ -10,6 +10,16 @@ const PLATFORMS = new Set(["META", "GOOGLE", "TOTAL"])
 
 const num = (value: unknown) => (typeof value === "number" && isFinite(value) ? value : null)
 const int = (value: unknown) => (typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null)
+const str = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null)
+// Funil = lista de etapas [{ label, rate }]; a 1ª (topo) ignora rate.
+export function sanitizeFunnel(value: unknown): { label: string; rate: number | null }[] | null {
+  if (!Array.isArray(value)) return null
+  const stages = value
+    .filter((s): s is Record<string, unknown> => !!s && typeof s === "object")
+    .map((s) => ({ label: typeof s.label === "string" ? s.label.trim() : "", rate: typeof s.rate === "number" && isFinite(s.rate) ? s.rate : null }))
+    .filter((s) => s.label)
+  return stages.length ? stages : null
+}
 
 export async function GET(req: NextRequest, { params }: Params) {
   const { id } = await params
@@ -45,9 +55,13 @@ export async function POST(req: NextRequest, { params }: Params) {
         budget: num(body.budget),
         targetLeads: int(body.targetLeads),
         targetCpa: num(body.targetCpa),
+        targetCpl: num(body.targetCpl),
         targetRoas: num(body.targetRoas),
         targetTicket: num(body.targetTicket),
-        notes: typeof body.notes === "string" && body.notes.trim() ? body.notes.trim() : null,
+        objective: str(body.objective),
+        funnel: (sanitizeFunnel(body.funnel) ?? undefined) as Prisma.InputJsonValue | undefined,
+        narrative: str(body.narrative),
+        notes: str(body.notes),
         createdById: auth.user.userId,
       },
       include: { createdBy: { select: { name: true } } },

@@ -159,8 +159,12 @@ model MediaPlan {
   budget       Decimal?   @db.Decimal(12, 2)
   targetLeads  Int?
   targetCpa    Decimal?   @db.Decimal(12, 2)
+  targetCpl    Decimal?   @db.Decimal(12, 2) // custo por lead alvo (topo do funil projetado)
   targetRoas   Decimal?   @db.Decimal(6, 2)
   targetTicket Decimal?   @db.Decimal(12, 2)
+  objective    String? // objetivo do canal (ex.: "Venda", "Seguidores/base")
+  funnel       Json? // etapas do funil projetado: [{ label, rate }] a partir de Leads
+  narrative    String? // parte rica: diagnóstico, cenários, controle semanal (markdown)
   notes        String?
   createdById  String
   createdAt    DateTime   @default(now())

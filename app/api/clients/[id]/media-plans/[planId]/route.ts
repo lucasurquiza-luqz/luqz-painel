@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { requireApiUser } from "@/lib/api-auth"
 import { serializePlan } from "@/lib/media-plan"
+import { sanitizeFunnel } from "@/app/api/clients/[id]/media-plans/route"
 
 type Params = { params: Promise<{ id: string; planId: string }> }
 
 const num = (value: unknown) => (typeof value === "number" && isFinite(value) ? value : null)
 const int = (value: unknown) => (typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null)
+const str = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null)
 
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { id, planId } = await params
@@ -21,9 +24,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if ("budget" in body) data.budget = num(body.budget)
   if ("targetLeads" in body) data.targetLeads = int(body.targetLeads)
   if ("targetCpa" in body) data.targetCpa = num(body.targetCpa)
+  if ("targetCpl" in body) data.targetCpl = num(body.targetCpl)
   if ("targetRoas" in body) data.targetRoas = num(body.targetRoas)
   if ("targetTicket" in body) data.targetTicket = num(body.targetTicket)
-  if ("notes" in body) data.notes = typeof body.notes === "string" && body.notes.trim() ? body.notes.trim() : null
+  if ("objective" in body) data.objective = str(body.objective)
+  if ("funnel" in body) data.funnel = (sanitizeFunnel(body.funnel) ?? Prisma.JsonNull) as Prisma.InputJsonValue
+  if ("narrative" in body) data.narrative = str(body.narrative)
+  if ("notes" in body) data.notes = str(body.notes)
 
   const plan = await prisma.mediaPlan.update({
     where: { id: planId },

@@ -6,6 +6,7 @@ import Link from "next/link"
 import { ArrowLeft, Loader2, Plug, Plus, RefreshCw, Target, Trash2, X } from "lucide-react"
 import { Area, Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Button, Input, PageHeader, Panel } from "@/components/ui/primitives"
+import { projectFunnel, type FunnelStage } from "@/lib/media-plan"
 
 type Plan = {
   id: string
@@ -14,8 +15,12 @@ type Plan = {
   budget: number | null
   targetLeads: number | null
   targetCpa: number | null
+  targetCpl: number | null
   targetRoas: number | null
   targetTicket: number | null
+  objective: string | null
+  funnel: FunnelStage[] | null
+  narrative: string | null
   notes: string | null
   createdBy: { name: string }
 }
@@ -133,19 +138,27 @@ export default function MetasPage() {
           {plans.map((plan) => (
             <Panel key={plan.id} className="p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-semibold text-white">{fmtMonth(plan.month)}</span>
                   <span className="rounded-md bg-white/5 px-2 py-0.5 text-[11px] text-zinc-400">{PLATFORM_LABEL[plan.platform]}</span>
+                  {plan.objective && <span className="rounded-md bg-[#FF8F50]/15 px-2 py-0.5 text-[11px] text-[#FFB185]">{plan.objective}</span>}
                 </div>
                 <button onClick={() => remove(plan)} className="text-zinc-600 hover:text-red-400" aria-label="Remover"><Trash2 size={15} /></button>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
                 <Metric label="Verba" value={brl(plan.budget)} />
+                <Metric label="CPL alvo" value={brl(plan.targetCpl)} />
                 <Metric label="Leads" value={plan.targetLeads != null ? String(plan.targetLeads) : "—"} />
-                <Metric label="CPA alvo" value={brl(plan.targetCpa)} />
                 <Metric label="ROAS alvo" value={plan.targetRoas != null ? `${plan.targetRoas}x` : "—"} />
                 <Metric label="Ticket" value={brl(plan.targetTicket)} />
               </div>
+              {plan.funnel && plan.funnel.length > 0 && <FunnelProjection plan={plan} />}
+              {plan.narrative && (
+                <div className="mt-3 rounded-lg border border-white/8 bg-black/20 p-3">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-600">Estratégia / cenários</p>
+                  <p className="whitespace-pre-wrap text-xs leading-5 text-zinc-400">{plan.narrative}</p>
+                </div>
+              )}
               {plan.notes && <p className="mt-3 text-xs leading-5 text-zinc-500">{plan.notes}</p>}
             </Panel>
           ))}
@@ -155,40 +168,63 @@ export default function MetasPage() {
   )
 }
 
+// Funil projetado do plano (calculado a partir de verba/CPL/taxas/ticket).
+function FunnelProjection({ plan }: { plan: Plan }) {
+  const proj = projectFunnel({ budget: plan.budget, cpl: plan.targetCpl, targetLeads: plan.targetLeads, stages: plan.funnel ?? [], ticket: plan.targetTicket })
+  if (!proj.rows.length) return null
+  return (
+    <div className="mt-3 rounded-lg border border-white/8 bg-black/20 p-3">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-600">🔻 Funil projetado</p>
+      <div className="space-y-1">
+        {proj.rows.map((r, i) => (
+          <div key={i} className="flex items-center gap-2 text-[12px]">
+            <span className="w-36 shrink-0 text-zinc-400">{r.label}</span>
+            <span className="font-semibold text-zinc-100">{Math.round(r.value).toLocaleString("pt-BR")}</span>
+            {r.rate != null && <span className="text-[10px] text-zinc-600">({Math.round(r.rate * 100)}%)</span>}
+            {r.cost != null && <span className="ml-auto text-[10px] text-zinc-500">{brl(r.cost)}/un</span>}
+          </div>
+        ))}
+      </div>
+      {(proj.revenue != null || proj.roas != null) && (
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-white/8 pt-2 text-[11px]">
+          {proj.revenue != null && <span className="text-zinc-400">Receita proj.: <b className="text-emerald-300">{brl(proj.revenue)}</b></span>}
+          {proj.roas != null && <span className="text-zinc-400">ROAS proj.: <b className="text-emerald-300">{proj.roas.toFixed(2)}x</b></span>}
+          {proj.cac != null && <span className="text-zinc-400">CAC: <b className="text-zinc-200">{brl(proj.cac)}</b></span>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+type StageForm = { label: string; ratePct: string }
 function AddPlan({ clientId, onAdded, onCancel, onError }: { clientId: string; onAdded: () => void; onCancel: () => void; onError: (m: string) => void }) {
   const [form, setForm] = useState({
-    month: currentMonth(),
-    platform: "TOTAL",
-    budget: "",
-    targetLeads: "",
-    targetCpa: "",
-    targetRoas: "",
-    targetTicket: "",
-    notes: "",
+    month: currentMonth(), platform: "TOTAL", objective: "",
+    budget: "", targetCpl: "", targetLeads: "", targetCpa: "", targetRoas: "", targetTicket: "", narrative: "", notes: "",
   })
+  const [stages, setStages] = useState<StageForm[]>([{ label: "Leads", ratePct: "" }, { label: "Qualificados", ratePct: "40" }, { label: "Vendas", ratePct: "50" }])
   const [busy, setBusy] = useState(false)
 
-  const dec = (value: string) => {
-    const cleaned = value.trim().replace(/\./g, "").replace(",", ".")
-    return cleaned ? Number(cleaned) : null
-  }
+  const dec = (value: string) => { const c = value.trim().replace(/\./g, "").replace(",", "."); return c ? Number(c) : null }
+  const setStage = (i: number, patch: Partial<StageForm>) => setStages((ss) => ss.map((s, j) => (j === i ? { ...s, ...patch } : s)))
+  const addStage = () => setStages((ss) => [...ss, { label: "", ratePct: "30" }])
+  const delStage = (i: number) => setStages((ss) => ss.filter((_, j) => j !== i))
+
+  // Etapas → funil ({label, rate}); a 1ª (topo) não tem taxa.
+  const funnelPayload: FunnelStage[] = stages.filter((s) => s.label.trim()).map((s, i) => ({ label: s.label.trim(), rate: i === 0 ? null : (s.ratePct.trim() ? Number(s.ratePct.replace(",", ".")) / 100 : 0) }))
+  const preview = projectFunnel({ budget: dec(form.budget), cpl: dec(form.targetCpl), targetLeads: form.targetLeads.trim() ? Number(form.targetLeads.trim()) : null, stages: funnelPayload, ticket: dec(form.targetTicket) })
 
   async function submit() {
     if (!form.month) { onError("Informe o mês."); return }
-    setBusy(true)
-    onError("")
+    setBusy(true); onError("")
     const res = await fetch(`/api/clients/${clientId}/media-plans`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        month: form.month,
-        platform: form.platform,
-        budget: dec(form.budget),
+        month: form.month, platform: form.platform, objective: form.objective,
+        budget: dec(form.budget), targetCpl: dec(form.targetCpl),
         targetLeads: form.targetLeads.trim() ? Number(form.targetLeads.trim()) : null,
-        targetCpa: dec(form.targetCpa),
-        targetRoas: dec(form.targetRoas),
-        targetTicket: dec(form.targetTicket),
-        notes: form.notes,
+        targetCpa: dec(form.targetCpa), targetRoas: dec(form.targetRoas), targetTicket: dec(form.targetTicket),
+        funnel: funnelPayload, narrative: form.narrative, notes: form.notes,
       }),
     })
     setBusy(false)
@@ -199,10 +235,10 @@ function AddPlan({ clientId, onAdded, onCancel, onError }: { clientId: string; o
   return (
     <Panel className="space-y-4 border-[#FF8F50]/20 p-5">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-white">Nova meta</h2>
+        <h2 className="text-sm font-semibold text-white">Novo plano de mídia</h2>
         <button onClick={onCancel} className="text-zinc-600 hover:text-white"><X size={18} /></button>
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
         <FormField label="Mês"><Input type="month" value={form.month} onChange={(e) => setForm({ ...form, month: e.target.value })} className="[color-scheme:dark]" /></FormField>
         <FormField label="Plataforma">
           <select value={form.platform} onChange={(e) => setForm({ ...form, platform: e.target.value })} className="dash-input min-h-11 w-full rounded-lg px-3.5 py-2.5 text-sm">
@@ -211,20 +247,54 @@ function AddPlan({ clientId, onAdded, onCancel, onError }: { clientId: string; o
             <option value="GOOGLE">Google Ads</option>
           </select>
         </FormField>
+        <FormField label="Objetivo do canal"><Input value={form.objective} onChange={(e) => setForm({ ...form, objective: e.target.value })} placeholder="Venda / Seguidores…" /></FormField>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
         <FormField label="Verba (R$)"><Input value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })} placeholder="8000,00" inputMode="decimal" /></FormField>
-        <FormField label="Meta de leads"><Input value={form.targetLeads} onChange={(e) => setForm({ ...form, targetLeads: e.target.value })} placeholder="200" inputMode="numeric" /></FormField>
+        <FormField label="CPL alvo (R$)"><Input value={form.targetCpl} onChange={(e) => setForm({ ...form, targetCpl: e.target.value })} placeholder="12,00" inputMode="decimal" /></FormField>
+        <FormField label="Ticket médio (R$)"><Input value={form.targetTicket} onChange={(e) => setForm({ ...form, targetTicket: e.target.value })} placeholder="750,00" inputMode="decimal" /></FormField>
+        <FormField label="Meta de leads (se sem CPL)"><Input value={form.targetLeads} onChange={(e) => setForm({ ...form, targetLeads: e.target.value })} placeholder="200" inputMode="numeric" /></FormField>
         <FormField label="CPA alvo (R$)"><Input value={form.targetCpa} onChange={(e) => setForm({ ...form, targetCpa: e.target.value })} placeholder="40,00" inputMode="decimal" /></FormField>
         <FormField label="ROAS alvo"><Input value={form.targetRoas} onChange={(e) => setForm({ ...form, targetRoas: e.target.value })} placeholder="3,5" inputMode="decimal" /></FormField>
-        <FormField label="Ticket médio (R$)"><Input value={form.targetTicket} onChange={(e) => setForm({ ...form, targetTicket: e.target.value })} placeholder="1500,00" inputMode="decimal" /></FormField>
       </div>
+
+      {/* Construtor de funil */}
+      <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-xs font-semibold text-zinc-300">🔻 Funil projetado</p>
+          <button onClick={addStage} className="text-[11px] text-[#FFB185] hover:underline">+ etapa</button>
+        </div>
+        <div className="space-y-2">
+          {stages.map((s, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input value={s.label} onChange={(e) => setStage(i, { label: e.target.value })} placeholder={i === 0 ? "Leads (topo)" : "Etapa"} className="flex-1" />
+              {i === 0 ? (
+                <span className="w-28 shrink-0 text-center text-[10px] text-zinc-600">topo (por CPL/leads)</span>
+              ) : (
+                <div className="flex w-28 shrink-0 items-center gap-1"><Input value={s.ratePct} onChange={(e) => setStage(i, { ratePct: e.target.value })} placeholder="40" inputMode="decimal" className="text-center" /><span className="text-xs text-zinc-500">%</span></div>
+              )}
+              {stages.length > 1 && <button onClick={() => delStage(i)} className="shrink-0 text-zinc-600 hover:text-red-300"><Trash2 size={14} /></button>}
+            </div>
+          ))}
+        </div>
+        {preview.rows.length > 0 && (form.budget || form.targetLeads) && (
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-white/8 pt-2 text-[11px] text-zinc-500">
+            <span>Prévia:</span>
+            {preview.rows.map((r, i) => <span key={i} className="text-zinc-400">{r.label} <b className="text-zinc-200">{Math.round(r.value).toLocaleString("pt-BR")}</b></span>)}
+            {preview.roas != null && <span className="text-emerald-300">ROAS {preview.roas.toFixed(2)}x</span>}
+          </div>
+        )}
+      </div>
+
+      <FormField label="Estratégia / cenários / controle semanal (opcional)">
+        <textarea rows={4} value={form.narrative} onChange={(e) => setForm({ ...form, narrative: e.target.value })} className="dash-input w-full resize-none rounded-lg px-3.5 py-3 text-sm" placeholder="Diagnóstico, cenários (conservador/realista), distribuição por campanha, metas semanais…" />
+      </FormField>
       <FormField label="Observações">
         <textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="dash-input w-full resize-none rounded-lg px-3.5 py-3 text-sm" placeholder="Contexto do plano do mês." />
       </FormField>
       <div className="flex justify-end gap-2">
         <Button variant="secondary" onClick={onCancel}>Cancelar</Button>
-        <Button onClick={submit} disabled={busy}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Salvar meta</Button>
+        <Button onClick={submit} disabled={busy}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Salvar plano</Button>
       </div>
     </Panel>
   )
