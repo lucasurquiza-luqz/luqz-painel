@@ -15,6 +15,7 @@ import {
   FolderKanban,
   Gauge,
   KeyRound,
+  LayoutTemplate,
   ListTodo,
   LayoutDashboard,
   LogOut,
@@ -181,6 +182,12 @@ export function Sidebar({ role, name }: SidebarProps) {
                 label="Clientes"
                 icon={Building2}
                 active={pathname.startsWith("/clientes")}
+              />
+              <NavItem
+                href="/templates"
+                label="Modelos"
+                icon={LayoutTemplate}
+                active={pathname.startsWith("/templates")}
               />
             </NavSection>
 

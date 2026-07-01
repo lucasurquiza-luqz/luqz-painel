@@ -20,6 +20,12 @@ export async function POST(req: NextRequest) {
   const b = await req.json().catch(() => ({}))
   const name = typeof b.name === "string" ? b.name.trim() : ""
   if (!name) return NextResponse.json({ error: "Informe o nome do template." }, { status: 400 })
+
+  // Modo "em branco": cria template vazio pra montar no editor.
+  if (b.blank || !b.fromProjectId) {
+    const template = await prisma.projectTemplate.create({ data: { name, tasks: [] as unknown as Prisma.InputJsonValue, createdById: auth.user.userId } })
+    return NextResponse.json({ template: { id: template.id, name: template.name, taskCount: 0 } })
+  }
   if (typeof b.fromProjectId !== "string") return NextResponse.json({ error: "Projeto de origem ausente." }, { status: 400 })
 
   const project = await prisma.project.findUnique({ where: { id: b.fromProjectId } })
