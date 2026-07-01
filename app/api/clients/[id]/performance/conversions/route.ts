@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { canAccessClient, denyClientAccess, requireApiUser } from "@/lib/api-auth"
 import { decryptSecret } from "@/lib/crypto-secrets"
-import { discoverMetaActions, metaResultKeys } from "@/lib/ads/meta"
+import { discoverMetaActions, metaConversionMap } from "@/lib/ads/meta"
 import { fetchGoogleConversionActions } from "@/lib/ads/google"
 import { effectiveObjectives, monthRange, type AdConfig, type AdObjective, type DateRange } from "@/lib/ads/types"
 
@@ -34,8 +34,24 @@ export async function GET(req: NextRequest, { params }: Params) {
       trackRevenue: metaAcc.trackRevenue,
     }
     try {
-      const available = await discoverMetaActions(metaAcc.accountId, decryptSecret(metaAcc.tokenEnc))
-      result.meta = { accountId: metaAcc.accountId, counting: metaResultKeys(config), custom: metaAcc.resultActions.length > 0, objectives: config.objectives, available }
+      const raw = await discoverMetaActions(metaAcc.accountId, decryptSecret(metaAcc.tokenEnc))
+      const map = metaConversionMap(config)
+      const counting = new Set(map.counting)
+      const secondary = new Set(map.secondary)
+      // "Teste" por evento real: conta? como quê (primário/secundário)?
+      const available = raw.map((a) => ({
+        ...a,
+        role: !counting.has(a.actionType) ? "none" : secondary.has(a.actionType) ? "secondary" : "primary",
+      }))
+      result.meta = {
+        accountId: metaAcc.accountId,
+        counting: map.counting,
+        secondary: map.secondary,
+        byObjective: map.byObjective,
+        custom: metaAcc.resultActions.length > 0,
+        objectives: config.objectives,
+        available,
+      }
     } catch (e) {
       result.meta = { error: e instanceof Error ? e.message : "Falha ao ler eventos Meta." }
     }

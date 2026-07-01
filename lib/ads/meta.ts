@@ -23,6 +23,21 @@ function secondaryKeys(config: AdConfig): Set<string> {
 // Quais eventos estão sendo contados como "resultado" (para revisão de conversões).
 export const metaResultKeys = (config: AdConfig): string[] => [...resultKeys(config)]
 
+// Mapa de conversões: o que conta, o que é secundário (seguidores) e a relação
+// evento→objetivo. Fonte única de verdade pra "Revisão de conversões".
+export function metaConversionMap(config: AdConfig): {
+  counting: string[]
+  secondary: string[]
+  byObjective: { objective: AdObjective; secondary: boolean; events: string[] }[] | null
+} {
+  const counting = [...resultKeys(config)]
+  const secondary = [...secondaryKeys(config)]
+  const byObjective = config.resultActions.length
+    ? null
+    : config.objectives.map((obj) => ({ objective: obj, secondary: SECONDARY_OBJECTIVES.has(obj), events: [...META_DEFAULT_ACTIONS[obj]] }))
+  return { counting, secondary, byObjective }
+}
+
 // Lê insights de uma conta Meta no mês (com série DIÁRIA), token DO CLIENTE, conforme a config.
 export async function fetchMetaInsights(accountId: string, token: string, { since, until }: DateRange, config: AdConfig): Promise<AdMetrics> {
   const acct = accountId.startsWith("act_") ? accountId : `act_${accountId}`

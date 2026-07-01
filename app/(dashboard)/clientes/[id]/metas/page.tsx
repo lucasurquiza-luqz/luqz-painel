@@ -1423,8 +1423,9 @@ function MetaDeepPanel({ clientId, since, until }: { clientId: string; since: st
 }
 
 // === Revisão de conversões: o que está sendo contado vs o que existe na conta ===
+type ConvEvent = { actionType: string; count: number; role?: string }
 type ConvReview = {
-  meta?: { accountId?: string; counting?: string[]; custom?: boolean; objectives?: string[]; available?: { actionType: string; count: number }[]; error?: string } | null
+  meta?: { accountId?: string; counting?: string[]; secondary?: string[]; byObjective?: { objective: string; secondary: boolean; events: string[] }[] | null; custom?: boolean; objectives?: string[]; available?: ConvEvent[]; error?: string } | null
   google?: { actions?: { name: string; conversions: number }[]; error?: string } | null
 }
 function ConversionsReview({ clientId }: { clientId: string }) {
@@ -1477,17 +1478,42 @@ function ConversionsReview({ clientId }: { clientId: string }) {
               <p className="mb-2 text-xs font-semibold text-zinc-300">Meta — marque os eventos que contam como resultado</p>
               {data.meta.error ? <p className="text-xs text-red-300">{data.meta.error}</p> : (
                 <>
-                  <p className="text-[11px] text-zinc-500">{data.meta.custom ? "Evento custom definido." : `Hoje usando o padrão dos funis: ${(data.meta.objectives ?? []).join(", ") || "—"}. Marque abaixo pra fixar os corretos.`}</p>
+                  {/* Como estamos contando (mapa por objetivo) */}
+                  {data.meta.custom ? (
+                    <p className="text-[11px] text-zinc-500">Eventos <b className="text-[#FFB185]">fixados na mão</b> (todos contam como resultado primário): {(data.meta.counting ?? []).join(", ") || "—"}.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      <p className="text-[11px] text-zinc-500">Contando pelo padrão dos objetivos da conta:</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(data.meta.byObjective ?? []).map((o) => (
+                          <span key={o.objective} className={`rounded px-2 py-1 text-[10px] ${o.secondary ? "bg-violet-500/15 text-violet-300" : "bg-emerald-500/15 text-emerald-300"}`} title={o.events.join(", ")}>
+                            {OBJ_LABEL[o.objective] ?? o.objective}{o.secondary ? " · secundário" : ""} ({o.events.length} evento{o.events.length !== 1 ? "s" : ""})
+                          </span>
+                        ))}
+                        {!(data.meta.byObjective ?? []).length && <span className="text-[10px] text-zinc-600">Nenhum objetivo configurado.</span>}
+                      </div>
+                      <p className="text-[10px] text-zinc-600"><b className="text-emerald-300/80">Primário</b> soma em Resultados/CPA. <b className="text-violet-300/80">Secundário</b> (seguidores) conta à parte, fora do total. Marque abaixo pra fixar eventos na mão.</p>
+                    </div>
+                  )}
+                  {/* Teste: cada evento REAL da conta e o veredito */}
                   <div className="mt-2 max-h-60 space-y-0.5 overflow-y-auto">
-                    {(data.meta.available ?? []).map((a) => (
-                      <label key={a.actionType} className={`flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 text-[11px] hover:bg-white/5 ${sel.has(a.actionType) ? "text-[#FFB185]" : "text-zinc-400"}`}>
-                        <span className="flex min-w-0 items-center gap-2">
-                          <input type="checkbox" checked={sel.has(a.actionType)} onChange={() => toggleEvent(a.actionType)} className="accent-[#FF8F50]" />
-                          <span className="truncate">{a.actionType}</span>
-                        </span>
-                        <span className="shrink-0 tabular-nums">{a.count.toLocaleString("pt-BR")}</span>
-                      </label>
-                    ))}
+                    {(data.meta.available ?? []).map((a) => {
+                      // Prévia ao vivo: com seleção manual, marcado = conta (primário); sem seleção, usa o papel do servidor.
+                      const role = sel.size > 0 ? (sel.has(a.actionType) ? "primary" : "none") : (a.role ?? "none")
+                      const badge = role === "primary" ? { t: "conta", c: "bg-emerald-500/15 text-emerald-300" } : role === "secondary" ? { t: "seguidor", c: "bg-violet-500/15 text-violet-300" } : { t: "não conta", c: "bg-white/5 text-zinc-600" }
+                      return (
+                        <label key={a.actionType} className={`flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 text-[11px] hover:bg-white/5 ${sel.has(a.actionType) ? "text-[#FFB185]" : "text-zinc-400"}`}>
+                          <span className="flex min-w-0 items-center gap-2">
+                            <input type="checkbox" checked={sel.has(a.actionType)} onChange={() => toggleEvent(a.actionType)} className="accent-[#FF8F50]" />
+                            <span className="truncate">{a.actionType}</span>
+                          </span>
+                          <span className="flex shrink-0 items-center gap-2">
+                            <span className={`rounded px-1.5 py-0.5 text-[9px] ${badge.c}`}>{badge.t}</span>
+                            <span className="tabular-nums text-zinc-500">{a.count.toLocaleString("pt-BR")}</span>
+                          </span>
+                        </label>
+                      )
+                    })}
                     {!data.meta.available?.length && <p className="text-[11px] text-zinc-600">Nenhum evento nos últimos 90 dias.</p>}
                   </div>
                   <div className="mt-3 flex items-center gap-3">
