@@ -197,8 +197,19 @@ export async function syncInstagramInsights(accountId: string): Promise<{ ok: bo
 
 type MediaItem = { id: string; permalink?: string; media_type?: string; timestamp?: string; like_count?: number; comments_count?: number; caption?: string; media_url?: string; thumbnail_url?: string }
 
-// Busca insights de UM post e grava/atualiza no cache.
-async function upsertMediaWithInsights(accountId: string, token: string, m: MediaItem): Promise<void> {
+// Mapa igMediaId -> pilar, a partir dos posts agendados (carrega o pilar pro cache de midia).
+async function loadPillarHints(accountId: string): Promise<Map<string, string>> {
+  const rows = await prisma.instagramScheduledPost.findMany({
+    where: { accountId, igMediaId: { not: null }, pillar: { not: null } },
+    select: { igMediaId: true, pillar: true },
+  })
+  const map = new Map<string, string>()
+  for (const r of rows) if (r.igMediaId && r.pillar) map.set(r.igMediaId, r.pillar)
+  return map
+}
+
+// Busca insights de UM post e grava/atualiza no cache. pillarHint = pilar herdado do agendamento.
+async function upsertMediaWithInsights(accountId: string, token: string, m: MediaItem, pillarHint?: string): Promise<void> {
   const ins = await safe(
     () => igGet(`${m.id}/insights`, { metric: "reach,views,saved,shares,total_interactions", access_token: token }) as Promise<{ data?: InsightRow[] }>,
     { data: [] }
@@ -222,7 +233,8 @@ async function upsertMediaWithInsights(accountId: string, token: string, m: Medi
   }
   await prisma.instagramMedia.upsert({
     where: { id: m.id },
-    create: { id: m.id, accountId, ...fields },
+    // No create herda o pilar do agendamento; no update preserva o pilar (marcacao manual).
+    create: { id: m.id, accountId, ...fields, pillar: pillarHint ?? null },
     update: { ...fields, fetchedAt: new Date() },
   })
 }
@@ -269,9 +281,10 @@ export async function syncInstagramMedia(accountId: string, maxPosts = 90): Prom
     after = nextAfter
   }
 
+  const pillarHints = await loadPillarHints(accountId)
   let count = 0
   for (const m of items.slice(0, maxPosts)) {
-    await upsertMediaWithInsights(accountId, creds.token, m)
+    await upsertMediaWithInsights(accountId, creds.token, m, pillarHints.get(m.id))
     count++
   }
   return { ok: true, count }
@@ -284,7 +297,8 @@ export async function backfillInstagramMediaPage(accountId: string, after: strin
   if (!creds) return { ok: false, count: 0, nextAfter: null, total: 0, error: "Conta/token inválido." }
 
   const { items, nextAfter } = await fetchMediaPage(creds.ig, creds.token, after || "", 40)
-  for (const m of items) await upsertMediaWithInsights(accountId, creds.token, m)
+  const pillarHints = await loadPillarHints(accountId)
+  for (const m of items) await upsertMediaWithInsights(accountId, creds.token, m, pillarHints.get(m.id))
   const total = await prisma.instagramMedia.count({ where: { accountId } })
   return { ok: true, count: items.length, nextAfter, total }
 }

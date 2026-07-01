@@ -4,6 +4,8 @@ import { BarChart3, Instagram, Heart, Bookmark, Share2, Radar, Eye, Play, Messag
 import { formatInTimeZone } from "date-fns-tz"
 import { ptBR } from "date-fns/locale"
 import type { Prisma } from "@prisma/client"
+import { INSTAGRAM_PILLARS } from "@/lib/instagram-pillars"
+import { PillarSelect } from "../_pillar-select"
 
 const TZ = "America/Sao_Paulo"
 
@@ -79,8 +81,57 @@ export default async function InstagramAnalisePage({
     avgSaved: Math.round(v.saved / v.count),
   })).sort((a, b) => b.avgReach - a.avgReach)
 
+  // Comparação por pilar (médias) — só posts marcados
+  const byPillar = new Map<string, { count: number; reach: number; interactions: number; saved: number }>()
+  for (const m of media) {
+    if (!m.pillar) continue
+    const acc = byPillar.get(m.pillar) ?? { count: 0, reach: 0, interactions: 0, saved: 0 }
+    acc.count++
+    acc.reach += m.reach ?? 0
+    acc.interactions += m.interactions ?? 0
+    acc.saved += m.saved ?? 0
+    byPillar.set(m.pillar, acc)
+  }
+  const pillarStats = INSTAGRAM_PILLARS.map((p) => {
+    const v = byPillar.get(p.key)
+    return { ...p, count: v?.count ?? 0, avgReach: v ? Math.round(v.reach / v.count) : 0, avgInteractions: v ? Math.round(v.interactions / v.count) : 0, avgSaved: v ? Math.round(v.saved / v.count) : 0 }
+  })
+  const taggedCount = media.filter((m) => m.pillar).length
+
   return (
     <div className="space-y-6">
+      {/* Desempenho por pilar */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-medium text-zinc-300">Desempenho por pilar</h2>
+          <span className="text-xs text-zinc-600">{taggedCount} de {media.length} posts marcados</span>
+        </div>
+        {taggedCount === 0 ? (
+          <p className="text-sm text-zinc-600 bg-zinc-900 border border-white/8 rounded-2xl p-5">Marque os posts com um pilar na lista abaixo para comparar qual rende mais.</p>
+        ) : (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {pillarStats.map((p) => (
+              <div key={p.key} className="bg-zinc-900 border border-white/8 rounded-2xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: p.color }} />
+                  <span className="text-xs text-zinc-300 font-medium leading-tight">{p.label}</span>
+                </div>
+                {p.count === 0 ? (
+                  <p className="text-xs text-zinc-600">Sem posts</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs"><span className="text-zinc-500">Alcance méd.</span><span className="text-zinc-200 font-medium">{nf(p.avgReach)}</span></div>
+                    <div className="flex justify-between text-xs"><span className="text-zinc-500">Interações</span><span className="text-zinc-200 font-medium">{nf(p.avgInteractions)}</span></div>
+                    <div className="flex justify-between text-xs"><span className="text-zinc-500">Salvam.</span><span className="text-zinc-200 font-medium">{nf(p.avgSaved)}</span></div>
+                    <p className="text-[10px] text-zinc-600 pt-1">{p.count} post{p.count !== 1 ? "s" : ""}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Comparação por formato */}
       <div>
         <h2 className="text-sm font-medium text-zinc-300 mb-3">Desempenho médio por formato</h2>
@@ -131,6 +182,7 @@ export default async function InstagramAnalisePage({
               <p className="text-[11px] text-zinc-600 mt-1">
                 {TYPE_LABEL[m.mediaType ?? ""] ?? m.mediaType} · {m.timestamp ? formatInTimeZone(m.timestamp, TZ, "dd/MM/yy", { locale: ptBR }) : "—"}
               </p>
+              <div className="mt-1.5"><PillarSelect mediaId={m.id} current={m.pillar} /></div>
             </div>
             <div className="hidden md:flex items-center gap-4 text-xs text-zinc-400 flex-shrink-0">
               <Metric icon={Radar} value={m.reach} />

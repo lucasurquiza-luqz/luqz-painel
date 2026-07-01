@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   const auth = await requireApiKeyOrUser(req, ["ADMIN", "OPERADOR"])
   if (!auth.ok) return auth.response
 
-  const { clientId, caption, scheduledAt, images, imageUrls, ref } = await req.json()
+  const { clientId, caption, scheduledAt, images, imageUrls, ref, pillar } = await req.json()
   if (!clientId || !caption || !scheduledAt) {
     return NextResponse.json({ error: "Campos obrigatórios: clientId, caption, scheduledAt." }, { status: 400 })
   }
@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
       imageUrls: urls,
       scheduledAt: scheduled,
       ref: ref ? String(ref) : null,
+      pillar: pillar ? String(pillar) : null,
       createdById: auth.user.userId,
     },
     include: { client: { select: { id: true, name: true } } },

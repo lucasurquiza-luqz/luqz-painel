@@ -1172,6 +1172,7 @@ model InstagramScheduledPost {
   error       String?
   attempts    Int                 @default(0)
   ref         String? // rastreio da origem (ex: "dia-04/carrossel-1")
+  pillar      String? // 1 dos 4 pilares (marcacao na hora de agendar)
   createdById String? // audit; "automation" quando vindo da API por chave de serviço
   createdAt   DateTime            @default(now())
   publishedAt DateTime?

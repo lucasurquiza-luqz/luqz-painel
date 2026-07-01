@@ -6,6 +6,7 @@ import { ArrowLeft, X, ImagePlus } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { dateSuggestions } from "@/lib/date-suggestions"
+import { INSTAGRAM_PILLARS } from "@/lib/instagram-pillars"
 
 // Converte um arquivo de imagem para JPEG base64 (a Graph API do Instagram exige JPEG).
 // Feito no navegador via canvas — mantém as dimensões originais (ex: 1080x1350).
@@ -30,6 +31,7 @@ export default function NovoInstagramPostPage() {
 
   const [slides, setSlides] = useState<Slide[]>([])
   const [caption, setCaption] = useState("")
+  const [pillar, setPillar] = useState("")
   // Se veio do calendário (?date=YYYY-MM-DD), pré-preenche o dia às 09:00.
   const [scheduledAt, setScheduledAt] = useState(dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? `${dateParam}T09:00` : "")
   const [loading, setLoading] = useState(false)
@@ -70,6 +72,7 @@ export default function NovoInstagramPostPage() {
           caption,
           scheduledAt: new Date(scheduledAt).toISOString(),
           images,
+          pillar: pillar || undefined,
         }),
       })
 
@@ -160,6 +163,26 @@ export default function NovoInstagramPostPage() {
             placeholder="Escreva a legenda, com hashtags no fim..."
             className="w-full bg-zinc-800 border border-white/8 rounded-xl px-4 py-3 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-orange-500/50 resize-none"
           />
+        </div>
+
+        {/* Pilar */}
+        <div className="bg-zinc-900 border border-white/8 rounded-2xl p-5">
+          <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wide mb-3">
+            Pilar de conteúdo (opcional)
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setPillar("")}
+              className={cn("rounded-lg border px-3 py-1.5 text-xs transition-colors", pillar === "" ? "border-white/25 bg-white/10 text-zinc-200" : "border-white/10 text-zinc-500 hover:text-zinc-300")}>
+              Nenhum
+            </button>
+            {INSTAGRAM_PILLARS.map((p) => (
+              <button key={p.key} type="button" onClick={() => setPillar(p.key)}
+                className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors", pillar === p.key ? "border-orange-500/40 bg-orange-500/15 text-orange-100" : "border-white/10 text-zinc-400 hover:text-zinc-200")}>
+                <span className="w-2 h-2 rounded-full" style={{ background: p.color }} />
+                {p.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Data/hora */}
