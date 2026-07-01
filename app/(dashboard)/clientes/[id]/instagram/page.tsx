@@ -60,11 +60,10 @@ export default async function InstagramVisaoGeralPage({
   const data = snapshot.data as unknown as SnapData
   const t: Totals = data.periods?.[String(days)] ?? { reach: 0, views: 0, profileViews: 0, websiteClicks: 0, accountsEngaged: 0, interactions: 0, saves: 0, shares: 0, newFollowers: 0 }
 
-  const topPosts = await prisma.instagramMedia.findMany({
-    where: { accountId: account.id },
-    orderBy: { reach: "desc" },
-    take: 6,
-  })
+  const [topByReach, topByViews] = await Promise.all([
+    prisma.instagramMedia.findMany({ where: { accountId: account.id }, orderBy: { reach: { sort: "desc", nulls: "last" } }, take: 6 }),
+    prisma.instagramMedia.findMany({ where: { accountId: account.id }, orderBy: { views: { sort: "desc", nulls: "last" } }, take: 6 }),
+  ])
 
   const stats = await prisma.instagramDailyStat.findMany({
     where: { accountId: account.id },
@@ -141,39 +140,14 @@ export default async function InstagramVisaoGeralPage({
         </div>
       </div>
 
-      {/* Top posts (por alcance) */}
-      <div className="bg-zinc-900 border border-white/8 rounded-2xl p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-medium text-zinc-300">Top posts por alcance</h2>
+      {/* Top posts */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium text-zinc-300">Top posts</h2>
           <Link href={`/clientes/${clientId}/instagram/analise`} className="text-xs text-orange-400 hover:underline">Ver análise completa →</Link>
         </div>
-        {topPosts.length === 0 ? (
-          <p className="text-sm text-zinc-600">Nenhum post sincronizado. Clique em Atualizar.</p>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            {topPosts.map((p) => (
-              <a key={p.id} href={p.permalink ?? "#"} target="_blank" rel="noreferrer" className="group">
-                <div className="aspect-[4/5] rounded-xl overflow-hidden border border-white/8 bg-zinc-800 relative">
-                  {p.thumb ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.thumb} alt="" className="w-full h-full object-cover group-hover:opacity-80 transition-opacity" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-zinc-600"><Instagram size={20} /></div>
-                  )}
-                  {p.mediaType === "VIDEO" && <Play size={14} className="absolute top-2 right-2 text-white drop-shadow" />}
-                  <span className="absolute bottom-1 left-1 text-[10px] bg-black/70 text-white rounded px-1.5 py-0.5 flex items-center gap-1">
-                    <Radar size={10} /> {nf(p.reach)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2.5 mt-1.5 text-[11px] text-zinc-500">
-                  <span className="flex items-center gap-0.5"><Heart size={10} /> {nf(p.likes)}</span>
-                  <span className="flex items-center gap-0.5"><Bookmark size={10} /> {nf(p.saved)}</span>
-                  <span className="flex items-center gap-0.5"><Share2 size={10} /> {nf(p.shares)}</span>
-                </div>
-              </a>
-            ))}
-          </div>
-        )}
+        <TopStrip title="Por alcance" metric="reach" posts={topByReach} />
+        <TopStrip title="Por visualização" metric="views" posts={topByViews} />
       </div>
 
       {/* Demografia + horarios */}
@@ -204,6 +178,44 @@ export default async function InstagramVisaoGeralPage({
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+type MediaRow = { id: string; permalink: string | null; mediaType: string | null; thumb: string | null; reach: number | null; views: number | null; likes: number | null; saved: number | null; shares: number | null }
+
+function TopStrip({ title, metric, posts }: { title: string; metric: "reach" | "views"; posts: MediaRow[] }) {
+  const MetricIcon = metric === "views" ? Eye : Radar
+  return (
+    <div className="bg-zinc-900 border border-white/8 rounded-2xl p-5">
+      <p className="text-xs text-zinc-500 mb-3">{title}</p>
+      {posts.length === 0 ? (
+        <p className="text-sm text-zinc-600">Nenhum post sincronizado. Clique em Atualizar.</p>
+      ) : (
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+          {posts.map((p) => (
+            <a key={p.id} href={p.permalink ?? "#"} target="_blank" rel="noreferrer" className="group">
+              <div className="aspect-[4/5] rounded-xl overflow-hidden border border-white/8 bg-zinc-800 relative">
+                {p.thumb ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={p.thumb} alt="" className="w-full h-full object-cover group-hover:opacity-80 transition-opacity" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-zinc-600"><Instagram size={18} /></div>
+                )}
+                {p.mediaType === "VIDEO" && <Play size={13} className="absolute top-2 right-2 text-white drop-shadow" />}
+                <span className="absolute bottom-1 left-1 text-[10px] bg-black/70 text-white rounded px-1.5 py-0.5 flex items-center gap-1">
+                  <MetricIcon size={10} /> {nf(metric === "views" ? p.views : p.reach)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 mt-1.5 text-[11px] text-zinc-500">
+                <span className="flex items-center gap-0.5"><Heart size={10} /> {nf(p.likes)}</span>
+                <span className="flex items-center gap-0.5"><Bookmark size={10} /> {nf(p.saved)}</span>
+                <span className="flex items-center gap-0.5"><Share2 size={10} /> {nf(p.shares)}</span>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

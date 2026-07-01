@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
   const auth = await requireApiKeyOrUser(req, ["ADMIN", "OPERADOR"])
   if (!auth.ok) return auth.response
 
-  const { clientId } = await req.json().catch(() => ({}))
+  const { clientId, full } = await req.json().catch(() => ({}))
   if (!clientId) return NextResponse.json({ error: "clientId obrigatório." }, { status: 400 })
 
   const account = await prisma.instagramAccount.findUnique({ where: { clientId: String(clientId) } })
@@ -16,7 +16,8 @@ export async function POST(req: NextRequest) {
 
   const result = await syncInstagramInsights(account.id)
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 502 })
-  const media = await syncInstagramMedia(account.id).catch(() => ({ ok: false, count: 0 }))
+  // full = backfill do historico (mais lento). Padrao puxa os ~90 mais recentes.
+  const media = await syncInstagramMedia(account.id, full ? 600 : 90).catch(() => ({ ok: false, count: 0 }))
 
   const snapshot = await prisma.instagramSnapshot.findUnique({ where: { accountId: account.id } })
   return NextResponse.json({ ok: true, snapshot, mediaCount: media.ok ? media.count : 0 })

@@ -195,8 +195,12 @@ export async function syncInstagramInsights(accountId: string): Promise<{ ok: bo
   return { ok: true }
 }
 
+type MediaItem = { id: string; permalink?: string; media_type?: string; timestamp?: string; like_count?: number; comments_count?: number; caption?: string; media_url?: string; thumbnail_url?: string }
+
 // Cache de metricas por post (alimenta Top posts + aba Analise).
-export async function syncInstagramMedia(accountId: string, limit = 30): Promise<{ ok: boolean; count?: number; error?: string }> {
+// maxPosts: quantos posts puxar (pagina). Cada post custa 1 chamada de insights,
+// entao o backfill completo (historico) so roda sob demanda.
+export async function syncInstagramMedia(accountId: string, maxPosts = 90): Promise<{ ok: boolean; count?: number; error?: string }> {
   const account = await prisma.instagramAccount.findUnique({ where: { id: accountId } })
   if (!account) return { ok: false, error: "Conta não encontrada." }
 
@@ -208,17 +212,28 @@ export async function syncInstagramMedia(accountId: string, limit = 30): Promise
   }
   const ig = account.igUserId
 
-  const list = await safe(
-    () => igGet(`${ig}/media`, {
+  // Pagina a lista de midias ate maxPosts.
+  const items: MediaItem[] = []
+  let after = ""
+  while (items.length < maxPosts) {
+    const params: Record<string, string> = {
       fields: "id,permalink,media_type,timestamp,like_count,comments_count,caption,media_url,thumbnail_url",
-      limit: String(limit),
+      limit: "50",
       access_token: token,
-    }) as Promise<{ data?: { id: string; permalink?: string; media_type?: string; timestamp?: string; like_count?: number; comments_count?: number; caption?: string; media_url?: string; thumbnail_url?: string }[] }>,
-    { data: [] }
-  )
+    }
+    if (after) params.after = after
+    const page = await safe(
+      () => igGet(`${ig}/media`, params) as Promise<{ data?: MediaItem[]; paging?: { cursors?: { after?: string }; next?: string } }>,
+      null as { data?: MediaItem[]; paging?: { cursors?: { after?: string }; next?: string } } | null
+    )
+    if (!page?.data?.length) break
+    items.push(...page.data)
+    after = page.paging?.cursors?.after ?? ""
+    if (!after || !page.paging?.next) break
+  }
 
   let count = 0
-  for (const m of list.data ?? []) {
+  for (const m of items.slice(0, maxPosts)) {
     // Insights por post (metricas comuns a imagem/carrossel/reel).
     const ins = await safe(
       () => igGet(`${m.id}/insights`, { metric: "reach,views,saved,shares,total_interactions", access_token: token }) as Promise<{ data?: InsightRow[] }>,
