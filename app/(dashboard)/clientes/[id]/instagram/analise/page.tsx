@@ -4,7 +4,6 @@ import { BarChart3, Instagram, Heart, Bookmark, Share2, Radar, Eye, Play, Messag
 import { formatInTimeZone } from "date-fns-tz"
 import { ptBR } from "date-fns/locale"
 import type { Prisma } from "@prisma/client"
-import { INSTAGRAM_PILLARS } from "@/lib/instagram-pillars"
 import { PillarSelect } from "../_pillar-select"
 
 const TZ = "America/Sao_Paulo"
@@ -43,11 +42,14 @@ export default async function InstagramAnalisePage({
     )
   }
 
-  const media = await prisma.instagramMedia.findMany({
-    where: { accountId: account.id },
-    orderBy: { [activeSort.field]: { sort: "desc", nulls: "last" } },
-    take: 60,
-  })
+  const [media, pillars] = await Promise.all([
+    prisma.instagramMedia.findMany({
+      where: { accountId: account.id },
+      orderBy: { [activeSort.field]: { sort: "desc", nulls: "last" } },
+      take: 60,
+    }),
+    prisma.instagramPillar.findMany({ where: { accountId: account.id }, orderBy: { order: "asc" }, select: { id: true, label: true, color: true } }),
+  ])
 
   if (media.length === 0) {
     return (
@@ -92,8 +94,8 @@ export default async function InstagramAnalisePage({
     acc.saved += m.saved ?? 0
     byPillar.set(m.pillar, acc)
   }
-  const pillarStats = INSTAGRAM_PILLARS.map((p) => {
-    const v = byPillar.get(p.key)
+  const pillarStats = pillars.map((p) => {
+    const v = byPillar.get(p.id)
     return { ...p, count: v?.count ?? 0, avgReach: v ? Math.round(v.reach / v.count) : 0, avgInteractions: v ? Math.round(v.interactions / v.count) : 0, avgSaved: v ? Math.round(v.saved / v.count) : 0 }
   })
   const taggedCount = media.filter((m) => m.pillar).length
@@ -106,12 +108,16 @@ export default async function InstagramAnalisePage({
           <h2 className="text-sm font-medium text-zinc-300">Desempenho por pilar</h2>
           <span className="text-xs text-zinc-600">{taggedCount} de {media.length} posts marcados</span>
         </div>
-        {taggedCount === 0 ? (
+        {pillars.length === 0 ? (
+          <p className="text-sm text-zinc-600 bg-zinc-900 border border-white/8 rounded-2xl p-5">
+            Nenhum pilar cadastrado. Defina os pilares deste cliente em <span className="text-zinc-400">Configurações → Pilares de conteúdo</span>.
+          </p>
+        ) : taggedCount === 0 ? (
           <p className="text-sm text-zinc-600 bg-zinc-900 border border-white/8 rounded-2xl p-5">Marque os posts com um pilar na lista abaixo para comparar qual rende mais.</p>
         ) : (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {pillarStats.map((p) => (
-              <div key={p.key} className="bg-zinc-900 border border-white/8 rounded-2xl p-4">
+              <div key={p.id} className="bg-zinc-900 border border-white/8 rounded-2xl p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: p.color }} />
                   <span className="text-xs text-zinc-300 font-medium leading-tight">{p.label}</span>
@@ -182,7 +188,7 @@ export default async function InstagramAnalisePage({
               <p className="text-[11px] text-zinc-600 mt-1">
                 {TYPE_LABEL[m.mediaType ?? ""] ?? m.mediaType} · {m.timestamp ? formatInTimeZone(m.timestamp, TZ, "dd/MM/yy", { locale: ptBR }) : "—"}
               </p>
-              <div className="mt-1.5"><PillarSelect mediaId={m.id} current={m.pillar} /></div>
+              <div className="mt-1.5"><PillarSelect mediaId={m.id} current={m.pillar} pillars={pillars} /></div>
             </div>
             <div className="hidden md:flex items-center gap-4 text-xs text-zinc-400 flex-shrink-0">
               <Metric icon={Radar} value={m.reach} />

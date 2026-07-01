@@ -1095,6 +1095,22 @@ model InstagramAccount {
   snapshot   InstagramSnapshot?
   dailyStats InstagramDailyStat[]
   media      InstagramMedia[]
+  pillars    InstagramPillar[]
+}
+
+// Pilares de conteudo POR CLIENTE (cada conta define os seus). O campo `pillar`
+// em InstagramMedia / InstagramScheduledPost guarda o id de um InstagramPillar.
+model InstagramPillar {
+  id        String   @id @default(cuid())
+  accountId String
+  label     String
+  color     String   @default("#f59e0b")
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  account InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, order])
 }
 
 // Cache de metricas por post publicado (aba Analise + Top posts).

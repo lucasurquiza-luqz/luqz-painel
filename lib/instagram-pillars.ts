@@ -1,20 +1,21 @@
-// Os 4 pilares de conteúdo (marca pessoal do Lucas / LUQZ).
-// Guardamos a `key` no banco; o `label` é só exibição.
-export const INSTAGRAM_PILLARS = [
-  { key: "inimigo", label: "Inimigo Cultural", color: "#ef4444" },
-  { key: "negocios", label: "Essência · Negócios", color: "#f59e0b" },
-  { key: "vida", label: "Essência · Vida/Fé/Esporte", color: "#22c55e" },
-  { key: "casamento", label: "Essência · Casamento/Dinheiro", color: "#8b5cf6" },
-] as const
+// Pilares de conteúdo agora são POR CLIENTE (tabela InstagramPillar).
+// Aqui ficam só: a sugestão padrão (para popular um cliente novo) e a paleta de cores.
 
-export type PillarKey = (typeof INSTAGRAM_PILLARS)[number]["key"]
+export const PILLAR_PALETTE = [
+  "#ef4444", // vermelho
+  "#f59e0b", // âmbar
+  "#22c55e", // verde
+  "#8b5cf6", // roxo
+  "#3b82f6", // azul
+  "#ec4899", // rosa
+  "#14b8a6", // teal
+  "#eab308", // amarelo
+]
 
-export const PILLAR_KEYS = INSTAGRAM_PILLARS.map((p) => p.key) as string[]
-
-export function pillarLabel(key: string | null | undefined): string | null {
-  return INSTAGRAM_PILLARS.find((p) => p.key === key)?.label ?? null
-}
-
-export function pillarColor(key: string | null | undefined): string {
-  return INSTAGRAM_PILLARS.find((p) => p.key === key)?.color ?? "#71717a"
-}
+// Sugestão inicial (ex.: os 4 do Lucas). Serve de ponto de partida ao cadastrar.
+export const DEFAULT_PILLARS: { label: string; color: string }[] = [
+  { label: "Inimigo Cultural", color: "#ef4444" },
+  { label: "Essência · Negócios", color: "#f59e0b" },
+  { label: "Essência · Vida/Fé/Esporte", color: "#22c55e" },
+  { label: "Essência · Casamento/Dinheiro", color: "#8b5cf6" },
+]
