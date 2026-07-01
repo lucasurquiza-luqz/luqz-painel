@@ -11,12 +11,16 @@ const PLATFORMS = new Set(["META", "GOOGLE", "TOTAL"])
 const num = (value: unknown) => (typeof value === "number" && isFinite(value) ? value : null)
 const int = (value: unknown) => (typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null)
 const str = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : null)
-// Funil = lista de etapas [{ label, rate }]; a 1ª (topo) ignora rate.
-export function sanitizeFunnel(value: unknown): { label: string; rate: number | null }[] | null {
+// Funil = lista de etapas [{ label, rate, ticket }]; a 1ª (topo) ignora rate.
+export function sanitizeFunnel(value: unknown): { label: string; rate: number | null; ticket: number | null }[] | null {
   if (!Array.isArray(value)) return null
   const stages = value
     .filter((s): s is Record<string, unknown> => !!s && typeof s === "object")
-    .map((s) => ({ label: typeof s.label === "string" ? s.label.trim() : "", rate: typeof s.rate === "number" && isFinite(s.rate) ? s.rate : null }))
+    .map((s) => ({
+      label: typeof s.label === "string" ? s.label.trim() : "",
+      rate: typeof s.rate === "number" && isFinite(s.rate) ? s.rate : null,
+      ticket: typeof s.ticket === "number" && isFinite(s.ticket) && s.ticket > 0 ? s.ticket : null,
+    }))
     .filter((s) => s.label)
   return stages.length ? stages : null
 }
