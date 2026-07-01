@@ -18,6 +18,7 @@ import {
   KeyRound,
   LayoutTemplate,
   ListTodo,
+  Map,
   LayoutDashboard,
   LogOut,
   MessageSquare,
@@ -70,6 +71,7 @@ const clientNav: NavGroup[] = [
     label: "Performance",
     items: [
       { href: "/metas", label: "Painel de performance", icon: Target, internalOnly: true },
+      { href: "/plano-de-midia", label: "Plano de mídia", icon: Map },
       { href: "/relatorio", label: "Relatório mensal", icon: FileBarChart },
       { href: "/relatorio-semanal", label: "Report semanal", icon: CalendarClock },
     ],
@@ -98,6 +100,7 @@ const clientNav: NavGroup[] = [
   },
   {
     label: "Configurações",
+    internalOnly: true,
     items: [
       { href: "/configuracoes", label: "Geral", icon: Settings },
       { href: "/credenciais", label: "Credenciais", icon: KeyRound, soon: true },

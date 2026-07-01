@@ -7,10 +7,10 @@
 // Mantém em sincronia com os itens NÃO-internos do clientNav em components/Sidebar.tsx:
 // tudo que o cliente vê no menu deve estar aqui, e nada além disso.
 const CLIENT_SUFFIXES = [
+  "/plano-de-midia",
   "/relatorio",
   "/relatorio-semanal",
   "/chat",
-  "/configuracoes",
 ] as const
 
 // Página inicial do CLIENTE (pós-login e destino de qualquer rota negada).
