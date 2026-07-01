@@ -197,88 +197,96 @@ export async function syncInstagramInsights(accountId: string): Promise<{ ok: bo
 
 type MediaItem = { id: string; permalink?: string; media_type?: string; timestamp?: string; like_count?: number; comments_count?: number; caption?: string; media_url?: string; thumbnail_url?: string }
 
-// Cache de metricas por post (alimenta Top posts + aba Analise).
-// maxPosts: quantos posts puxar (pagina). Cada post custa 1 chamada de insights,
-// entao o backfill completo (historico) so roda sob demanda.
-export async function syncInstagramMedia(accountId: string, maxPosts = 90): Promise<{ ok: boolean; count?: number; error?: string }> {
-  const account = await prisma.instagramAccount.findUnique({ where: { id: accountId } })
-  if (!account) return { ok: false, error: "Conta não encontrada." }
+// Busca insights de UM post e grava/atualiza no cache.
+async function upsertMediaWithInsights(accountId: string, token: string, m: MediaItem): Promise<void> {
+  const ins = await safe(
+    () => igGet(`${m.id}/insights`, { metric: "reach,views,saved,shares,total_interactions", access_token: token }) as Promise<{ data?: InsightRow[] }>,
+    { data: [] }
+  )
+  const byName = new Map<string, number>()
+  for (const row of ins.data ?? []) byName.set(row.name, row.values?.[0]?.value ?? row.total_value?.value ?? 0)
 
-  let token: string
-  try {
-    token = decryptSecret(account.tokenEnc)
-  } catch {
-    return { ok: false, error: "Token inválido." }
+  const fields = {
+    mediaType: m.media_type ?? null,
+    permalink: m.permalink ?? null,
+    thumb: m.thumbnail_url ?? m.media_url ?? null,
+    caption: (m.caption ?? "").slice(0, 300),
+    timestamp: m.timestamp ? new Date(m.timestamp) : null,
+    likes: m.like_count ?? 0,
+    comments: m.comments_count ?? 0,
+    reach: byName.get("reach") ?? null,
+    views: byName.get("views") ?? null,
+    saved: byName.get("saved") ?? null,
+    shares: byName.get("shares") ?? null,
+    interactions: byName.get("total_interactions") ?? null,
   }
-  const ig = account.igUserId
+  await prisma.instagramMedia.upsert({
+    where: { id: m.id },
+    create: { id: m.id, accountId, ...fields },
+    update: { ...fields, fetchedAt: new Date() },
+  })
+}
 
-  // Pagina a lista de midias ate maxPosts.
+// Busca UMA pagina da lista de midias.
+async function fetchMediaPage(ig: string, token: string, after: string, limit = 50): Promise<{ items: MediaItem[]; nextAfter: string | null }> {
+  const params: Record<string, string> = {
+    fields: "id,permalink,media_type,timestamp,like_count,comments_count,caption,media_url,thumbnail_url",
+    limit: String(limit),
+    access_token: token,
+  }
+  if (after) params.after = after
+  const page = await safe(
+    () => igGet(`${ig}/media`, params) as Promise<{ data?: MediaItem[]; paging?: { cursors?: { after?: string }; next?: string } }>,
+    null as { data?: MediaItem[]; paging?: { cursors?: { after?: string }; next?: string } } | null
+  )
+  const nextAfter = page?.paging?.next && page?.paging?.cursors?.after ? page.paging.cursors.after : null
+  return { items: page?.data ?? [], nextAfter }
+}
+
+async function resolveToken(accountId: string): Promise<{ ig: string; token: string } | null> {
+  const account = await prisma.instagramAccount.findUnique({ where: { id: accountId } })
+  if (!account) return null
+  try {
+    return { ig: account.igUserId, token: decryptSecret(account.tokenEnc) }
+  } catch {
+    return null
+  }
+}
+
+// Cache de metricas por post (alimenta Top posts + aba Analise).
+// Puxa os `maxPosts` mais recentes. Usado no refresh normal e no cron.
+export async function syncInstagramMedia(accountId: string, maxPosts = 90): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const creds = await resolveToken(accountId)
+  if (!creds) return { ok: false, error: "Conta/token inválido." }
+
   const items: MediaItem[] = []
   let after = ""
   while (items.length < maxPosts) {
-    const params: Record<string, string> = {
-      fields: "id,permalink,media_type,timestamp,like_count,comments_count,caption,media_url,thumbnail_url",
-      limit: "50",
-      access_token: token,
-    }
-    if (after) params.after = after
-    const page = await safe(
-      () => igGet(`${ig}/media`, params) as Promise<{ data?: MediaItem[]; paging?: { cursors?: { after?: string }; next?: string } }>,
-      null as { data?: MediaItem[]; paging?: { cursors?: { after?: string }; next?: string } } | null
-    )
-    if (!page?.data?.length) break
-    items.push(...page.data)
-    after = page.paging?.cursors?.after ?? ""
-    if (!after || !page.paging?.next) break
+    const { items: pageItems, nextAfter } = await fetchMediaPage(creds.ig, creds.token, after)
+    if (!pageItems.length) break
+    items.push(...pageItems)
+    if (!nextAfter) break
+    after = nextAfter
   }
 
   let count = 0
   for (const m of items.slice(0, maxPosts)) {
-    // Insights por post (metricas comuns a imagem/carrossel/reel).
-    const ins = await safe(
-      () => igGet(`${m.id}/insights`, { metric: "reach,views,saved,shares,total_interactions", access_token: token }) as Promise<{ data?: InsightRow[] }>,
-      { data: [] }
-    )
-    const byName = new Map<string, number>()
-    for (const row of ins.data ?? []) byName.set(row.name, row.values?.[0]?.value ?? row.total_value?.value ?? 0)
-
-    await prisma.instagramMedia.upsert({
-      where: { id: m.id },
-      create: {
-        id: m.id,
-        accountId,
-        mediaType: m.media_type ?? null,
-        permalink: m.permalink ?? null,
-        thumb: m.thumbnail_url ?? m.media_url ?? null,
-        caption: (m.caption ?? "").slice(0, 300),
-        timestamp: m.timestamp ? new Date(m.timestamp) : null,
-        likes: m.like_count ?? 0,
-        comments: m.comments_count ?? 0,
-        reach: byName.get("reach") ?? null,
-        views: byName.get("views") ?? null,
-        saved: byName.get("saved") ?? null,
-        shares: byName.get("shares") ?? null,
-        interactions: byName.get("total_interactions") ?? null,
-      },
-      update: {
-        mediaType: m.media_type ?? null,
-        permalink: m.permalink ?? null,
-        thumb: m.thumbnail_url ?? m.media_url ?? null,
-        caption: (m.caption ?? "").slice(0, 300),
-        timestamp: m.timestamp ? new Date(m.timestamp) : null,
-        likes: m.like_count ?? 0,
-        comments: m.comments_count ?? 0,
-        reach: byName.get("reach") ?? null,
-        views: byName.get("views") ?? null,
-        saved: byName.get("saved") ?? null,
-        shares: byName.get("shares") ?? null,
-        interactions: byName.get("total_interactions") ?? null,
-        fetchedAt: new Date(),
-      },
-    })
+    await upsertMediaWithInsights(accountId, creds.token, m)
     count++
   }
   return { ok: true, count }
+}
+
+// Backfill do historico em LOTE (uma pagina por chamada, pra nao estourar timeout).
+// Retorna o cursor da proxima pagina (null = acabou) e o total ja em cache.
+export async function backfillInstagramMediaPage(accountId: string, after: string): Promise<{ ok: boolean; count: number; nextAfter: string | null; total: number; error?: string }> {
+  const creds = await resolveToken(accountId)
+  if (!creds) return { ok: false, count: 0, nextAfter: null, total: 0, error: "Conta/token inválido." }
+
+  const { items, nextAfter } = await fetchMediaPage(creds.ig, creds.token, after || "", 40)
+  for (const m of items) await upsertMediaWithInsights(accountId, creds.token, m)
+  const total = await prisma.instagramMedia.count({ where: { accountId } })
+  return { ok: true, count: items.length, nextAfter, total }
 }
 
 export async function syncAllInstagramInsights(): Promise<{ synced: number; failed: number }> {
