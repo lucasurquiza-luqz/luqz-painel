@@ -21,6 +21,18 @@ const s3 = new S3Client({
   forcePathStyle: true, // obrigatorio para MinIO
 })
 
+// Cliente para ASSINAR URLs que o navegador vai usar (upload direto).
+// Precisa apontar para o host PUBLICO do MinIO, senao a URL assinada nao e alcancavel.
+const s3Public = new S3Client({
+  endpoint: process.env.MINIO_PUBLIC_URL || process.env.MINIO_ENDPOINT,
+  region: "us-east-1",
+  credentials: {
+    accessKeyId: process.env.MINIO_ACCESS_KEY!,
+    secretAccessKey: process.env.MINIO_SECRET_KEY!,
+  },
+  forcePathStyle: true,
+})
+
 // Politica de leitura publica (anonima) para servir arquivos direto pelo navegador.
 const PUBLIC_READ_POLICY = JSON.stringify({
   Version: "2012-10-17",
@@ -88,4 +100,17 @@ export async function getPresignedUrl(key: string, expiresIn = 3600): Promise<st
 
 export function getPublicUrl(key: string): string {
   return `${PUBLIC_URL}/${BUCKET}/${key}`
+}
+
+// URL assinada para UPLOAD direto do navegador (PUT), sem passar pelo app/proxy.
+// Ideal para arquivos grandes (ex.: vídeo de Reel). Retorna a URL de upload e a URL pública final.
+export async function getPresignedUploadUrl(
+  key: string,
+  contentType: string,
+  expiresIn = 900
+): Promise<{ uploadUrl: string; publicUrl: string }> {
+  await ensureBucket()
+  const cmd = new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: contentType })
+  const uploadUrl = await getSignedUrl(s3Public, cmd, { expiresIn })
+  return { uploadUrl, publicUrl: `${PUBLIC_URL}/${BUCKET}/${key}` }
 }

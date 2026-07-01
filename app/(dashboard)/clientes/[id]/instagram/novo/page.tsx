@@ -9,6 +9,19 @@ import { dateSuggestions } from "@/lib/date-suggestions"
 
 // Converte um arquivo de imagem para JPEG base64 (a Graph API do Instagram exige JPEG).
 // Feito no navegador via canvas — mantém as dimensões originais (ex: 1080x1350).
+// Upload direto pro MinIO via URL assinada, com progresso (XHR — fetch não dá progresso).
+function putWithProgress(url: string, file: File, contentType: string, onProgress: (pct: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open("PUT", url)
+    xhr.setRequestHeader("Content-Type", contentType)
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)) }
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload falhou (HTTP ${xhr.status})`)))
+    xhr.onerror = () => reject(new Error("Erro de rede no upload do vídeo (CORS do MinIO?)."))
+    xhr.send(file)
+  })
+}
+
 async function fileToJpegBase64(file: File): Promise<string> {
   const bitmap = await createImageBitmap(file)
   const canvas = document.createElement("canvas")
@@ -31,6 +44,7 @@ export default function NovoInstagramPostPage() {
   const [mode, setMode] = useState<"image" | "reel">("image")
   const [slides, setSlides] = useState<Slide[]>([])
   const [video, setVideo] = useState<File | null>(null)
+  const [uploadPct, setUploadPct] = useState(0)
   const [caption, setCaption] = useState("")
   const [pillar, setPillar] = useState("")
   const [pillars, setPillars] = useState<{ id: string; label: string; color: string }[]>([])
@@ -79,14 +93,21 @@ export default function NovoInstagramPostPage() {
       }
 
       if (mode === "reel") {
-        const form = new FormData()
-        form.append("file", video as File)
-        const up = await fetch(`/api/instagram/upload-video?clientId=${clientId}`, { method: "POST", body: form })
-        if (!up.ok) {
-          const d = await up.json().catch(() => ({}))
-          throw new Error(d.error ?? "Falha ao enviar o vídeo.")
+        const type = (video as File).type || "video/mp4"
+        setUploadPct(0)
+        // 1) pega a URL assinada  2) sobe o vídeo direto no MinIO (com progresso)
+        const pres = await fetch(`/api/instagram/upload-video?clientId=${clientId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contentType: type }),
+        })
+        if (!pres.ok) {
+          const d = await pres.json().catch(() => ({}))
+          throw new Error(d.error ?? "Falha ao preparar o upload.")
         }
-        body.videoUrl = (await up.json()).url
+        const { uploadUrl, publicUrl } = await pres.json()
+        await putWithProgress(uploadUrl, video as File, type, setUploadPct)
+        body.videoUrl = publicUrl
       } else {
         body.images = await Promise.all(slides.map((s) => fileToJpegBase64(s.file)))
       }
@@ -201,6 +222,14 @@ export default function NovoInstagramPostPage() {
               <span className="text-sm text-zinc-500">Selecionar vídeo (MP4, 9:16 recomendado)</span>
               <input type="file" accept="video/mp4,video/*" className="hidden" onChange={(e) => setVideo(e.target.files?.[0] ?? null)} />
             </label>
+          )}
+          {loading && mode === "reel" && (
+            <div className="mt-3">
+              <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                <div className="h-full bg-orange-500 rounded-full transition-all" style={{ width: `${uploadPct}%` }} />
+              </div>
+              <p className="text-[11px] text-zinc-500 mt-1">Enviando vídeo… {uploadPct}%</p>
+            </div>
           )}
           <p className="text-xs text-zinc-600 mt-2">O Reel processa alguns minutos ao publicar. Formato vertical 9:16, até ~90s.</p>
         </div>
