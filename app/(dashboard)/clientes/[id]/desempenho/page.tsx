@@ -50,7 +50,10 @@ export default function DesempenhoPage() {
   const prev = perf?.previous
   const track = perf?.current.trackRevenue
 
-  const chart = useMemo(() => (perf?.current.daily ?? []).map((d) => ({ day: d.date.slice(8), spend: d.spend, results: d.results })), [perf])
+  // Defensivo: snapshots antigos em cache podem ter `daily` com shape diferente.
+  const chart = useMemo(() => (perf?.current.daily ?? [])
+    .filter((d) => d && typeof d.date === "string")
+    .map((d) => ({ day: d.date.slice(8), spend: Number(d.spend) || 0, results: Number(d.results) || 0 })), [perf])
   const objLabel = useMemo(() => {
     const objs = (perf?.current.breakdown ?? []).map((b) => b.objective).filter((o) => o !== "SEGUIDORES")
     return objs.length === 1 ? OBJ_LABEL[objs[0]] ?? "Resultados" : "Resultados"

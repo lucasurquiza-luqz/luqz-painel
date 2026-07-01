@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic"
 
 // Marcador de build: bumpado a cada release para confirmar, sem login, qual
 // versao esta efetivamente no ar (o middleware bloqueia as demais rotas /api).
-const BUILD_MARKER = "fix-desempenho-shape-performance-2026-07-01"
+const BUILD_MARKER = "fix-desempenho-daily-shape-errorboundary-2026-07-01"
 
 export async function GET() {
   try {
