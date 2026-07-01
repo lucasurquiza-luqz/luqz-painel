@@ -58,12 +58,14 @@ export async function GET(req: NextRequest, { params }: Params) {
   const weekEnd = addDays(thisMonday, -1) // domingo passado
   const weekStart = addDays(thisMonday, -7) // segunda passada
   const week: DateRange = { since: iso(weekStart), until: iso(weekEnd) }
-  // Mês até aqui (início do mês de ref → ref).
-  const monthStart = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth(), 1))
-  const mtd: DateRange = { since: iso(monthStart), until: iso(ref) }
-  const month = `${ref.getUTCFullYear()}-${String(ref.getUTCMonth() + 1).padStart(2, "0")}`
-  const daysTotal = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth() + 1, 0)).getUTCDate()
-  const daysElapsed = ref.getUTCDate()
+  // Checkpoint ancorado no MÊS DA SEMANA reportada (não no dia de hoje). Evita o
+  // "mês vazio" quando o report roda no começo do mês (dia 01 mostraria julho zerado,
+  // sendo que a última semana fechada ainda é de junho).
+  const monthStart = new Date(Date.UTC(weekEnd.getUTCFullYear(), weekEnd.getUTCMonth(), 1))
+  const mtd: DateRange = { since: iso(monthStart), until: iso(weekEnd) }
+  const month = `${weekEnd.getUTCFullYear()}-${String(weekEnd.getUTCMonth() + 1).padStart(2, "0")}`
+  const daysTotal = new Date(Date.UTC(weekEnd.getUTCFullYear(), weekEnd.getUTCMonth() + 1, 0)).getUTCDate()
+  const daysElapsed = weekEnd.getUTCDate()
 
   const funnels = await prisma.clientFunnel.findMany({ where: { clientId: id }, orderBy: { order: "asc" }, select: { id: true, name: true, terms: true } })
   const planRows = await prisma.mediaPlan.findMany({ where: { clientId: id, month }, include: { campaignFunnel: { select: { id: true, name: true } } } })
