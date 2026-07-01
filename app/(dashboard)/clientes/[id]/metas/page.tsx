@@ -351,7 +351,7 @@ type Perf = {
   }
   previous: { spend: number; results: number; cpa: number | null; roas: number | null }
 }
-const OBJ_LABEL: Record<string, string> = { LEAD: "Leads", WHATSAPP: "Conversas", ECOMMERCE: "Compras", CUSTOM: "Resultados" }
+const OBJ_LABEL: Record<string, string> = { LEAD: "Leads", WHATSAPP: "Conversas", ECOMMERCE: "Compras", SEGUIDORES: "Seguidores", CUSTOM: "Resultados" }
 
 function Trend({ cur, prev, goodWhenUp = true }: { cur: number | null; prev: number | null; goodWhenUp?: boolean }) {
   if (cur == null || prev == null || prev === 0) return null
@@ -1486,6 +1486,7 @@ const OBJECTIVES = [
   { v: "LEAD", label: "Leads" },
   { v: "WHATSAPP", label: "Conversas" },
   { v: "ECOMMERCE", label: "Compras" },
+  { v: "SEGUIDORES", label: "Seguidores" },
 ]
 function AdIntegrations({ clientId, onError }: { clientId: string; onError: (m: string) => void }) {
   const [accounts, setAccounts] = useState<AdAccount[]>([])

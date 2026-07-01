@@ -1,4 +1,4 @@
-export type AdObjective = "LEAD" | "WHATSAPP" | "ECOMMERCE" | "CUSTOM"
+export type AdObjective = "LEAD" | "WHATSAPP" | "ECOMMERCE" | "SEGUIDORES" | "CUSTOM"
 
 export type ResultBreakdown = { objective: AdObjective; count: number }
 export type DailyPoint = { date: string; spend: number; results: number; impressions: number; clicks: number; pageViews: number; revenue: number }
@@ -53,6 +53,7 @@ export const OBJECTIVE_LABEL: Record<AdObjective, string> = {
   LEAD: "Leads",
   WHATSAPP: "Conversas",
   ECOMMERCE: "Compras",
+  SEGUIDORES: "Seguidores",
   CUSTOM: "Resultados",
 }
 
@@ -61,6 +62,9 @@ export const META_DEFAULT_ACTIONS: Record<AdObjective, string[]> = {
   LEAD: ["offsite_conversion.fb_pixel_lead", "onsite_conversion.lead_grouped", "leadgen_grouped", "lead"],
   WHATSAPP: ["onsite_conversion.messaging_conversation_started_7d", "onsite_conversion.total_messaging_connection"],
   ECOMMERCE: ["offsite_conversion.fb_pixel_purchase", "omni_purchase", "purchase"],
+  // Impulsionar perfil / ganhar seguidores. Meta reporta de formas diferentes por conta —
+  // se vier 0, ajustar o evento exato pelo checklist de eventos da conta.
+  SEGUIDORES: ["follow", "onsite_conversion.follow", "like", "onsite_conversion.page_like"],
   CUSTOM: [],
 }
 export const META_PURCHASE_ACTIONS = new Set(["offsite_conversion.fb_pixel_purchase", "omni_purchase", "purchase"])

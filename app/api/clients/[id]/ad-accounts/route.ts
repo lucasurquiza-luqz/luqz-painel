@@ -36,7 +36,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   const lastFour = token ? token.slice(-4) : undefined
 
   // Config de conversão (funil multi-objetivo).
-  const OBJ = new Set(["LEAD", "WHATSAPP", "ECOMMERCE", "CUSTOM"])
+  const OBJ = new Set(["LEAD", "WHATSAPP", "ECOMMERCE", "SEGUIDORES", "CUSTOM"])
   const objectives = Array.isArray(body.objectives)
     ? [...new Set(body.objectives.filter((x: unknown) => typeof x === "string" && OBJ.has(x)))]
     : undefined

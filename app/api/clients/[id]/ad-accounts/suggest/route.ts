@@ -38,17 +38,17 @@ export async function POST(req: NextRequest, { params }: Params) {
   const eventsText = discovered.length ? discovered.map((d) => `${d.actionType} (${d.count})`).join(", ") : "(lista indisponível)"
 
   const system = `Voce configura a leitura de conversao de Ads de um cliente de agencia.
-Escolha os OBJETIVOS de funil do cliente (um ou mais): LEAD (geracao de leads), WHATSAPP (conversas), ECOMMERCE (vendas online).
+Escolha os OBJETIVOS de funil do cliente (um ou mais): LEAD (geracao de leads), WHATSAPP (conversas), ECOMMERCE (vendas online), SEGUIDORES (impulsionar perfil / ganhar seguidores).
 Se houver lista de eventos da conta Meta, escolha em resultActions os action_types que REALMENTE representam o resultado (senao deixe vazio para usar o padrao do objetivo).
 trackRevenue = true apenas se houver venda/receita (ecommerce).
 Baseie-se SO no contexto e nos eventos fornecidos; nao invente. Responda JSON:
-{"objectives":["LEAD"|"WHATSAPP"|"ECOMMERCE"],"resultActions":[],"trackRevenue":false,"reasoning":"curto"}`
+{"objectives":["LEAD"|"WHATSAPP"|"ECOMMERCE"|"SEGUIDORES"],"resultActions":[],"trackRevenue":false,"reasoning":"curto"}`
 
   const user = `Cliente: ${client.name}${client.segment ? ` (nicho: ${client.segment})` : ""}\nProvedor: ${provider}\n\nCONTEXTO APROVADO:\n${ctxText}\n\nEVENTOS DISPONIVEIS NA CONTA (Meta):\n${eventsText}`
 
   try {
     const raw = (await completeJSON("ASSISTANT", system, user)) as Record<string, unknown>
-    const OBJ = new Set(["LEAD", "WHATSAPP", "ECOMMERCE"])
+    const OBJ = new Set(["LEAD", "WHATSAPP", "ECOMMERCE", "SEGUIDORES"])
     const objectives = Array.isArray(raw.objectives) ? raw.objectives.filter((x) => typeof x === "string" && OBJ.has(x)) : []
     const resultActions = Array.isArray(raw.resultActions) ? raw.resultActions.filter((x) => typeof x === "string") : []
     return NextResponse.json({
