@@ -6,6 +6,7 @@ import Link from "next/link"
 import { ArrowLeft, Loader2, Pencil, Plug, Plus, RefreshCw, Target, Trash2, X } from "lucide-react"
 import { Area, Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Button, Input, PageHeader, Panel } from "@/components/ui/primitives"
+import { Markdown } from "@/components/Markdown"
 import { projectFunnel, type FunnelStage, type PlanFunnel } from "@/lib/media-plan"
 
 type Plan = {
@@ -181,8 +182,8 @@ export default function MetasPage() {
               )}
               {plan.narrative && (
                 <div className="mt-3 rounded-lg border border-white/8 bg-black/20 p-3">
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-600">Estratégia / cenários</p>
-                  <p className="whitespace-pre-wrap text-xs leading-5 text-zinc-400">{plan.narrative}</p>
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-600">Estratégia / cenários</p>
+                  <Markdown>{plan.narrative}</Markdown>
                 </div>
               )}
               {plan.notes && <p className="mt-3 text-xs leading-5 text-zinc-500">{plan.notes}</p>}
@@ -305,8 +306,8 @@ function AddPlan({ clientId, plan, onAdded, onCancel, onError }: { clientId: str
         {funnels.map((f, idx) => <SubFunnelEditor key={f.id} f={f} idx={idx} campaignFunnels={campaignFunnels} onChange={(p) => setF(f.id, p)} onRemove={funnels.length > 1 ? () => delF(f.id) : undefined} />)}
       </div>
 
-      <FormField label="Estratégia / cenários / controle semanal (opcional)">
-        <textarea rows={4} value={form.narrative} onChange={(e) => setForm({ ...form, narrative: e.target.value })} className="dash-input w-full resize-none rounded-lg px-3.5 py-3 text-sm" placeholder="Diagnóstico, cenários (conservador/realista), metas semanais…" />
+      <FormField label="Estratégia / cenários / controle semanal (opcional · aceita markdown: ## títulos, tabelas, listas)">
+        <textarea rows={10} value={form.narrative} onChange={(e) => setForm({ ...form, narrative: e.target.value })} className="dash-input w-full resize-y rounded-lg px-3.5 py-3 font-mono text-[13px] leading-relaxed" placeholder={"## Diagnóstico\nSituação atual, gargalo…\n\n## Cenários\n| Cenário | Verba/dia | CPL alvo | Vendas |\n|---|---|---|---|\n| Conservador | R$200 | R$45 | 4 |\n| Agressivo | R$300 | R$38 | 7 |\n\n## Controle semanal\n- Semana 1: …"} />
       </FormField>
       <FormField label="Observações">
         <textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="dash-input w-full resize-none rounded-lg px-3.5 py-3 text-sm" placeholder="Contexto do plano do mês." />
