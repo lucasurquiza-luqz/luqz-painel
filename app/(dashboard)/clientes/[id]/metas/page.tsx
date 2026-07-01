@@ -41,6 +41,15 @@ function fmtMonth(month: string): string {
 function brl(value: number | null): string {
   return value == null ? "—" : value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 }
+// Tempo relativo curto (para "atualizado há…").
+function relAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24)
+  if (m < 1) return "agora"
+  if (m < 60) return `há ${m}min`
+  if (h < 24) return `há ${h}h`
+  return `há ${d}d`
+}
 function currentMonth(): string {
   // Sem Date.now em util compartilhado, mas aqui no client tudo bem.
   const now = new Date()
@@ -763,13 +772,22 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
   }
   const SOURCE_LABEL: Record<string, string> = { all: "Consolidado", META: "Meta", GOOGLE: "Google" }
 
+  // Frescor do dado: mês em curso lido há mais de 26h = desatualizado (cron roda 06h).
+  const staleHours = fetchedAt ? (Date.now() - new Date(fetchedAt).getTime()) / 3_600_000 : null
+  const stale = !!range.month && range.month === currentMonth() && staleHours != null && staleHours > 26
+
   return (
     <Panel className="p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-white"><Target size={15} className="text-[#FF8F50]" /> Painel de performance</h2>
         <div className="flex items-center gap-2">
-          {fetchedAt && <span className="text-[10px] text-zinc-600">atualizado {new Date(fetchedAt).toLocaleString("pt-BR")}</span>}
-          <Button variant="secondary" className="min-h-9 px-3 py-1.5 text-xs" onClick={refresh} disabled={refreshing || loading}>{refreshing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Atualizar</Button>
+          {fetchedAt && (
+            <span className="flex items-center gap-1.5 text-[10px]" title={`Leitura de ${new Date(fetchedAt).toLocaleString("pt-BR")}`}>
+              {stale && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 font-medium text-amber-300">desatualizado</span>}
+              <span className="text-zinc-600">atualizado {relAgo(fetchedAt)}</span>
+            </span>
+          )}
+          <Button variant="secondary" className="min-h-9 px-3 py-1.5 text-xs" onClick={refresh} disabled={refreshing || loading}>{refreshing ? <><Loader2 size={13} className="animate-spin" /> atualizando…</> : <><RefreshCw size={13} /> Atualizar</>}</Button>
         </div>
       </div>
       <div className="mt-3"><DateRangeControl value={range} onChange={setRange} /></div>
