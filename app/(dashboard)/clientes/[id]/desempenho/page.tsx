@@ -23,6 +23,9 @@ type Perf = {
   previous: Totals
 }
 type History = { month: string; spend: number; results: number; cpa: number | null }[]
+type PlatSeg = { spend: number; results: number }
+type FunnelRow = { funnelId: string | null; name: string; spend: number; results: number; cpa: number | null; meta: PlatSeg; google: PlatSeg }
+type FunnelBreak = { rows: FunnelRow[]; platform: { meta: PlatSeg; google: PlatSeg }; total: PlatSeg }
 
 function thisMonth() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` }
 function shiftMonth(m: string, delta: number) { const [y, mo] = m.split("-").map(Number); const d = new Date(y, mo - 1 + delta, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` }
@@ -35,6 +38,8 @@ export default function DesempenhoPage() {
   const [perf, setPerf] = useState<Perf | null>(null)
   const [history, setHistory] = useState<History>([])
   const [loading, setLoading] = useState(true)
+  const [byFunnel, setByFunnel] = useState<FunnelBreak | null>(null)
+  const [funnelLoading, setFunnelLoading] = useState(true)
 
   useEffect(() => { fetch(`/api/clients/${clientId}`).then((r) => r.json()).then((d) => setClientName(d.client?.name ?? "")).catch(() => {}) }, [clientId])
   const load = useCallback(async () => {
@@ -43,6 +48,18 @@ export default function DesempenhoPage() {
     setPerf(d?.performance ?? null); setHistory(d?.history ?? []); setLoading(false)
   }, [clientId, month])
   useEffect(() => { void load() }, [load])
+
+  // Por funil (leitura ao vivo, mais lenta): carrega em paralelo sem travar os KPIs.
+  useEffect(() => {
+    let alive = true
+    setFunnelLoading(true)
+    fetch(`/api/clients/${clientId}/performance/funnels?month=${month}`)
+      .then((r) => r.json())
+      .then((d) => { if (alive) setByFunnel(d && !d.error ? d : null) })
+      .catch(() => { if (alive) setByFunnel(null) })
+      .finally(() => { if (alive) setFunnelLoading(false) })
+    return () => { alive = false }
+  }, [clientId, month])
 
   const monthName = MONTHS[Number(month.slice(5)) - 1]
   const year = month.slice(0, 4)
@@ -94,6 +111,42 @@ export default function DesempenhoPage() {
             </Panel>
           )}
 
+          {/* ===== POR FUNIL (investimento x resultado, com split de plataforma) ===== */}
+          <Panel className="p-5">
+            <p className="mb-1 text-sm font-semibold text-white">Por funil</p>
+            <p className="mb-3 text-[11px] text-zinc-500">Onde a verba foi investida e o que cada frente gerou.</p>
+            {funnelLoading ? (
+              <div className="flex min-h-20 items-center justify-center"><Loader2 size={16} className="animate-spin text-[#FF8F50]" /></div>
+            ) : !byFunnel || byFunnel.rows.length === 0 ? (
+              <p className="text-xs text-zinc-600">Configure os funis pra ver o investimento por frente.</p>
+            ) : (
+              <div className="space-y-2.5">
+                {byFunnel.rows.map((f) => {
+                  const share = byFunnel.total.spend > 0 ? f.spend / byFunnel.total.spend : 0
+                  const both = f.meta.spend > 0 && f.google.spend > 0
+                  return (
+                    <div key={f.funnelId ?? "none"} className="rounded-lg border border-white/8 bg-black/20 px-3 py-2.5">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                        <span className="text-[13px] font-medium text-zinc-100">{f.name}</span>
+                        <span className="text-[12px] text-zinc-400"><b className="text-zinc-100">{brl(f.spend)}</b> · {int(f.results)} {objLabel.toLowerCase()}{f.cpa != null ? ` · ${brl2(f.cpa)}` : ""}</span>
+                      </div>
+                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+                        <div className="h-full rounded-full bg-[#FF8F50]/70" style={{ width: `${Math.max(2, Math.round(share * 100))}%` }} />
+                      </div>
+                      {(both || f.google.spend > 0) && (
+                        <p className="mt-1 text-[10px] text-zinc-600">
+                          {f.meta.spend > 0 && <>Meta {brl(f.meta.spend)} · {int(f.meta.results)}</>}
+                          {both && <span className="mx-1.5 text-zinc-700">|</span>}
+                          {f.google.spend > 0 && <>Google {brl(f.google.spend)} · {int(f.google.results)}</>}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </Panel>
+
           {/* ===== EVOLUÇÃO DIÁRIA ===== */}
           <Panel className="p-5">
             <p className="mb-3 text-sm font-semibold text-white">Evolução diária</p>
@@ -123,9 +176,9 @@ export default function DesempenhoPage() {
           </Panel>
 
           <div className="grid gap-5 lg:grid-cols-2">
-            {/* ===== POR FONTE ===== */}
+            {/* ===== POR PLATAFORMA ===== */}
             <Panel className="p-5">
-              <p className="mb-3 text-sm font-semibold text-white">Por fonte</p>
+              <p className="mb-3 text-sm font-semibold text-white">Por plataforma</p>
               <div className="space-y-2">
                 {(perf.current.byProvider ?? []).map((p, i) => (
                   <div key={i} className="flex items-center justify-between gap-3 rounded-lg border border-white/8 bg-black/20 px-3 py-2 text-[13px]">
