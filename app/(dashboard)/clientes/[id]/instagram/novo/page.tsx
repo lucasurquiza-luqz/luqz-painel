@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter, useParams } from "next/navigation"
+import { useRouter, useParams, useSearchParams } from "next/navigation"
 import { ArrowLeft, X, ImagePlus } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
@@ -26,10 +26,12 @@ type Slide = { file: File; preview: string }
 export default function NovoInstagramPostPage() {
   const router = useRouter()
   const { id: clientId } = useParams<{ id: string }>()
+  const dateParam = useSearchParams().get("date")
 
   const [slides, setSlides] = useState<Slide[]>([])
   const [caption, setCaption] = useState("")
-  const [scheduledAt, setScheduledAt] = useState("")
+  // Se veio do calendário (?date=YYYY-MM-DD), pré-preenche o dia às 09:00.
+  const [scheduledAt, setScheduledAt] = useState(dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? `${dateParam}T09:00` : "")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
