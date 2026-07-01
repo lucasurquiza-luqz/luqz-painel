@@ -521,17 +521,27 @@ function VisualFunnel({ steps, title = "Funil" }: { steps: { label: string; valu
 }
 
 // Controle de período: presets rápidos + intervalo personalizado.
-// Metas × realizado do mês (barras de progresso), por plataforma.
-function MetaProgress({ plan, view, resultLabel, platform }: { plan: Plan; view: { spend: number; results: number; cpa: number | null; roas: number | null }; resultLabel: string; platform: string }) {
-  const rows: { label: string; cur: string; target: string; pct: number; good: boolean }[] = []
-  if (plan.budget) rows.push({ label: "Investimento", cur: brl(view.spend), target: brl(plan.budget), pct: Math.round((view.spend / plan.budget) * 100), good: true })
-  if (plan.targetLeads) { const p = Math.round((view.results / plan.targetLeads) * 100); rows.push({ label: resultLabel, cur: String(view.results), target: String(plan.targetLeads), pct: p, good: p >= 100 }) }
+// Metas × realizado do mês (barras + pacing), por plataforma.
+function MetaProgress({ plan, view, resultLabel, platform, pace }: { plan: Plan; view: { spend: number; results: number; cpa: number | null; roas: number | null }; resultLabel: string; platform: string; pace: { elapsed: number; total: number } | null }) {
+  // Meta de leads: absoluta, ou derivada de verba/CPL (topo do funil).
+  const leadsTarget = plan.targetLeads ?? (plan.budget && plan.targetCpl ? Math.round(plan.budget / plan.targetCpl) : null)
+  // Projeção no ritmo atual (só faz sentido no mês em curso).
+  const inMonth = pace && pace.elapsed > 0 && pace.elapsed < pace.total
+  const project = (v: number) => (inMonth ? Math.round((v / pace!.elapsed) * pace!.total) : null)
+
+  type Row = { label: string; cur: string; target: string; pct: number; good: boolean; proj?: string; projGood?: boolean }
+  const rows: Row[] = []
+  if (plan.budget) { const pj = project(view.spend); rows.push({ label: "Investimento", cur: brl(view.spend), target: brl(plan.budget), pct: Math.round((view.spend / plan.budget) * 100), good: true, proj: pj != null ? brl(pj) : undefined, projGood: pj != null ? pj <= plan.budget * 1.05 : undefined }) }
+  if (leadsTarget) { const p = Math.round((view.results / leadsTarget) * 100); const pj = project(view.results); rows.push({ label: resultLabel, cur: String(view.results), target: String(leadsTarget), pct: p, good: p >= 100, proj: pj != null ? String(pj) : undefined, projGood: pj != null ? pj >= leadsTarget : undefined }) }
   if (plan.targetCpa && view.cpa != null) rows.push({ label: "CPA", cur: brl(view.cpa), target: `≤ ${brl(plan.targetCpa)}`, pct: Math.round((view.cpa / plan.targetCpa) * 100), good: view.cpa <= plan.targetCpa })
   if (plan.targetRoas && view.roas != null) rows.push({ label: "ROAS", cur: `${view.roas.toFixed(2)}x`, target: `≥ ${plan.targetRoas}x`, pct: Math.round((view.roas / plan.targetRoas) * 100), good: view.roas >= plan.targetRoas })
   if (!rows.length) return null
   return (
     <div className="rounded-xl border border-white/8 bg-black/20 p-4">
-      <p className="mb-3 text-xs font-semibold text-zinc-300">🎯 Metas do mês · {platform}</p>
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs font-semibold text-zinc-300">🎯 Metas do mês · {platform}</p>
+        {inMonth && <span className="text-[10px] text-zinc-600">dia {pace!.elapsed}/{pace!.total} · projeção no ritmo atual</span>}
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         {rows.map((r) => (
           <div key={r.label}>
@@ -540,6 +550,7 @@ function MetaProgress({ plan, view, resultLabel, platform }: { plan: Plan; view:
               <span className={r.good ? "text-emerald-300" : "text-amber-300"}>{r.cur} <span className="text-zinc-600">/ {r.target} · {r.pct}%</span></span>
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/8"><div className={`h-full rounded-full ${r.good ? "bg-emerald-400" : "bg-amber-400"}`} style={{ width: `${Math.min(100, Math.max(3, r.pct))}%` }} /></div>
+            {r.proj && <p className="mt-1 text-[10px] text-zinc-600">no ritmo: <b className={r.projGood ? "text-emerald-300" : "text-amber-300"}>~{r.proj}</b> até o fim do mês</p>}
           </div>
         ))}
       </div>
@@ -657,6 +668,14 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
   // Plano do mês para a plataforma selecionada (Meta/Google/Consolidado), com fallback pro TOTAL.
   const planKey = source === "META" ? "META" : source === "GOOGLE" ? "GOOGLE" : "TOTAL"
   const plan = range.month ? (plans.find((p) => p.month === range.month && p.platform === planKey) ?? plans.find((p) => p.month === range.month && p.platform === "TOTAL")) : undefined
+  // Pacing: dias decorridos vs total do mês (só projeta no mês em curso).
+  const pace = (() => {
+    if (!range.month) return null
+    const [y, m] = range.month.split("-").map(Number)
+    const total = new Date(y, m, 0).getDate()
+    const elapsed = range.month === currentMonth() ? Math.min(new Date().getDate(), total) : total
+    return { elapsed, total }
+  })()
   const t = perf?.current.total
   const pct = (real: number, target: number | null | undefined) => (target && target > 0 ? Math.round((real / target) * 100) : null)
 
@@ -757,7 +776,7 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
           ) : (
           <>
           {/* Metas do mês (meta × realizado) para a plataforma selecionada. */}
-          {range.month && plan && <MetaProgress plan={plan} view={view} resultLabel={resultLabel} platform={SOURCE_LABEL[source] ?? source} />}
+          {range.month && plan && <MetaProgress plan={plan} view={view} resultLabel={resultLabel} platform={SOURCE_LABEL[source] ?? source} pace={pace} />}
 
           {/* KPIs principais com mini-tendência. Trend só no consolidado; % de meta por plataforma. */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
