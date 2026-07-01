@@ -29,7 +29,10 @@ const VIEWS = [
   { key: "dia", label: "Dia" },
   { key: "semana", label: "Semana" },
   { key: "mes", label: "Mês" },
+  { key: "lista", label: "Lista" },
 ]
+
+const toMin = (hhmm: string) => { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m }
 
 export default async function InstagramCalendarioPage({
   params, searchParams,
@@ -39,7 +42,7 @@ export default async function InstagramCalendarioPage({
 }) {
   const { id: clientId } = await params
   const { v, a } = await searchParams
-  const view = v === "dia" || v === "mes" ? v : "semana"
+  const view = v === "dia" || v === "mes" || v === "lista" ? v : "semana"
 
   const account = await prisma.instagramAccount.findUnique({ where: { clientId }, select: { id: true } })
   if (!account) {
@@ -115,6 +118,8 @@ export default async function InstagramCalendarioPage({
 
       {view === "semana" && <WeekView clientId={clientId} days={eachDayOfInterval({ start: rangeStart, end: rangeEnd })} byDay={byDay} todayKey={todayKey} />}
 
+      {view === "lista" && <ListView clientId={clientId} days={eachDayOfInterval({ start: rangeStart, end: rangeEnd })} byDay={byDay} todayKey={todayKey} />}
+
       {view === "mes" && <MonthView clientId={clientId} days={eachDayOfInterval({ start: rangeStart, end: rangeEnd })} anchor={anchor} byDay={byDay} todayKey={todayKey} />}
     </div>
   )
@@ -163,8 +168,88 @@ function DayView({ clientId, anchorKey, items }: { clientId: string; dayKey: str
   )
 }
 
-// ── SEMANA ───────────────────────────────────────────────────────
+// ── SEMANA (grade de horários, estilo Google Calendar) ───────────
 function WeekView({ clientId, days, byDay, todayKey }: { clientId: string; days: Date[]; byDay: Map<string, Item[]>; todayKey: string }) {
+  const HOUR_H = 54
+  // faixa de horas com base nos posts da semana
+  let minH = 24, maxH = 0
+  for (const day of days) for (const it of byDay.get(format(day, "yyyy-MM-dd")) ?? []) {
+    const h = Math.floor(toMin(it.time) / 60); if (h < minH) minH = h; if (h > maxH) maxH = h
+  }
+  if (minH > maxH) { minH = 7; maxH = 18 }
+  minH = Math.max(0, minH - 1); maxH = Math.min(23, maxH + 1)
+  const hours: number[] = []; for (let h = minH; h <= maxH; h++) hours.push(h)
+  const gridH = hours.length * HOUR_H
+
+  return (
+    <div className="overflow-x-auto -mx-1 px-1">
+      <div className="min-w-[860px]">
+        {/* cabeçalho dos dias */}
+        <div className="flex mb-1">
+          <div className="w-12 flex-shrink-0" />
+          <div className="flex-1 grid grid-cols-7">
+            {days.map((day) => {
+              const key = format(day, "yyyy-MM-dd"); const isToday = key === todayKey
+              return (
+                <Link key={key} href={`?v=dia&a=${key}`} className="text-center py-1.5 hover:bg-white/[0.03] rounded-lg">
+                  <p className="text-[11px] text-zinc-500 uppercase">{format(day, "EEE", { locale: ptBR })}</p>
+                  <p className={isToday ? "text-sm font-semibold bg-orange-500 text-white rounded-full w-6 h-6 mx-auto flex items-center justify-center" : "text-sm font-semibold text-zinc-300"}>{format(day, "d")}</p>
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+        {/* grade de horários */}
+        <div className="flex border border-white/8 rounded-xl overflow-hidden">
+          <div className="w-12 flex-shrink-0">
+            {hours.map((h) => (
+              <div key={h} style={{ height: HOUR_H }} className="relative">
+                <span className="absolute -top-1.5 right-1.5 text-[10px] text-zinc-600 tabular-nums">{String(h).padStart(2, "0")}:00</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex-1 grid grid-cols-7">
+            {days.map((day) => {
+              const key = format(day, "yyyy-MM-dd")
+              const items = byDay.get(key) ?? []
+              // lanes p/ sobreposição de horários
+              const sorted = [...items].sort((a, b) => toMin(a.time) - toMin(b.time))
+              const laneEnd: number[] = []
+              const placed = sorted.map((it) => {
+                const s = toMin(it.time)
+                let lane = laneEnd.findIndex((end) => end <= s)
+                if (lane === -1) { lane = laneEnd.length; laneEnd.push(0) }
+                laneEnd[lane] = s + 50
+                return { it, s, lane }
+              })
+              const lanes = Math.max(1, laneEnd.length)
+              return (
+                <div key={key} className="relative border-l border-white/5" style={{ height: gridH }}>
+                  {hours.map((h) => <div key={h} className="border-t border-white/5" style={{ height: HOUR_H }} />)}
+                  {placed.map(({ it, s, lane }) => {
+                    const w = 100 / lanes
+                    return (
+                      <Link key={it.kind + it.id} href={`?v=dia&a=${key}`}
+                        title={it.caption}
+                        style={{ top: ((s - minH * 60) / 60) * HOUR_H, height: HOUR_H - 5, left: `${lane * w}%`, width: `calc(${w}% - 3px)`, background: `${STATUS_COLOR[it.status]}22`, borderColor: STATUS_COLOR[it.status] }}
+                        className="absolute rounded-md border-l-[3px] px-1.5 py-0.5 overflow-hidden hover:brightness-150 transition">
+                        <p className="text-[11px] font-semibold tabular-nums leading-tight" style={{ color: STATUS_COLOR[it.status] }}>{it.time}</p>
+                        <p className="text-[10px] text-zinc-300 leading-tight line-clamp-1">{it.caption || TYPE_LABEL[it.type]}</p>
+                      </Link>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── LISTA (agenda vertical por dia) ──────────────────────────────
+function ListView({ clientId, days, byDay, todayKey }: { clientId: string; days: Date[]; byDay: Map<string, Item[]>; todayKey: string }) {
   return (
     <div className="space-y-4">
       {days.map((day) => {
