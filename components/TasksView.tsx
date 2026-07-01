@@ -438,14 +438,19 @@ export function TasksView({ clientId, projectId, embedded }: { clientId?: string
                 <div className="space-y-1.5">
                   {group.map((t) => (
                     <div key={t.id}
-                      draggable={manualSort}
-                      onDragStart={manualSort ? (e: React.DragEvent) => { e.dataTransfer.setData("text/plain", t.id); e.dataTransfer.effectAllowed = "move"; setDragId(t.id) } : undefined}
                       onDragOver={manualSort ? (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = "move" } : undefined}
                       onDrop={manualSort ? (e: React.DragEvent) => { e.preventDefault(); dropReorder(group, t.id) } : undefined}
-                      onDragEnd={manualSort ? () => setDragId(null) : undefined}
-                      className={cn(manualSort && "cursor-grab active:cursor-grabbing", dragId === t.id && "opacity-40")}>
-                    <Panel className={cn("flex items-center gap-3 p-3", picked.has(t.id) && "border-[#FF8F50]/40")}>
-                      {manualSort && <GripVertical size={14} className="shrink-0 text-zinc-700" />}
+                      className={cn(dragId === t.id && "opacity-40")}>
+                    <Panel className={cn("flex items-center gap-3 p-3", picked.has(t.id) && "border-[#FF8F50]/40", dragId === t.id && "border-[#FF8F50]/40")}>
+                      {manualSort && (
+                        <span draggable
+                          onDragStart={(e: React.DragEvent) => { e.dataTransfer.setData("text/plain", t.id); e.dataTransfer.effectAllowed = "move"; setDragId(t.id) }}
+                          onDragEnd={() => setDragId(null)}
+                          title="Arraste para reordenar"
+                          className="shrink-0 cursor-grab text-zinc-600 hover:text-zinc-300 active:cursor-grabbing">
+                          <GripVertical size={16} />
+                        </span>
+                      )}
                       <input type="checkbox" checked={picked.has(t.id)} onChange={() => togglePick(t.id)} className="shrink-0 accent-[#FF8F50]" />
                       <span className="shrink-0">
                         <Pop trigger={<span className={cn("rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase", STATUS_PILL[t.status])}>{STATUS_LABEL[t.status]}</span>}>
