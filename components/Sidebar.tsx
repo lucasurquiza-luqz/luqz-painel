@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronsUpDown,
   ClipboardList,
+  FileBarChart,
   FileText,
   FolderKanban,
   Gauge,
@@ -70,6 +71,7 @@ const clientNav: NavGroup[] = [
     internalOnly: true,
     items: [
       { href: "/metas", label: "Performance", icon: Target },
+      { href: "/relatorio", label: "Relatório", icon: FileBarChart },
     ],
   },
   {
