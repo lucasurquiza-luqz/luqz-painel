@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Loader2, Plug, Plus, RefreshCw, Target, Trash2, X } from "lucide-react"
+import { ArrowLeft, Loader2, Pencil, Plug, Plus, RefreshCw, Target, Trash2, X } from "lucide-react"
 import { Area, Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Button, Input, PageHeader, Panel } from "@/components/ui/primitives"
 import { projectFunnel, type FunnelStage } from "@/lib/media-plan"
@@ -83,6 +83,7 @@ export default function MetasPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [adding, setAdding] = useState(false)
+  const [editingPlan, setEditingPlan] = useState<Plan | null>(null)
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/clients/${clientId}/media-plans`)
@@ -124,6 +125,7 @@ export default function MetasPage() {
       {error && <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}
 
       {adding && <AddPlan clientId={clientId} onAdded={() => { setAdding(false); void load() }} onCancel={() => setAdding(false)} onError={setError} />}
+      {editingPlan && <AddPlan clientId={clientId} plan={editingPlan} onAdded={() => { setEditingPlan(null); void load() }} onCancel={() => setEditingPlan(null)} onError={setError} />}
 
       {loading ? (
         <Panel className="flex min-h-52 items-center justify-center"><Loader2 className="animate-spin text-[#FF8F50]" /></Panel>
@@ -143,7 +145,10 @@ export default function MetasPage() {
                   <span className="rounded-md bg-white/5 px-2 py-0.5 text-[11px] text-zinc-400">{PLATFORM_LABEL[plan.platform]}</span>
                   {plan.objective && <span className="rounded-md bg-[#FF8F50]/15 px-2 py-0.5 text-[11px] text-[#FFB185]">{plan.objective}</span>}
                 </div>
-                <button onClick={() => remove(plan)} className="text-zinc-600 hover:text-red-400" aria-label="Remover"><Trash2 size={15} /></button>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => { setAdding(false); setEditingPlan(plan); window.scrollTo({ top: 0, behavior: "smooth" }) }} className="rounded-md p-1 text-zinc-600 hover:text-[#FFB185]" aria-label="Editar"><Pencil size={14} /></button>
+                  <button onClick={() => remove(plan)} className="rounded-md p-1 text-zinc-600 hover:text-red-400" aria-label="Remover"><Trash2 size={15} /></button>
+                </div>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
                 <Metric label="Verba" value={brl(plan.budget)} />
@@ -197,12 +202,20 @@ function FunnelProjection({ plan }: { plan: Plan }) {
 }
 
 type StageForm = { label: string; ratePct: string }
-function AddPlan({ clientId, onAdded, onCancel, onError }: { clientId: string; onAdded: () => void; onCancel: () => void; onError: (m: string) => void }) {
+const stagesFromFunnel = (funnel: FunnelStage[] | null): StageForm[] =>
+  funnel && funnel.length ? funnel.map((s, i) => ({ label: s.label, ratePct: i === 0 || s.rate == null ? "" : String(Math.round(s.rate * 1000) / 10) }))
+    : [{ label: "Leads", ratePct: "" }, { label: "Qualificados", ratePct: "40" }, { label: "Vendas", ratePct: "50" }]
+const numStr = (n: number | null) => (n != null ? String(n) : "")
+
+function AddPlan({ clientId, plan, onAdded, onCancel, onError }: { clientId: string; plan?: Plan; onAdded: () => void; onCancel: () => void; onError: (m: string) => void }) {
+  const editing = !!plan
   const [form, setForm] = useState({
-    month: currentMonth(), platform: "TOTAL", objective: "",
-    budget: "", targetCpl: "", targetLeads: "", targetCpa: "", targetRoas: "", targetTicket: "", narrative: "", notes: "",
+    month: plan?.month ?? currentMonth(), platform: String(plan?.platform ?? "TOTAL"), objective: plan?.objective ?? "",
+    budget: numStr(plan?.budget ?? null), targetCpl: numStr(plan?.targetCpl ?? null), targetLeads: numStr(plan?.targetLeads ?? null),
+    targetCpa: numStr(plan?.targetCpa ?? null), targetRoas: numStr(plan?.targetRoas ?? null), targetTicket: numStr(plan?.targetTicket ?? null),
+    narrative: plan?.narrative ?? "", notes: plan?.notes ?? "",
   })
-  const [stages, setStages] = useState<StageForm[]>([{ label: "Leads", ratePct: "" }, { label: "Qualificados", ratePct: "40" }, { label: "Vendas", ratePct: "50" }])
+  const [stages, setStages] = useState<StageForm[]>(stagesFromFunnel(plan?.funnel ?? null))
   const [busy, setBusy] = useState(false)
 
   const dec = (value: string) => { const c = value.trim().replace(/\./g, "").replace(",", "."); return c ? Number(c) : null }
@@ -217,31 +230,31 @@ function AddPlan({ clientId, onAdded, onCancel, onError }: { clientId: string; o
   async function submit() {
     if (!form.month) { onError("Informe o mês."); return }
     setBusy(true); onError("")
-    const res = await fetch(`/api/clients/${clientId}/media-plans`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        month: form.month, platform: form.platform, objective: form.objective,
-        budget: dec(form.budget), targetCpl: dec(form.targetCpl),
-        targetLeads: form.targetLeads.trim() ? Number(form.targetLeads.trim()) : null,
-        targetCpa: dec(form.targetCpa), targetRoas: dec(form.targetRoas), targetTicket: dec(form.targetTicket),
-        funnel: funnelPayload, narrative: form.narrative, notes: form.notes,
-      }),
+    const payload = {
+      month: form.month, platform: form.platform, objective: form.objective,
+      budget: dec(form.budget), targetCpl: dec(form.targetCpl),
+      targetLeads: form.targetLeads.trim() ? Number(form.targetLeads.trim()) : null,
+      targetCpa: dec(form.targetCpa), targetRoas: dec(form.targetRoas), targetTicket: dec(form.targetTicket),
+      funnel: funnelPayload, narrative: form.narrative, notes: form.notes,
+    }
+    const res = await fetch(editing ? `/api/clients/${clientId}/media-plans/${plan!.id}` : `/api/clients/${clientId}/media-plans`, {
+      method: editing ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
     })
     setBusy(false)
-    if (!res.ok) { onError((await res.json()).error ?? "Erro ao salvar meta."); return }
+    if (!res.ok) { onError((await res.json()).error ?? "Erro ao salvar plano."); return }
     onAdded()
   }
 
   return (
     <Panel className="space-y-4 border-[#FF8F50]/20 p-5">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-white">Novo plano de mídia</h2>
+        <h2 className="text-sm font-semibold text-white">{editing ? "Editar plano de mídia" : "Novo plano de mídia"}</h2>
         <button onClick={onCancel} className="text-zinc-600 hover:text-white"><X size={18} /></button>
       </div>
       <div className="grid gap-4 md:grid-cols-3">
-        <FormField label="Mês"><Input type="month" value={form.month} onChange={(e) => setForm({ ...form, month: e.target.value })} className="[color-scheme:dark]" /></FormField>
+        <FormField label="Mês"><Input type="month" value={form.month} disabled={editing} onChange={(e) => setForm({ ...form, month: e.target.value })} className="[color-scheme:dark] disabled:opacity-50" /></FormField>
         <FormField label="Plataforma">
-          <select value={form.platform} onChange={(e) => setForm({ ...form, platform: e.target.value })} className="dash-input min-h-11 w-full rounded-lg px-3.5 py-2.5 text-sm">
+          <select value={form.platform} disabled={editing} onChange={(e) => setForm({ ...form, platform: e.target.value })} className="dash-input min-h-11 w-full rounded-lg px-3.5 py-2.5 text-sm disabled:opacity-50">
             <option value="TOTAL">Consolidado</option>
             <option value="META">Meta Ads</option>
             <option value="GOOGLE">Google Ads</option>
