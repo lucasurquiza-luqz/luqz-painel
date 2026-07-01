@@ -93,11 +93,12 @@ const AUTOMATION_USER: ApiUser = {
 // Aceita `Authorization: Bearer <AUTOMATION_API_KEY>` (ou header `x-api-key`) OU sessão logada.
 // É o que permite a automação agendar posts pela API sem um login de navegador.
 export async function requireApiKeyOrUser(req: NextRequest, roles?: Role[]): Promise<AuthResult> {
-  const key = process.env.AUTOMATION_API_KEY
+  // .trim() tolera espaço/quebra de linha acidental no valor da env (comum ao colar no painel).
+  const key = process.env.AUTOMATION_API_KEY?.trim()
   if (key) {
     const authHeader = req.headers.get("authorization") ?? ""
     const bearer = /^bearer\s+/i.test(authHeader) ? authHeader.replace(/^bearer\s+/i, "").trim() : ""
-    const provided = bearer || (req.headers.get("x-api-key") ?? "")
+    const provided = (bearer || (req.headers.get("x-api-key") ?? "")).trim()
     if (provided && safeEqual(provided, key)) {
       return { ok: true, user: AUTOMATION_USER }
     }
