@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { prisma } from "@/lib/db"
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, Instagram, Play } from "lucide-react"
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, Instagram, Film, Images } from "lucide-react"
 import { formatInTimeZone } from "date-fns-tz"
 import { ptBR } from "date-fns/locale"
 import {
@@ -11,9 +11,11 @@ const TZ = "America/Sao_Paulo"
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
 
 const STATUS_COLOR: Record<string, string> = {
-  PENDING: "bg-yellow-500/80",
-  PUBLISHING: "bg-orange-500/80",
-  FAILED: "bg-red-500/80",
+  PENDING: "#eab308",
+  PUBLISHING: "#f97316",
+  FAILED: "#ef4444",
+  PUBLISHED: "#22c55e",
+  CANCELLED: "#71717a",
 }
 
 export default async function InstagramCalendarioPage({
@@ -60,19 +62,23 @@ export default async function InstagramCalendarioPage({
   ])
 
   // Buckets por dia (data em SP)
-  type Item = { kind: "scheduled" | "published"; thumb: string | null; status?: string; time: string; href: string; isVideo: boolean }
+  type Item = { kind: "scheduled" | "published"; time: string; href: string; type: "image" | "carousel" | "reel"; color: string }
   const byDay = new Map<string, Item[]>()
   const push = (key: string, item: Item) => byDay.set(key, [...(byDay.get(key) ?? []), item])
 
   for (const s of scheduled) {
     const key = formatInTimeZone(s.scheduledAt, TZ, "yyyy-MM-dd")
-    push(key, { kind: "scheduled", thumb: s.imageUrls[0] ?? null, status: s.status, time: formatInTimeZone(s.scheduledAt, TZ, "HH:mm"), href: `/clientes/${clientId}/instagram/programados`, isVideo: false })
+    const type = s.videoUrl ? "reel" : s.imageUrls.length > 1 ? "carousel" : "image"
+    push(key, { kind: "scheduled", time: formatInTimeZone(s.scheduledAt, TZ, "HH:mm"), href: `/clientes/${clientId}/instagram/programados`, type, color: STATUS_COLOR[s.status] ?? "#a1a1aa" })
   }
   for (const p of media) {
     if (!p.timestamp) continue
     const key = formatInTimeZone(p.timestamp, TZ, "yyyy-MM-dd")
-    push(key, { kind: "published", thumb: p.thumb, time: formatInTimeZone(p.timestamp, TZ, "HH:mm"), href: p.permalink ?? "#", isVideo: p.mediaType === "VIDEO" })
+    const type = p.mediaType === "VIDEO" ? "reel" : p.mediaType === "CAROUSEL_ALBUM" ? "carousel" : "image"
+    push(key, { kind: "published", time: formatInTimeZone(p.timestamp, TZ, "HH:mm"), href: p.permalink ?? "#", type, color: "#22c55e" })
   }
+  // ordena por horário dentro do dia
+  for (const arr of byDay.values()) arr.sort((a, b) => a.time.localeCompare(b.time))
 
   return (
     <div>
@@ -102,30 +108,33 @@ export default async function InstagramCalendarioPage({
           const inMonth = isSameMonth(day, base)
           const isToday = key === todayKey
           return (
-            <div key={key} className={`bg-zinc-900 min-h-24 p-1.5 group relative ${inMonth ? "" : "opacity-40"}`}>
-              <div className="flex items-center justify-between">
-                <span className={`text-[11px] ${isToday ? "bg-orange-500 text-white rounded-full w-5 h-5 flex items-center justify-center font-semibold" : "text-zinc-500"}`}>
+            <div key={key} className={`bg-zinc-900 min-h-28 p-2 flex flex-col group relative ${inMonth ? "" : "opacity-40"}`}>
+              <div className="flex items-center justify-between mb-1">
+                <span className={isToday ? "bg-orange-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-[11px] font-semibold" : "text-[11px] text-zinc-500"}>
                   {format(day, "d")}
                 </span>
-                <Link href={`/clientes/${clientId}/instagram/novo?date=${key}`} className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-orange-400" title="Agendar neste dia">
-                  <Plus size={14} />
-                </Link>
+                <div className="flex items-center gap-1.5">
+                  {items.length > 0 && <span className="text-[10px] text-zinc-600 font-medium tabular-nums">{items.length}</span>}
+                  <Link href={`/clientes/${clientId}/instagram/novo?date=${key}`} className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-orange-400" title="Agendar neste dia">
+                    <Plus size={13} />
+                  </Link>
+                </div>
               </div>
-              <div className="mt-1 space-y-1">
+              <div className="flex flex-col gap-1">
                 {items.slice(0, 3).map((it, i) => (
                   <a key={i} href={it.href} target={it.kind === "published" ? "_blank" : undefined} rel="noreferrer"
-                    className="flex items-center gap-1 text-[10px] rounded px-1 py-0.5 bg-white/5 hover:bg-white/10">
-                    {it.thumb ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={it.thumb} alt="" className="w-4 h-4 rounded object-cover flex-shrink-0" />
-                    ) : (
-                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${it.kind === "published" ? "bg-green-500/80" : STATUS_COLOR[it.status ?? ""] ?? "bg-zinc-500"}`} />
-                    )}
-                    <span className="text-zinc-400 truncate">{it.time}</span>
-                    {it.isVideo && <Play size={9} className="text-zinc-500 flex-shrink-0" />}
+                    className="flex items-center gap-1.5 rounded-md pl-2 pr-1.5 py-1 bg-white/[0.04] hover:bg-white/[0.09] transition-colors border-l-2"
+                    style={{ borderColor: it.color }}>
+                    <span className="text-[11px] text-zinc-300 tabular-nums flex-1">{it.time}</span>
+                    {it.type === "reel" && <Film size={11} className="text-zinc-500 flex-shrink-0" />}
+                    {it.type === "carousel" && <Images size={11} className="text-zinc-500 flex-shrink-0" />}
                   </a>
                 ))}
-                {items.length > 3 && <p className="text-[10px] text-zinc-600 px-1">+{items.length - 3}</p>}
+                {items.length > 3 && (
+                  <Link href={`/clientes/${clientId}/instagram/programados`} className="text-[10px] text-zinc-500 hover:text-orange-400 pl-1 mt-0.5">
+                    +{items.length - 3} mais
+                  </Link>
+                )}
               </div>
             </div>
           )
