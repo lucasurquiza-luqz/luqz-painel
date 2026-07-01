@@ -31,7 +31,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   const plans = await prisma.mediaPlan.findMany({
     where: { clientId: id, ...(month && /^\d{4}-\d{2}$/.test(month) ? { month } : {}) },
     orderBy: [{ month: "desc" }, { platform: "asc" }],
-    include: { createdBy: { select: { name: true } } },
+    include: { createdBy: { select: { name: true } }, campaignFunnel: { select: { id: true, name: true } } },
   })
   return NextResponse.json({ plans: plans.map(serializePlan) })
 }
@@ -46,12 +46,20 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (!month) return NextResponse.json({ error: "Informe o período no formato AAAA-MM." }, { status: 400 })
   const platform = typeof body.platform === "string" && PLATFORMS.has(body.platform) ? body.platform : "TOTAL"
 
+  // Funil de campanha (opcional): precisa pertencer ao cliente.
+  let funnelId: string | null = null
+  if (typeof body.funnelId === "string" && body.funnelId) {
+    const f = await prisma.clientFunnel.findFirst({ where: { id: body.funnelId, clientId: id }, select: { id: true } })
+    funnelId = f?.id ?? null
+  }
+
   try {
     const plan = await prisma.mediaPlan.create({
       data: {
         clientId: id,
         month,
         platform: platform as never,
+        funnelId,
         budget: num(body.budget),
         targetLeads: int(body.targetLeads),
         targetCpa: num(body.targetCpa),
@@ -64,12 +72,12 @@ export async function POST(req: NextRequest, { params }: Params) {
         notes: str(body.notes),
         createdById: auth.user.userId,
       },
-      include: { createdBy: { select: { name: true } } },
+      include: { createdBy: { select: { name: true } }, campaignFunnel: { select: { id: true, name: true } } },
     })
     return NextResponse.json({ plan: serializePlan(plan) }, { status: 201 })
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return NextResponse.json({ error: "Já existe um plano para este período e plataforma." }, { status: 409 })
+      return NextResponse.json({ error: "Já existe um plano para este período/plataforma/funil." }, { status: 409 })
     }
     throw error
   }

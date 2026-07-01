@@ -21,6 +21,8 @@ type Plan = {
   objective: string | null
   funnel: FunnelStage[] | null
   narrative: string | null
+  funnelId: string | null
+  campaignFunnel: { id: string; name: string } | null
   notes: string | null
   createdBy: { name: string }
 }
@@ -143,6 +145,7 @@ export default function MetasPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-semibold text-white">{fmtMonth(plan.month)}</span>
                   <span className="rounded-md bg-white/5 px-2 py-0.5 text-[11px] text-zinc-400">{PLATFORM_LABEL[plan.platform]}</span>
+                  {plan.campaignFunnel && <span className="rounded-md bg-sky-500/15 px-2 py-0.5 text-[11px] text-sky-300">🎯 {plan.campaignFunnel.name}</span>}
                   {plan.objective && <span className="rounded-md bg-[#FF8F50]/15 px-2 py-0.5 text-[11px] text-[#FFB185]">{plan.objective}</span>}
                 </div>
                 <div className="flex items-center gap-1">
@@ -213,12 +216,14 @@ const numStr = (n: number | null) => (n != null ? String(n) : "")
 function AddPlan({ clientId, plan, onAdded, onCancel, onError }: { clientId: string; plan?: Plan; onAdded: () => void; onCancel: () => void; onError: (m: string) => void }) {
   const editing = !!plan
   const [form, setForm] = useState({
-    month: plan?.month ?? currentMonth(), platform: String(plan?.platform ?? "TOTAL"), objective: plan?.objective ?? "",
+    month: plan?.month ?? currentMonth(), platform: String(plan?.platform ?? "TOTAL"), objective: plan?.objective ?? "", funnelId: plan?.funnelId ?? "",
     budget: numStr(plan?.budget ?? null), targetCpl: numStr(plan?.targetCpl ?? null), targetLeads: numStr(plan?.targetLeads ?? null),
     targetCpa: numStr(plan?.targetCpa ?? null), targetRoas: numStr(plan?.targetRoas ?? null), targetTicket: numStr(plan?.targetTicket ?? null),
     narrative: plan?.narrative ?? "", notes: plan?.notes ?? "",
   })
   const [stages, setStages] = useState<StageForm[]>(stagesFromFunnel(plan?.funnel ?? null))
+  const [campaignFunnels, setCampaignFunnels] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => { fetch(`/api/clients/${clientId}/funnels`).then((r) => r.json()).then((d) => setCampaignFunnels(d.funnels ?? [])).catch(() => {}) }, [clientId])
   const [busy, setBusy] = useState(false)
 
   const dec = (value: string) => { const c = value.trim().replace(/\./g, "").replace(",", "."); return c ? Number(c) : null }
@@ -234,7 +239,7 @@ function AddPlan({ clientId, plan, onAdded, onCancel, onError }: { clientId: str
     if (!form.month) { onError("Informe o mês."); return }
     setBusy(true); onError("")
     const payload = {
-      month: form.month, platform: form.platform, objective: form.objective,
+      month: form.month, platform: form.platform, objective: form.objective, funnelId: form.funnelId || null,
       budget: dec(form.budget), targetCpl: dec(form.targetCpl),
       targetLeads: form.targetLeads.trim() ? Number(form.targetLeads.trim()) : null,
       targetCpa: dec(form.targetCpa), targetRoas: dec(form.targetRoas), targetTicket: dec(form.targetTicket),
@@ -265,6 +270,13 @@ function AddPlan({ clientId, plan, onAdded, onCancel, onError }: { clientId: str
         </FormField>
         <FormField label="Objetivo do canal"><Input value={form.objective} onChange={(e) => setForm({ ...form, objective: e.target.value })} placeholder="Venda / Seguidores…" /></FormField>
       </div>
+      <FormField label="Funil de campanha (opcional — atrela a meta às campanhas desse funil)">
+        <select value={form.funnelId} onChange={(e) => setForm({ ...form, funnelId: e.target.value })} className="dash-input min-h-11 w-full rounded-lg px-3.5 py-2.5 text-sm">
+          <option value="">Plano geral (sem funil específico)</option>
+          {campaignFunnels.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+        </select>
+        {campaignFunnels.length === 0 && <p className="mt-1 text-[10px] text-zinc-600">Nenhum funil de campanha ainda. Crie em Painel de performance → aba Funis.</p>}
+      </FormField>
       <div className="grid gap-4 md:grid-cols-3">
         <FormField label="Verba (R$)"><Input value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })} placeholder="8000,00" inputMode="decimal" /></FormField>
         <FormField label="CPL alvo (R$)"><Input value={form.targetCpl} onChange={(e) => setForm({ ...form, targetCpl: e.target.value })} placeholder="12,00" inputMode="decimal" /></FormField>
@@ -864,7 +876,7 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
           {!isAll && tab === "campaigns" && source === "GOOGLE" && <GoogleExplorer clientId={clientId} since={range.since} until={range.until} />}
 
           {/* === FUNIS (agrupa campanhas por nome) === */}
-          {!isAll && tab === "funnels" && <FunnelView clientId={clientId} provider={source} since={range.since} until={range.until} />}
+          {!isAll && tab === "funnels" && <FunnelView clientId={clientId} provider={source} since={range.since} until={range.until} plans={plans} month={range.month} />}
 
           {/* === CRIATIVOS (Meta) === */}
           {!isAll && tab === "creatives" && source === "META" && <CreativesGrid clientId={clientId} since={range.since} until={range.until} />}
@@ -1051,7 +1063,7 @@ const metaToNodes = (campaigns: CampaignNode[]): TNode[] => campaigns.map((c) =>
 }))
 
 // Agrupa nós de campanha em funis por regra de nome (campanha entra no 1º funil cujo termo bate).
-function groupByFunnel(nodes: TNode[], funnels: { name: string; terms: string[] }[]): TNode[] {
+function groupByFunnel(nodes: TNode[], funnels: { id?: string; name: string; terms: string[] }[]): TNode[] {
   const groups = funnels.map((f) => ({ funnel: f, terms: f.terms.map((t) => t.toLowerCase()), kids: [] as TNode[] }))
   const none: TNode[] = []
   for (const n of nodes) {
@@ -1063,7 +1075,7 @@ function groupByFunnel(nodes: TNode[], funnels: { name: string; terms: string[] 
     const t = kids.reduce((a, c) => ({ spend: a.spend + c.spend, impressions: a.impressions + c.impressions, clicks: a.clicks + c.clicks, results: a.results + c.results }), { spend: 0, impressions: 0, clicks: 0, results: 0 })
     return { id, name, ...t, cpa: t.results > 0 ? t.spend / t.results : null, ctr: t.impressions > 0 ? (t.clicks / t.impressions) * 100 : null, children: kids }
   }
-  const out = groups.filter((g) => g.kids.length).map((g) => agg(`f-${g.funnel.name}`, g.funnel.name, g.kids))
+  const out = groups.filter((g) => g.kids.length).map((g) => agg(g.funnel.id ?? `f-${g.funnel.name}`, g.funnel.name, g.kids))
   if (none.length) out.push(agg("f-none", "Sem funil", none))
   return out.sort((a, b) => b.spend - a.spend)
 }
@@ -1212,7 +1224,7 @@ function FunnelEditor({ clientId, initial, onSaved }: { clientId: string; initia
   )
 }
 
-function FunnelView({ clientId, provider, since, until }: { clientId: string; provider: string; since: string; until: string }) {
+function FunnelView({ clientId, provider, since, until, plans, month }: { clientId: string; provider: string; since: string; until: string; plans: Plan[]; month?: string | null }) {
   const [funnels, setFunnels] = useState<FunnelDef[] | null>(null)
   const [nodes, setNodes] = useState<TNode[] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -1243,6 +1255,9 @@ function FunnelView({ clientId, provider, since, until }: { clientId: string; pr
 
   const grouped = groupByFunnel(nodes, funnels ?? [])
   const leaf = provider === "GOOGLE" ? "Grupo ▸ Palavra" : "Conjunto ▸ Anúncio"
+  // Casa cada funil (id) com o plano do mês atrelado a ele (por funil + mês + plataforma).
+  const planFor = (funnelId: string) => month ? plans.find((p) => p.funnelId === funnelId && p.month === month && (p.platform === provider || p.platform === "TOTAL")) : undefined
+  const compares = grouped.map((n) => ({ node: n, plan: planFor(n.id) })).filter((c) => c.plan)
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
@@ -1251,7 +1266,38 @@ function FunnelView({ clientId, provider, since, until }: { clientId: string; pr
       </div>
       {editing && <FunnelEditor clientId={clientId} initial={funnels ?? []} onSaved={(f) => { setFunnels(f); setEditing(false) }} />}
       {!funnels?.length && !editing && <p className="rounded-xl border border-white/8 bg-black/20 p-4 text-xs text-zinc-500">Nenhum funil definido ainda. Clique em <span className="text-[#FFB185]">Configurar funis</span> pra criar (ex.: &quot;Consultoria&quot; = termos CONSULTORIA, SEGUIMENTAÇÃO).</p>}
+      {compares.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[11px] font-semibold text-zinc-400">🎯 Meta × realizado por funil</p>
+          {compares.map((c) => <FunnelPlanCompare key={c.node.id} node={c.node} plan={c.plan!} />)}
+        </div>
+      )}
       <MetricTree nodes={grouped} title={`Funis (${provider === "GOOGLE" ? "Google" : "Meta"})`} levels={["Funil", "Campanha", leaf]} />
+    </div>
+  )
+}
+
+// Meta × realizado de um funil de campanha (gasto/verba, resultados/leads, CPA).
+function FunnelPlanCompare({ node, plan }: { node: TNode; plan: Plan }) {
+  const leadsTarget = plan.targetLeads ?? (plan.budget && plan.targetCpl ? Math.round(plan.budget / plan.targetCpl) : null)
+  const rows: { label: string; cur: string; target: string; pct: number; good: boolean }[] = []
+  if (plan.budget) rows.push({ label: "Gasto", cur: brl(node.spend), target: brl(plan.budget), pct: Math.round((node.spend / plan.budget) * 100), good: node.spend <= plan.budget * 1.05 })
+  if (leadsTarget) { const p = Math.round((node.results / leadsTarget) * 100); rows.push({ label: "Resultados", cur: String(node.results), target: String(leadsTarget), pct: p, good: p >= 100 }) }
+  if (plan.targetCpa && node.cpa != null) rows.push({ label: "CPA", cur: brl(node.cpa), target: `≤ ${brl(plan.targetCpa)}`, pct: Math.round((node.cpa / plan.targetCpa) * 100), good: node.cpa <= plan.targetCpa })
+  return (
+    <div className="rounded-xl border border-white/8 bg-black/20 p-3">
+      <p className="mb-2 text-xs font-semibold text-sky-300">{node.name}</p>
+      <div className="grid gap-2 sm:grid-cols-3">
+        {rows.map((r) => (
+          <div key={r.label}>
+            <div className="mb-1 flex items-center justify-between text-[11px]">
+              <span className="text-zinc-500">{r.label}</span>
+              <span className={r.good ? "text-emerald-300" : "text-amber-300"}>{r.cur} <span className="text-zinc-600">/ {r.target}</span></span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/8"><div className={`h-full rounded-full ${r.good ? "bg-emerald-400" : "bg-amber-400"}`} style={{ width: `${Math.min(100, Math.max(3, r.pct))}%` }} /></div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

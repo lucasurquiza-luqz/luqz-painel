@@ -144,7 +144,8 @@ model ClientFunnel {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  plans  MediaPlan[]
 
   @@index([clientId])
 }
@@ -165,16 +166,20 @@ model MediaPlan {
   objective    String? // objetivo do canal (ex.: "Venda", "Seguidores/base")
   funnel       Json? // etapas do funil projetado: [{ label, rate }] a partir de Leads
   narrative    String? // parte rica: diagnóstico, cenários, controle semanal (markdown)
+  funnelId     String? // atrela a meta a um funil de campanha (ClientFunnel); null = plano geral
+  distribution Json? // rateio de verba por funil de campanha: [{ funnelId, budget }]
   notes        String?
   createdById  String
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  client    Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  createdBy User   @relation("MediaPlanCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  client        Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy     User          @relation("MediaPlanCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  campaignFunnel ClientFunnel? @relation(fields: [funnelId], references: [id], onDelete: SetNull)
 
-  @@unique([clientId, month, platform])
+  // Unicidade real (plano geral vs por-funil) via índices parciais na migration.
   @@index([clientId, month])
+  @@index([funnelId])
 }
 
 enum ResourceCategory {

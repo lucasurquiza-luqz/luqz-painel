@@ -31,11 +31,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if ("funnel" in body) data.funnel = (sanitizeFunnel(body.funnel) ?? Prisma.JsonNull) as Prisma.InputJsonValue
   if ("narrative" in body) data.narrative = str(body.narrative)
   if ("notes" in body) data.notes = str(body.notes)
+  if ("funnelId" in body) {
+    const fid = typeof body.funnelId === "string" && body.funnelId ? body.funnelId : null
+    data.funnelId = fid ? ((await prisma.clientFunnel.findFirst({ where: { id: fid, clientId: id }, select: { id: true } }))?.id ?? null) : null
+  }
 
   const plan = await prisma.mediaPlan.update({
     where: { id: planId },
     data,
-    include: { createdBy: { select: { name: true } } },
+    include: { createdBy: { select: { name: true } }, campaignFunnel: { select: { id: true, name: true } } },
   })
   return NextResponse.json({ plan: serializePlan(plan) })
 }
