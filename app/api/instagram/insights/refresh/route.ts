@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { requireApiKeyOrUser } from "@/lib/api-auth"
-import { syncInstagramInsights } from "@/lib/instagram-insights"
+import { syncInstagramInsights, syncInstagramMedia } from "@/lib/instagram-insights"
 
 // Atualiza (sob demanda) o cache de insights da conta de um cliente.
 export async function POST(req: NextRequest) {
@@ -16,7 +16,8 @@ export async function POST(req: NextRequest) {
 
   const result = await syncInstagramInsights(account.id)
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 502 })
+  const media = await syncInstagramMedia(account.id).catch(() => ({ ok: false, count: 0 }))
 
   const snapshot = await prisma.instagramSnapshot.findUnique({ where: { accountId: account.id } })
-  return NextResponse.json({ ok: true, snapshot })
+  return NextResponse.json({ ok: true, snapshot, mediaCount: media.ok ? media.count : 0 })
 }

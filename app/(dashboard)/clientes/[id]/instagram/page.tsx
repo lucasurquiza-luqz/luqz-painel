@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { prisma } from "@/lib/db"
-import { Users, Eye, Radar, UserPlus, Instagram, Clock, Heart, MousePointerClick, Play, ExternalLink } from "lucide-react"
+import { Users, Eye, Radar, UserPlus, Instagram, Clock, Heart, MousePointerClick, Play, Bookmark, Share2 } from "lucide-react"
 import { formatInTimeZone } from "date-fns-tz"
 import { ptBR } from "date-fns/locale"
 import { ReachChart, FollowersChart } from "./_chart"
@@ -9,15 +9,13 @@ import { RefreshButton } from "./_refresh"
 const TZ = "America/Sao_Paulo"
 
 type Demo = { label: string; value: number }
-type Totals = { reach: number; views: number; profileViews: number; websiteClicks: number; accountsEngaged: number; interactions: number; newFollowers: number }
-type TopPost = { id: string; permalink: string | null; mediaType: string | null; likes: number; comments: number; caption: string; thumb: string | null }
+type Totals = { reach: number; views: number; profileViews: number; websiteClicks: number; accountsEngaged: number; interactions: number; saves: number; shares: number; newFollowers: number }
 type SnapData = {
   followersCount: number | null
   mediaCount: number | null
   periods: Record<string, Totals>
   demographics: Record<string, Demo[]>
   bestTimes: number[]
-  topPosts: TopPost[]
 }
 
 const nf = (n: number | null | undefined) => (n == null ? "—" : new Intl.NumberFormat("pt-BR").format(n))
@@ -60,7 +58,13 @@ export default async function InstagramVisaoGeralPage({
   }
 
   const data = snapshot.data as unknown as SnapData
-  const t: Totals = data.periods?.[String(days)] ?? { reach: 0, views: 0, profileViews: 0, websiteClicks: 0, accountsEngaged: 0, interactions: 0, newFollowers: 0 }
+  const t: Totals = data.periods?.[String(days)] ?? { reach: 0, views: 0, profileViews: 0, websiteClicks: 0, accountsEngaged: 0, interactions: 0, saves: 0, shares: 0, newFollowers: 0 }
+
+  const topPosts = await prisma.instagramMedia.findMany({
+    where: { accountId: account.id },
+    orderBy: { reach: "desc" },
+    take: 6,
+  })
 
   const stats = await prisma.instagramDailyStat.findMany({
     where: { accountId: account.id },
@@ -78,6 +82,8 @@ export default async function InstagramVisaoGeralPage({
     { label: "Visualizações", value: nf(t.views), icon: Eye },
     { label: "Visitas ao perfil", value: nf(t.profileViews), icon: Users },
     { label: "Interações", value: nf(t.interactions), icon: Heart },
+    { label: "Salvamentos", value: nf(t.saves), icon: Bookmark },
+    { label: "Compartilhamentos", value: nf(t.shares), icon: Share2 },
     { label: "Novos seguidores", value: nf(t.newFollowers), icon: UserPlus },
     { label: "Cliques no site", value: nf(t.websiteClicks), icon: MousePointerClick },
     { label: "Contas engajadas", value: nf(t.accountsEngaged), icon: Users },
@@ -86,7 +92,6 @@ export default async function InstagramVisaoGeralPage({
   const bestTimes = data.bestTimes ?? []
   const peak = Math.max(0, ...bestTimes)
   const topHours = bestTimes.map((v, h) => ({ h, v })).filter((x) => x.v > 0).sort((a, b) => b.v - a.v).slice(0, 3).map((x) => `${String(x.h).padStart(2, "0")}h`)
-  const topPosts = data.topPosts ?? []
 
   return (
     <div className="space-y-6">
@@ -136,11 +141,14 @@ export default async function InstagramVisaoGeralPage({
         </div>
       </div>
 
-      {/* Top posts */}
+      {/* Top posts (por alcance) */}
       <div className="bg-zinc-900 border border-white/8 rounded-2xl p-5">
-        <h2 className="text-sm font-medium text-zinc-300 mb-4">Top posts (90 dias)</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-medium text-zinc-300">Top posts por alcance</h2>
+          <Link href={`/clientes/${clientId}/instagram/analise`} className="text-xs text-orange-400 hover:underline">Ver análise completa →</Link>
+        </div>
         {topPosts.length === 0 ? (
-          <p className="text-sm text-zinc-600">Sem posts no período.</p>
+          <p className="text-sm text-zinc-600">Nenhum post sincronizado. Clique em Atualizar.</p>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {topPosts.map((p) => (
@@ -153,11 +161,14 @@ export default async function InstagramVisaoGeralPage({
                     <div className="w-full h-full flex items-center justify-center text-zinc-600"><Instagram size={20} /></div>
                   )}
                   {p.mediaType === "VIDEO" && <Play size={14} className="absolute top-2 right-2 text-white drop-shadow" />}
-                  <ExternalLink size={12} className="absolute bottom-2 right-2 text-white/0 group-hover:text-white/90 transition-colors" />
+                  <span className="absolute bottom-1 left-1 text-[10px] bg-black/70 text-white rounded px-1.5 py-0.5 flex items-center gap-1">
+                    <Radar size={10} /> {nf(p.reach)}
+                  </span>
                 </div>
-                <div className="flex items-center gap-3 mt-1.5 text-xs text-zinc-500">
-                  <span className="flex items-center gap-1"><Heart size={11} /> {nf(p.likes)}</span>
-                  <span>💬 {nf(p.comments)}</span>
+                <div className="flex items-center gap-2.5 mt-1.5 text-[11px] text-zinc-500">
+                  <span className="flex items-center gap-0.5"><Heart size={10} /> {nf(p.likes)}</span>
+                  <span className="flex items-center gap-0.5"><Bookmark size={10} /> {nf(p.saved)}</span>
+                  <span className="flex items-center gap-0.5"><Share2 size={10} /> {nf(p.shares)}</span>
                 </div>
               </a>
             ))}

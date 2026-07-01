@@ -2,18 +2,6 @@ import { prisma } from "./db"
 import { Prisma } from "@prisma/client"
 import { decryptSecret } from "./crypto-secrets"
 
-type TopPost = {
-  id: string
-  permalink: string | null
-  mediaType: string | null
-  timestamp: string | null
-  likes: number
-  comments: number
-  caption: string
-  thumb: string | null
-  engagement: number
-}
-
 const IG_BASE = "https://graph.facebook.com/v21.0"
 const WINDOWS = [7, 30, 90] as const
 
@@ -68,6 +56,8 @@ export type PeriodTotals = {
   websiteClicks: number
   accountsEngaged: number
   interactions: number
+  saves: number
+  shares: number
   newFollowers: number
 }
 
@@ -117,7 +107,7 @@ export async function syncInstagramInsights(accountId: string): Promise<{ ok: bo
     const until = unix(now)
     const totals = await safe(
       () => igGet(`${ig}/insights`, {
-        metric: "reach,views,profile_views,website_clicks,accounts_engaged,total_interactions",
+        metric: "reach,views,profile_views,website_clicks,accounts_engaged,total_interactions,saves,shares",
         period: "day",
         metric_type: "total_value",
         since: String(since),
@@ -141,6 +131,8 @@ export async function syncInstagramInsights(accountId: string): Promise<{ ok: bo
       websiteClicks: byName.get("website_clicks") ?? 0,
       accountsEngaged: byName.get("accounts_engaged") ?? 0,
       interactions: byName.get("total_interactions") ?? 0,
+      saves: byName.get("saves") ?? 0,
+      shares: byName.get("shares") ?? 0,
       newFollowers: newFoll,
     }
   }
@@ -169,31 +161,6 @@ export async function syncInstagramInsights(accountId: string): Promise<{ ok: bo
     return hourly.map((sum, h) => (counts[h] ? Math.round(sum / counts[h]) : 0))
   }, [] as number[])
 
-  // Top posts (ranqueia por curtidas + comentarios, ultimos 90 dias)
-  const topPosts = await safe<TopPost[]>(async () => {
-    const json = (await igGet(`${ig}/media`, {
-      fields: "id,permalink,media_type,timestamp,like_count,comments_count,caption,media_url,thumbnail_url",
-      limit: "40",
-      access_token: token,
-    })) as { data?: { id: string; permalink?: string; media_type?: string; timestamp?: string; like_count?: number; comments_count?: number; caption?: string; media_url?: string; thumbnail_url?: string }[] }
-    const cutoff = now.getTime() - 90 * 86400_000
-    return (json.data ?? [])
-      .filter((m) => (m.timestamp ? new Date(m.timestamp).getTime() >= cutoff : true))
-      .map((m) => ({
-        id: m.id,
-        permalink: m.permalink ?? null,
-        mediaType: m.media_type ?? null,
-        timestamp: m.timestamp ?? null,
-        likes: m.like_count ?? 0,
-        comments: m.comments_count ?? 0,
-        caption: (m.caption ?? "").slice(0, 120),
-        thumb: m.thumbnail_url ?? m.media_url ?? null,
-        engagement: (m.like_count ?? 0) + (m.comments_count ?? 0),
-      }))
-      .sort((a, b) => b.engagement - a.engagement)
-      .slice(0, 6)
-  }, [] as TopPost[])
-
   // Persiste a serie diaria
   const allDays = new Set([...reachByDay.keys(), ...newFollByDay.keys()])
   const today = now.toISOString().slice(0, 10)
@@ -216,7 +183,6 @@ export async function syncInstagramInsights(accountId: string): Promise<{ ok: bo
     periods,
     demographics,
     bestTimes,
-    topPosts,
   }
 
   const jsonData = data as unknown as Prisma.InputJsonValue
@@ -229,12 +195,84 @@ export async function syncInstagramInsights(accountId: string): Promise<{ ok: bo
   return { ok: true }
 }
 
+// Cache de metricas por post (alimenta Top posts + aba Analise).
+export async function syncInstagramMedia(accountId: string, limit = 30): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const account = await prisma.instagramAccount.findUnique({ where: { id: accountId } })
+  if (!account) return { ok: false, error: "Conta não encontrada." }
+
+  let token: string
+  try {
+    token = decryptSecret(account.tokenEnc)
+  } catch {
+    return { ok: false, error: "Token inválido." }
+  }
+  const ig = account.igUserId
+
+  const list = await safe(
+    () => igGet(`${ig}/media`, {
+      fields: "id,permalink,media_type,timestamp,like_count,comments_count,caption,media_url,thumbnail_url",
+      limit: String(limit),
+      access_token: token,
+    }) as Promise<{ data?: { id: string; permalink?: string; media_type?: string; timestamp?: string; like_count?: number; comments_count?: number; caption?: string; media_url?: string; thumbnail_url?: string }[] }>,
+    { data: [] }
+  )
+
+  let count = 0
+  for (const m of list.data ?? []) {
+    // Insights por post (metricas comuns a imagem/carrossel/reel).
+    const ins = await safe(
+      () => igGet(`${m.id}/insights`, { metric: "reach,views,saved,shares,total_interactions", access_token: token }) as Promise<{ data?: InsightRow[] }>,
+      { data: [] }
+    )
+    const byName = new Map<string, number>()
+    for (const row of ins.data ?? []) byName.set(row.name, row.values?.[0]?.value ?? row.total_value?.value ?? 0)
+
+    await prisma.instagramMedia.upsert({
+      where: { id: m.id },
+      create: {
+        id: m.id,
+        accountId,
+        mediaType: m.media_type ?? null,
+        permalink: m.permalink ?? null,
+        thumb: m.thumbnail_url ?? m.media_url ?? null,
+        caption: (m.caption ?? "").slice(0, 300),
+        timestamp: m.timestamp ? new Date(m.timestamp) : null,
+        likes: m.like_count ?? 0,
+        comments: m.comments_count ?? 0,
+        reach: byName.get("reach") ?? null,
+        views: byName.get("views") ?? null,
+        saved: byName.get("saved") ?? null,
+        shares: byName.get("shares") ?? null,
+        interactions: byName.get("total_interactions") ?? null,
+      },
+      update: {
+        mediaType: m.media_type ?? null,
+        permalink: m.permalink ?? null,
+        thumb: m.thumbnail_url ?? m.media_url ?? null,
+        caption: (m.caption ?? "").slice(0, 300),
+        timestamp: m.timestamp ? new Date(m.timestamp) : null,
+        likes: m.like_count ?? 0,
+        comments: m.comments_count ?? 0,
+        reach: byName.get("reach") ?? null,
+        views: byName.get("views") ?? null,
+        saved: byName.get("saved") ?? null,
+        shares: byName.get("shares") ?? null,
+        interactions: byName.get("total_interactions") ?? null,
+        fetchedAt: new Date(),
+      },
+    })
+    count++
+  }
+  return { ok: true, count }
+}
+
 export async function syncAllInstagramInsights(): Promise<{ synced: number; failed: number }> {
   const accounts = await prisma.instagramAccount.findMany({ select: { id: true } })
   let synced = 0
   let failed = 0
   for (const a of accounts) {
     const r = await syncInstagramInsights(a.id)
+    await syncInstagramMedia(a.id).catch(() => null)
     if (r.ok) synced++
     else failed++
   }

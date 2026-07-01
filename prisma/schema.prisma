@@ -1094,6 +1094,31 @@ model InstagramAccount {
   posts      InstagramScheduledPost[]
   snapshot   InstagramSnapshot?
   dailyStats InstagramDailyStat[]
+  media      InstagramMedia[]
+}
+
+// Cache de metricas por post publicado (aba Analise + Top posts).
+model InstagramMedia {
+  id           String    @id // ID da midia no Instagram
+  accountId    String
+  mediaType    String? // IMAGE | VIDEO | CAROUSEL_ALBUM
+  permalink    String?
+  thumb        String?
+  caption      String?
+  timestamp    DateTime?
+  likes        Int?
+  comments     Int?
+  reach        Int?
+  views        Int?
+  saved        Int?
+  shares       Int?
+  interactions Int?
+  pillar       String? // 1 dos 4 pilares (marcacao futura)
+  fetchedAt    DateTime  @default(now())
+
+  account InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, timestamp])
 }
 
 // Cache dos insights da conta (KPIs + demografia + melhores horarios). Um cron
