@@ -1,21 +1,40 @@
 import Link from "next/link"
 import { prisma } from "@/lib/db"
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, Instagram, Film, Images } from "lucide-react"
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, Instagram, Film, Images, Image as ImageIcon, ExternalLink, List, LayoutGrid } from "lucide-react"
 import { formatInTimeZone } from "date-fns-tz"
 import { ptBR } from "date-fns/locale"
 import {
-  startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, addMonths, format, isSameMonth,
+  startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, addMonths, addDays, format, isSameMonth,
 } from "date-fns"
+import { PostActions } from "../_post-actions"
 
 const TZ = "America/Sao_Paulo"
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
 
 const STATUS_COLOR: Record<string, string> = {
-  PENDING: "#eab308",
-  PUBLISHING: "#f97316",
-  FAILED: "#ef4444",
-  PUBLISHED: "#22c55e",
-  CANCELLED: "#71717a",
+  PENDING: "#eab308", PUBLISHING: "#f97316", FAILED: "#ef4444", PUBLISHED: "#22c55e", CANCELLED: "#71717a",
+}
+const STATUS_LABEL: Record<string, string> = {
+  PENDING: "Agendado", PUBLISHING: "Publicando", FAILED: "Falhou", PUBLISHED: "Publicado",
+}
+
+type Item = {
+  key: string // dia YYYY-MM-DD (SP)
+  kind: "scheduled" | "published"
+  id: string
+  status: string
+  time: string
+  ts: Date
+  caption: string
+  thumb: string | null
+  type: "image" | "carousel" | "reel"
+  permalink: string | null
+}
+
+function typeIcon(t: Item["type"]) {
+  if (t === "reel") return Film
+  if (t === "carousel") return Images
+  return ImageIcon
 }
 
 export default async function InstagramCalendarioPage({
@@ -23,10 +42,11 @@ export default async function InstagramCalendarioPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ m?: string }>
+  searchParams: Promise<{ v?: string; w?: string; m?: string }>
 }) {
   const { id: clientId } = await params
-  const { m } = await searchParams
+  const { v, w, m } = await searchParams
+  const view = v === "mes" ? "mes" : "agenda"
 
   const account = await prisma.instagramAccount.findUnique({ where: { clientId }, select: { id: true } })
   if (!account) {
@@ -38,111 +58,159 @@ export default async function InstagramCalendarioPage({
     )
   }
 
-  // Mês de referência (a partir de ?m=YYYY-MM, senão o atual)
-  const base = m && /^\d{4}-\d{2}$/.test(m) ? new Date(`${m}-01T12:00:00`) : new Date()
-  const monthStart = startOfMonth(base)
-  const monthEnd = endOfMonth(base)
-  const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 })
-  const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 0 })
-  const days = eachDayOfInterval({ start: gridStart, end: gridEnd })
-  const prevM = format(addMonths(base, -1), "yyyy-MM")
-  const nextM = format(addMonths(base, 1), "yyyy-MM")
+  // Intervalo visível: semana (agenda) ou mês (grid).
+  const anchor = view === "mes"
+    ? (m && /^\d{4}-\d{2}$/.test(m) ? new Date(`${m}-01T12:00:00`) : new Date())
+    : (w && /^\d{4}-\d{2}-\d{2}$/.test(w) ? new Date(`${w}T12:00:00`) : new Date())
+
+  const rangeStart = view === "mes" ? startOfWeek(startOfMonth(anchor), { weekStartsOn: 0 }) : startOfWeek(anchor, { weekStartsOn: 1 })
+  const rangeEnd = view === "mes" ? endOfWeek(endOfMonth(anchor), { weekStartsOn: 0 }) : endOfWeek(anchor, { weekStartsOn: 1 })
   const todayKey = formatInTimeZone(new Date(), TZ, "yyyy-MM-dd")
 
-  // Dados do intervalo visível
   const [scheduled, media] = await Promise.all([
     prisma.instagramScheduledPost.findMany({
-      where: { clientId, status: { in: ["PENDING", "PUBLISHING", "FAILED"] }, scheduledAt: { gte: gridStart, lte: gridEnd } },
+      where: { clientId, status: { in: ["PENDING", "PUBLISHING", "FAILED"] }, scheduledAt: { gte: rangeStart, lte: rangeEnd } },
       orderBy: { scheduledAt: "asc" },
     }),
     prisma.instagramMedia.findMany({
-      where: { accountId: account.id, timestamp: { gte: gridStart, lte: gridEnd } },
+      where: { accountId: account.id, timestamp: { gte: rangeStart, lte: rangeEnd } },
       orderBy: { timestamp: "asc" },
     }),
   ])
 
-  // Buckets por dia (data em SP)
-  type Item = { kind: "scheduled" | "published"; time: string; href: string; type: "image" | "carousel" | "reel"; color: string }
   const byDay = new Map<string, Item[]>()
-  const push = (key: string, item: Item) => byDay.set(key, [...(byDay.get(key) ?? []), item])
+  const add = (it: Item) => byDay.set(it.key, [...(byDay.get(it.key) ?? []), it])
 
   for (const s of scheduled) {
-    const key = formatInTimeZone(s.scheduledAt, TZ, "yyyy-MM-dd")
-    const type = s.videoUrl ? "reel" : s.imageUrls.length > 1 ? "carousel" : "image"
-    push(key, { kind: "scheduled", time: formatInTimeZone(s.scheduledAt, TZ, "HH:mm"), href: `/clientes/${clientId}/instagram/programados`, type, color: STATUS_COLOR[s.status] ?? "#a1a1aa" })
+    add({
+      key: formatInTimeZone(s.scheduledAt, TZ, "yyyy-MM-dd"), kind: "scheduled", id: s.id, status: s.status,
+      time: formatInTimeZone(s.scheduledAt, TZ, "HH:mm"), ts: s.scheduledAt, caption: s.caption,
+      thumb: s.imageUrls[0] ?? null, type: s.videoUrl ? "reel" : s.imageUrls.length > 1 ? "carousel" : "image", permalink: null,
+    })
   }
   for (const p of media) {
     if (!p.timestamp) continue
-    const key = formatInTimeZone(p.timestamp, TZ, "yyyy-MM-dd")
-    const type = p.mediaType === "VIDEO" ? "reel" : p.mediaType === "CAROUSEL_ALBUM" ? "carousel" : "image"
-    push(key, { kind: "published", time: formatInTimeZone(p.timestamp, TZ, "HH:mm"), href: p.permalink ?? "#", type, color: "#22c55e" })
+    add({
+      key: formatInTimeZone(p.timestamp, TZ, "yyyy-MM-dd"), kind: "published", id: p.id, status: "PUBLISHED",
+      time: formatInTimeZone(p.timestamp, TZ, "HH:mm"), ts: p.timestamp, caption: p.caption ?? "",
+      thumb: p.thumb, type: p.mediaType === "VIDEO" ? "reel" : p.mediaType === "CAROUSEL_ALBUM" ? "carousel" : "image", permalink: p.permalink,
+    })
   }
-  // ordena por horário dentro do dia
   for (const arr of byDay.values()) arr.sort((a, b) => a.time.localeCompare(b.time))
+
+  // Navegação
+  const prevHref = view === "mes" ? `?v=mes&m=${format(addMonths(anchor, -1), "yyyy-MM")}` : `?w=${format(addDays(startOfWeek(anchor, { weekStartsOn: 1 }), -7), "yyyy-MM-dd")}`
+  const nextHref = view === "mes" ? `?v=mes&m=${format(addMonths(anchor, 1), "yyyy-MM")}` : `?w=${format(addDays(startOfWeek(anchor, { weekStartsOn: 1 }), 7), "yyyy-MM-dd")}`
+  const title = view === "mes"
+    ? formatInTimeZone(startOfMonth(anchor), TZ, "MMMM 'de' yyyy", { locale: ptBR })
+    : `${format(startOfWeek(anchor, { weekStartsOn: 1 }), "dd/MM")} – ${format(endOfWeek(anchor, { weekStartsOn: 1 }), "dd/MM")}`
+
+  const weekDays = eachDayOfInterval({ start: rangeStart, end: rangeEnd })
 
   return (
     <div>
-      {/* Header do mês */}
-      <div className="flex items-center justify-between mb-4">
+      {/* Header: navegação + toggle de visão */}
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div className="flex items-center gap-2">
-          <Link href={`?m=${prevM}`} className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-white/5"><ChevronLeft size={18} /></Link>
-          <h2 className="text-sm font-medium text-zinc-100 capitalize min-w-40 text-center">
-            {formatInTimeZone(monthStart, TZ, "MMMM 'de' yyyy", { locale: ptBR })}
-          </h2>
-          <Link href={`?m=${nextM}`} className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-white/5"><ChevronRight size={18} /></Link>
+          <Link href={prevHref} className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-white/5"><ChevronLeft size={18} /></Link>
+          <h2 className="text-sm font-medium text-zinc-100 capitalize min-w-36 text-center">{title}</h2>
+          <Link href={nextHref} className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-white/5"><ChevronRight size={18} /></Link>
         </div>
-        <div className="flex items-center gap-4 text-xs text-zinc-500">
-          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-yellow-500/80" /> agendado</span>
-          <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-green-500/80" /> publicado</span>
+        <div className="flex items-center gap-1 bg-zinc-900 border border-white/8 rounded-xl p-1">
+          <Link href="?v=agenda" className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg ${view === "agenda" ? "bg-orange-500 text-white" : "text-zinc-400 hover:text-zinc-200"}`}><List size={14} /> Agenda</Link>
+          <Link href="?v=mes" className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg ${view === "mes" ? "bg-orange-500 text-white" : "text-zinc-400 hover:text-zinc-200"}`}><LayoutGrid size={14} /> Mês</Link>
         </div>
       </div>
 
-      {/* Grade */}
-      <div className="grid grid-cols-7 gap-px bg-white/5 border border-white/8 rounded-2xl overflow-hidden">
-        {WEEKDAYS.map((w) => (
-          <div key={w} className="bg-zinc-950 py-2 text-center text-[11px] font-medium text-zinc-500">{w}</div>
-        ))}
-        {days.map((day) => {
-          const key = format(day, "yyyy-MM-dd")
-          const items = byDay.get(key) ?? []
-          const inMonth = isSameMonth(day, base)
-          const isToday = key === todayKey
-          return (
-            <div key={key} className={`bg-zinc-900 min-h-28 p-2 flex flex-col group relative ${inMonth ? "" : "opacity-40"}`}>
-              <div className="flex items-center justify-between mb-1">
-                <span className={isToday ? "bg-orange-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-[11px] font-semibold" : "text-[11px] text-zinc-500"}>
-                  {format(day, "d")}
-                </span>
-                <div className="flex items-center gap-1.5">
-                  {items.length > 0 && <span className="text-[10px] text-zinc-600 font-medium tabular-nums">{items.length}</span>}
-                  <Link href={`/clientes/${clientId}/instagram/novo?date=${key}`} className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-orange-400" title="Agendar neste dia">
-                    <Plus size={13} />
-                  </Link>
+      {view === "agenda" ? (
+        /* ===== AGENDA (semana em lista por dia) ===== */
+        <div className="space-y-4">
+          {weekDays.map((day) => {
+            const key = format(day, "yyyy-MM-dd")
+            const items = byDay.get(key) ?? []
+            const isToday = key === todayKey
+            return (
+              <div key={key}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className={`text-sm font-medium capitalize ${isToday ? "text-orange-400" : "text-zinc-300"}`}>
+                    {format(day, "EEEE", { locale: ptBR })} · {format(day, "dd/MM")}
+                  </span>
+                  {items.length > 0 && <span className="text-xs text-zinc-600">{items.length} post{items.length !== 1 ? "s" : ""}</span>}
+                  <Link href={`/clientes/${clientId}/instagram/novo?date=${key}`} className="text-zinc-600 hover:text-orange-400 ml-auto" title="Agendar neste dia"><Plus size={16} /></Link>
                 </div>
-              </div>
-              <div className="flex flex-col gap-1">
-                {items.slice(0, 3).map((it, i) => (
-                  <a key={i} href={it.href} target={it.kind === "published" ? "_blank" : undefined} rel="noreferrer"
-                    className="flex items-center gap-1.5 rounded-md pl-2 pr-1.5 py-1 bg-white/[0.04] hover:bg-white/[0.09] transition-colors border-l-2"
-                    style={{ borderColor: it.color }}>
-                    <span className="text-[11px] text-zinc-300 tabular-nums flex-1">{it.time}</span>
-                    {it.type === "reel" && <Film size={11} className="text-zinc-500 flex-shrink-0" />}
-                    {it.type === "carousel" && <Images size={11} className="text-zinc-500 flex-shrink-0" />}
-                  </a>
-                ))}
-                {items.length > 3 && (
-                  <Link href={`/clientes/${clientId}/instagram/programados`} className="text-[10px] text-zinc-500 hover:text-orange-400 pl-1 mt-0.5">
-                    +{items.length - 3} mais
+                {items.length === 0 ? (
+                  <Link href={`/clientes/${clientId}/instagram/novo?date=${key}`} className="block text-xs text-zinc-600 hover:text-zinc-400 border border-dashed border-white/8 rounded-xl px-4 py-2.5">
+                    + Agendar
                   </Link>
+                ) : (
+                  <div className="space-y-2">
+                    {items.map((it) => {
+                      const Icon = typeIcon(it.type)
+                      return (
+                        <div key={it.kind + it.id} className="flex items-center gap-3 bg-zinc-900 border border-white/8 rounded-xl p-2.5">
+                          <div className="w-11 h-14 rounded-lg overflow-hidden bg-zinc-800 border border-white/8 flex-shrink-0 relative">
+                            {it.thumb ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={it.thumb} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-zinc-600"><Icon size={16} /></div>
+                            )}
+                          </div>
+                          <div className="w-14 flex-shrink-0">
+                            <p className="text-sm font-medium text-zinc-100 tabular-nums">{it.time}</p>
+                            <p className="text-[11px] text-zinc-500 flex items-center gap-1"><Icon size={11} /> {it.type === "reel" ? "Reel" : it.type === "carousel" ? "Carrossel" : "Imagem"}</p>
+                          </div>
+                          <p className="flex-1 min-w-0 text-xs text-zinc-400 line-clamp-2">{it.caption || "(sem legenda)"}</p>
+                          <span className="flex items-center gap-1.5 text-xs flex-shrink-0" style={{ color: STATUS_COLOR[it.status] }}>
+                            <span className="w-2 h-2 rounded-full" style={{ background: STATUS_COLOR[it.status] }} />
+                            {STATUS_LABEL[it.status] ?? it.status}
+                          </span>
+                          <div className="flex-shrink-0">
+                            {it.kind === "scheduled" ? (
+                              <PostActions clientId={clientId} postId={it.id} status={it.status} />
+                            ) : it.permalink ? (
+                              <a href={it.permalink} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-zinc-500 hover:text-orange-400 px-2 py-1"><ExternalLink size={12} /> Ver</a>
+                            ) : null}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 )}
               </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      ) : (
+        /* ===== MÊS (grid compacto de overview) ===== */
+        <div className="grid grid-cols-7 gap-px bg-white/5 border border-white/8 rounded-2xl overflow-hidden">
+          {WEEKDAYS.map((wd) => (
+            <div key={wd} className="bg-zinc-950 py-2 text-center text-[11px] font-medium text-zinc-500">{wd}</div>
+          ))}
+          {weekDays.map((day) => {
+            const key = format(day, "yyyy-MM-dd")
+            const items = byDay.get(key) ?? []
+            const inMonth = isSameMonth(day, anchor)
+            const isToday = key === todayKey
+            return (
+              <Link key={key} href={`?v=agenda&w=${key}`} className={`bg-zinc-900 min-h-24 p-2 flex flex-col hover:bg-zinc-800/60 transition-colors ${inMonth ? "" : "opacity-40"}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className={isToday ? "bg-orange-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-[11px] font-semibold" : "text-[11px] text-zinc-500"}>{format(day, "d")}</span>
+                  {items.length > 0 && <span className="text-[10px] text-zinc-500 font-medium">{items.length}</span>}
+                </div>
+                <div className="flex flex-wrap gap-1 content-start">
+                  {items.slice(0, 8).map((it, i) => (
+                    <span key={i} className="w-2 h-2 rounded-full" style={{ background: STATUS_COLOR[it.status] }} title={`${it.time} · ${STATUS_LABEL[it.status] ?? ""}`} />
+                  ))}
+                </div>
+              </Link>
+            )
+          })}
+        </div>
+      )}
 
-      <p className="text-xs text-zinc-600 mt-3 flex items-center gap-1">
-        <Instagram size={12} /> Passe o mouse num dia e clique no + para agendar.
+      <p className="text-xs text-zinc-600 mt-4 flex items-center gap-1">
+        <Instagram size={12} /> {view === "agenda" ? "Cada dia lista seus posts. Clique no + para agendar num dia." : "Clique num dia para abrir a agenda daquele dia."}
       </p>
     </div>
   )
