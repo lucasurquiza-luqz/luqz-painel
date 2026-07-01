@@ -29,6 +29,7 @@ import {
   Users,
   Video,
   HeartPulse,
+  Instagram,
 } from "lucide-react"
 import { DashBrandMark } from "@/components/DashBrandMark"
 import { NotificationsBell } from "@/components/NotificationsBell"
@@ -77,6 +78,13 @@ const clientNav: NavGroup[] = [
     items: [
       { href: "/tarefas", label: "Tarefas", icon: ListTodo },
       { href: "/projetos", label: "Projetos", icon: FolderKanban },
+    ],
+  },
+  {
+    label: "Conteúdo",
+    internalOnly: true,
+    items: [
+      { href: "/instagram", label: "Instagram", icon: Instagram },
     ],
   },
   {
