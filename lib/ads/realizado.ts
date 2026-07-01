@@ -6,7 +6,7 @@ import { effectiveObjectives, monthRange, type AdConfig, type AdMetrics, type Ad
 import { cpa as calcCpa, roas as calcRoas, ctr as calcCtr, cpc as calcCpc, cpm as calcCpm } from "@/lib/ads/calc"
 
 export type ProviderResult = (AdMetrics & { error?: undefined }) | { provider: "META" | "GOOGLE"; error: string }
-export type Totals = { spend: number; impressions: number; clicks: number; pageViews: number; results: number; cpa: number | null; revenue: number | null; roas: number | null; ctr: number | null; cpc: number | null; cpm: number | null }
+export type Totals = { spend: number; impressions: number; clicks: number; pageViews: number; results: number; followers: number; cpa: number | null; revenue: number | null; roas: number | null; ctr: number | null; cpc: number | null; cpm: number | null }
 export type Realizado = {
   byProvider: ProviderResult[]
   total: Totals
@@ -66,6 +66,7 @@ export async function getClientRealizado(clientId: string, range: DateRange): Pr
   const ok = byProvider.filter((r): r is AdMetrics => !("error" in r && r.error !== undefined))
   const spend = ok.reduce((s, r) => s + r.spend, 0)
   const results = ok.reduce((s, r) => s + r.results, 0)
+  const followers = ok.reduce((s, r) => s + (r.followers ?? 0), 0)
 
   // Breakdown consolidado por objetivo (soma entre providers).
   const byObj = new Map<AdObjective, number>()
@@ -98,6 +99,7 @@ export async function getClientRealizado(clientId: string, range: DateRange): Pr
       clicks,
       pageViews: ok.reduce((s, r) => s + r.pageViews, 0),
       results,
+      followers,
       cpa: calcCpa(spend, results),
       revenue,
       roas: calcRoas(revenue, spend),

@@ -1,4 +1,4 @@
-import { META_DEFAULT_ACTIONS, META_PURCHASE_ACTIONS, META_PAGEVIEW_ACTIONS, type AdConfig, type AdMetrics, type AdObjective, type AdNode, type AdStatus, type CampaignNode, type ResultBreakdown, type DateRange, type MetaBreakdownRow, type MetaDeep } from "@/lib/ads/types"
+import { META_DEFAULT_ACTIONS, META_PURCHASE_ACTIONS, META_PAGEVIEW_ACTIONS, SECONDARY_OBJECTIVES, type AdConfig, type AdMetrics, type AdObjective, type AdNode, type AdStatus, type CampaignNode, type ResultBreakdown, type DateRange, type MetaBreakdownRow, type MetaDeep } from "@/lib/ads/types"
 
 const GRAPH = "https://graph.facebook.com/v21.0"
 type Action = { action_type: string; value: string }
@@ -11,6 +11,13 @@ function resultKeys(config: AdConfig): Set<string> {
   if (config.resultActions.length) return new Set(config.resultActions)
   const keys = new Set<string>()
   for (const obj of config.objectives) for (const k of META_DEFAULT_ACTIONS[obj]) keys.add(k)
+  return keys
+}
+// Eventos de objetivos SECUNDÁRIOS (seguidores) — contam à parte, fora do total.
+function secondaryKeys(config: AdConfig): Set<string> {
+  const keys = new Set<string>()
+  if (config.resultActions.length) return keys // custom = tudo primário (escolha explícita)
+  for (const obj of config.objectives) if (SECONDARY_OBJECTIVES.has(obj)) for (const k of META_DEFAULT_ACTIONS[obj]) keys.add(k)
   return keys
 }
 // Quais eventos estão sendo contados como "resultado" (para revisão de conversões).
@@ -29,9 +36,11 @@ export async function fetchMetaInsights(accountId: string, token: string, { sinc
 
   const rows: Array<Record<string, unknown>> = Array.isArray(body.data) ? body.data : []
   const wanted = resultKeys(config)
+  const secondary = secondaryKeys(config) // seguidores — fora do total
+  const primary = new Set([...wanted].filter((k) => !secondary.has(k)))
   const purchaseKeys = config.objectives.includes("ECOMMERCE") || config.trackRevenue ? META_PURCHASE_ACTIONS : new Set<string>()
 
-  let spend = 0, impressions = 0, clicks = 0, pageViews = 0, results = 0, revenue = 0
+  let spend = 0, impressions = 0, clicks = 0, pageViews = 0, results = 0, followers = 0, revenue = 0
   const perObjective = new Map<AdObjective, number>()
   const daily: import("@/lib/ads/types").DailyPoint[] = []
 
@@ -40,13 +49,15 @@ export async function fetchMetaInsights(accountId: string, token: string, { sinc
     const rImpr = Number(r.impressions ?? 0)
     const rClicks = Number(r.clicks ?? 0)
     const rPv = sumActions(r.actions as Action[], META_PAGEVIEW_ACTIONS)
-    const rResults = sumActions(r.actions as Action[], wanted)
+    const rResults = sumActions(r.actions as Action[], primary) // só primárias
+    const rFollowers = sumActions(r.actions as Action[], secondary)
     const rRev = config.trackRevenue ? sumActions(r.action_values as Action[], purchaseKeys) : 0
     spend += rSpend
     impressions += rImpr
     clicks += rClicks
     pageViews += rPv
     results += rResults
+    followers += rFollowers
     revenue += rRev
     // breakdown por objetivo (eventos custom ainda contam pro funil configurado)
     if (config.resultActions.length) {
@@ -63,7 +74,7 @@ export async function fetchMetaInsights(accountId: string, token: string, { sinc
   const breakdown: ResultBreakdown[] = [...perObjective.entries()].map(([objective, count]) => ({ objective, count }))
   return {
     provider: "META",
-    spend, impressions, clicks, pageViews, results, breakdown,
+    spend, impressions, clicks, pageViews, results, followers, breakdown,
     cpa: results > 0 ? spend / results : null,
     revenue: config.trackRevenue ? revenue : null,
     roas: config.trackRevenue && spend > 0 ? revenue / spend : null,

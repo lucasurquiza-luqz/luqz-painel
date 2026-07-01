@@ -364,11 +364,11 @@ function SubFunnelEditor({ f, idx, campaignFunnels, onChange, onRemove }: { f: F
 }
 
 // === Painel Performance (visual + leitura de IA) ===
-type Totals = { spend: number; impressions: number; clicks: number; pageViews: number; results: number; cpa: number | null; revenue: number | null; roas: number | null; ctr: number | null; cpc: number | null; cpm: number | null }
+type Totals = { spend: number; impressions: number; clicks: number; pageViews: number; results: number; followers: number; cpa: number | null; revenue: number | null; roas: number | null; ctr: number | null; cpc: number | null; cpm: number | null }
 type Bd = { objective: string; count: number }[]
 type DlyPoint = { date: string; spend: number; results: number; impressions: number; clicks: number; pageViews: number; revenue: number }
 type Dly = DlyPoint[]
-type ProviderMetrics = { provider: string; error?: string; spend?: number; impressions?: number; clicks?: number; pageViews?: number; results?: number; cpa?: number | null; revenue?: number | null; roas?: number | null; breakdown?: Bd; daily?: Dly }
+type ProviderMetrics = { provider: string; error?: string; spend?: number; impressions?: number; clicks?: number; pageViews?: number; results?: number; followers?: number; cpa?: number | null; revenue?: number | null; roas?: number | null; breakdown?: Bd; daily?: Dly }
 type Perf = {
   month: string
   current: {
@@ -742,7 +742,7 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
     : provider ? (() => {
         const spend = provider.spend ?? 0, impressions = provider.impressions ?? 0, clicks = provider.clicks ?? 0
         return {
-          spend, impressions, clicks, pageViews: provider.pageViews ?? 0, results: provider.results ?? 0,
+          spend, impressions, clicks, pageViews: provider.pageViews ?? 0, results: provider.results ?? 0, followers: provider.followers ?? 0,
           cpa: provider.cpa ?? null, revenue: provider.revenue ?? null, roas: provider.roas ?? null,
           ctr: impressions > 0 ? (clicks / impressions) * 100 : null,
           cpc: clicks > 0 ? spend / clicks : null,
@@ -750,7 +750,9 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
           breakdown: provider.breakdown ?? [], daily: provider.daily ?? [],
         }
       })() : null
-  const resultLabel = view && view.breakdown.length === 1 ? OBJ_LABEL[view.breakdown[0].objective] ?? "Resultados" : "Resultados"
+  // Rótulo do resultado primário — ignora objetivos secundários (Seguidores).
+  const primaryBd = view ? view.breakdown.filter((b) => b.objective !== "SEGUIDORES") : []
+  const resultLabel = primaryBd.length === 1 ? OBJ_LABEL[primaryBd[0].objective] ?? "Resultados" : "Resultados"
 
   // Status de saúde de resultado (consolidado, simples, explicável).
   let status: { label: string; tone: string; why: string } | null = null
@@ -850,6 +852,7 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
             <KpiCard label="Impressões" value={view.impressions.toLocaleString("pt-BR")} />
             <KpiCard label="Cliques" value={view.clicks.toLocaleString("pt-BR")} />
             {view.pageViews > 0 && <KpiCard label="Visualizações de página" value={view.pageViews.toLocaleString("pt-BR")} />}
+            {view.followers > 0 && <KpiCard label="Seguidores" value={`+${view.followers.toLocaleString("pt-BR")}`} sparkColor="#a78bfa" />}
             {perf.current.trackRevenue && <KpiCard label="Receita" value={brl(view.revenue)} />}
           </div>
 

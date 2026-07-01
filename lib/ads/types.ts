@@ -33,13 +33,18 @@ export type AdMetrics = {
   impressions: number
   clicks: number
   pageViews: number // visualizações de página (landing_page_view)
-  results: number // total de conversões de mídia
+  results: number // conversões PRIMÁRIAS (lead/venda/conversa) — NÃO inclui seguidores
+  followers: number // seguidores/curtidas — métrica secundária (fora do total/CPA)
   breakdown: ResultBreakdown[] // por objetivo/funil
   cpa: number | null
   revenue: number | null
   roas: number | null
   daily: DailyPoint[]
 }
+
+// Objetivos "secundários": contam no seu funil, mas NÃO entram no total de resultados
+// nem no CPA (ex.: seguidores/awareness não é lead/venda).
+export const SECONDARY_OBJECTIVES = new Set<AdObjective>(["SEGUIDORES"])
 
 export type AdConfig = {
   objectives: AdObjective[]

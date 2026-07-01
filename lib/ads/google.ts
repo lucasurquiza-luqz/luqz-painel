@@ -209,7 +209,7 @@ export async function fetchGoogleInsights(customerId: string, { since, until }: 
     .sort((a, b) => a.date.localeCompare(b.date))
   return {
     provider: "GOOGLE",
-    spend, impressions, clicks, pageViews: 0, results,
+    spend, impressions, clicks, pageViews: 0, results, followers: 0,
     breakdown: [{ objective, count: results }],
     cpa: results > 0 ? spend / results : null,
     revenue: config.trackRevenue ? convValue : null,
