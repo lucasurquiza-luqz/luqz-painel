@@ -100,6 +100,10 @@ export default function MetasPage() {
   const [adding, setAdding] = useState(false)
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null)
   const [campaignFunnels, setCampaignFunnels] = useState<{ id: string; name: string }[]>([])
+  // CLIENTE vê o painel em modo leitura (sem controles de edição). Default false
+  // pra não piscar botões de edição antes de saber o papel.
+  const [canEdit, setCanEdit] = useState(false)
+  useEffect(() => { fetch("/api/me").then((r) => r.json()).then((d) => setCanEdit(d.role === "ADMIN" || d.role === "OPERADOR")).catch(() => {}) }, [])
   useEffect(() => { fetch(`/api/clients/${clientId}/funnels`).then((r) => r.json()).then((d) => setCampaignFunnels(d.funnels ?? [])).catch(() => {}) }, [clientId])
   const funnelName = (fid: string | null) => (fid ? campaignFunnels.find((f) => f.id === fid)?.name ?? null : null)
 
@@ -129,21 +133,21 @@ export default function MetasPage() {
         <PageHeader eyebrow="Saúde de resultado" title="Performance" description="Metas + realizado dos Ads por funil (lead, conversa, compra), vs meta. Multi-fonte: Meta + Google (+ vendas em breve)." />
       </div>
 
-      <AdIntegrations clientId={clientId} onError={setError} />
+      {canEdit && <AdIntegrations clientId={clientId} onError={setError} />}
 
-      <ConversionsReview clientId={clientId} />
+      {canEdit && <ConversionsReview clientId={clientId} />}
 
-      <PerformanceDashboard clientId={clientId} plans={plans} />
+      <PerformanceDashboard clientId={clientId} plans={plans} canEdit={canEdit} />
 
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-white">Metas por mês</h2>
-        <Button onClick={() => setAdding((v) => !v)}><Plus size={16} /> Nova meta</Button>
+        {canEdit && <Button onClick={() => setAdding((v) => !v)}><Plus size={16} /> Nova meta</Button>}
       </div>
 
       {error && <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}
 
-      {adding && <AddPlan clientId={clientId} onAdded={() => { setAdding(false); void load() }} onCancel={() => setAdding(false)} onError={setError} />}
-      {editingPlan && <AddPlan clientId={clientId} plan={editingPlan} onAdded={() => { setEditingPlan(null); void load() }} onCancel={() => setEditingPlan(null)} onError={setError} />}
+      {canEdit && adding && <AddPlan clientId={clientId} onAdded={() => { setAdding(false); void load() }} onCancel={() => setAdding(false)} onError={setError} />}
+      {canEdit && editingPlan && <AddPlan clientId={clientId} plan={editingPlan} onAdded={() => { setEditingPlan(null); void load() }} onCancel={() => setEditingPlan(null)} onError={setError} />}
 
       {loading ? (
         <Panel className="flex min-h-52 items-center justify-center"><Loader2 className="animate-spin text-[#FF8F50]" /></Panel>
@@ -166,10 +170,12 @@ export default function MetasPage() {
                       <span className="rounded-md bg-white/5 px-2 py-0.5 text-[11px] text-zinc-400">{PLATFORM_LABEL[plan.platform]}</span>
                       <span className="text-[11px] text-zinc-500">{plan.funnels.length} funil(s) · {brl(totalBudget)}</span>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => { setAdding(false); setEditingPlan(plan); window.scrollTo({ top: 0, behavior: "smooth" }) }} className="rounded-md p-1 text-zinc-600 hover:text-[#FFB185]" aria-label="Editar"><Pencil size={14} /></button>
-                      <button onClick={() => remove(plan)} className="rounded-md p-1 text-zinc-600 hover:text-red-400" aria-label="Remover"><Trash2 size={15} /></button>
-                    </div>
+                    {canEdit && (
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => { setAdding(false); setEditingPlan(plan); window.scrollTo({ top: 0, behavior: "smooth" }) }} className="rounded-md p-1 text-zinc-600 hover:text-[#FFB185]" aria-label="Editar"><Pencil size={14} /></button>
+                        <button onClick={() => remove(plan)} className="rounded-md p-1 text-zinc-600 hover:text-red-400" aria-label="Remover"><Trash2 size={15} /></button>
+                      </div>
+                    )}
                   </div>
                 )
               })()}
@@ -655,7 +661,7 @@ function DateRangeControl({ value, onChange }: { value: RangeSel; onChange: (r: 
 }
 
 type History = { month: string; spend: number; results: number; cpa: number | null }[]
-function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Plan[] }) {
+function PerformanceDashboard({ clientId, plans, canEdit = true }: { clientId: string; plans: Plan[]; canEdit?: boolean }) {
   const [range, setRange] = useState<RangeSel>(() => monthSel(currentMonth()))
   const [perf, setPerf] = useState<Perf | null>(null)
   const [history, setHistory] = useState<History>([])
@@ -788,7 +794,7 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
               <span className="text-zinc-600">atualizado {relAgo(fetchedAt)}</span>
             </span>
           )}
-          <Button variant="secondary" className="min-h-9 px-3 py-1.5 text-xs" onClick={refresh} disabled={refreshing || loading}>{refreshing ? <><Loader2 size={13} className="animate-spin" /> atualizando…</> : <><RefreshCw size={13} /> Atualizar</>}</Button>
+          {canEdit && <Button variant="secondary" className="min-h-9 px-3 py-1.5 text-xs" onClick={refresh} disabled={refreshing || loading}>{refreshing ? <><Loader2 size={13} className="animate-spin" /> atualizando…</> : <><RefreshCw size={13} /> Atualizar</>}</Button>}
         </div>
       </div>
       <div className="mt-3"><DateRangeControl value={range} onChange={setRange} /></div>
@@ -836,7 +842,7 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
               {(source === "META"
                 ? [["overview", "Visão Geral"], ["campaigns", "Campanhas"], ["funnels", "Funis"], ["creatives", "Criativos"], ["insights", "Análises"]]
                 : [["overview", "Visão Geral"], ["campaigns", "Campanhas"], ["funnels", "Funis"], ["insights", "Termos & análises"]]
-              ).map(([key, label]) => (
+              ).filter(([key]) => canEdit || key === "overview" || key === "funnels").map(([key, label]) => (
                 <button key={key} onClick={() => setTab(key)}
                   className={`-mb-px border-b-2 pb-2 font-medium transition ${tab === key ? "border-[#FF8F50] text-white" : "border-transparent text-zinc-500 hover:text-zinc-300"}`}>
                   {label}
@@ -897,7 +903,7 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
             <div className="rounded-xl border border-[#FF8F50]/20 bg-[#FF8F50]/[0.05] p-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-[#FFB185]">🤖 Leitura de performance</span>
-                <Button variant="secondary" className="min-h-8 px-3 py-1 text-xs" onClick={genReading} disabled={readingBusy}>{readingBusy ? <Loader2 size={13} className="animate-spin" /> : insights.length ? "Gerar nova" : "Gerar leitura"}</Button>
+                {canEdit && <Button variant="secondary" className="min-h-8 px-3 py-1 text-xs" onClick={genReading} disabled={readingBusy}>{readingBusy ? <Loader2 size={13} className="animate-spin" /> : insights.length ? "Gerar nova" : "Gerar leitura"}</Button>}
               </div>
               {insights.length === 0 ? (
                 <p className="mt-2 text-xs text-zinc-500">Sem leitura ainda. Gere uma análise do mês (compara com as metas e o mês anterior).</p>
@@ -932,7 +938,7 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
           {!isAll && tab === "campaigns" && source === "GOOGLE" && <GoogleExplorer clientId={clientId} since={range.since} until={range.until} />}
 
           {/* === FUNIS (agrupa campanhas por nome) === */}
-          {!isAll && tab === "funnels" && <FunnelView clientId={clientId} provider={source} since={range.since} until={range.until} plans={plans} month={range.month} />}
+          {!isAll && tab === "funnels" && <FunnelView clientId={clientId} provider={source} since={range.since} until={range.until} plans={plans} month={range.month} canEdit={canEdit} />}
 
           {/* === CRIATIVOS (Meta) === */}
           {!isAll && tab === "creatives" && source === "META" && <CreativesGrid clientId={clientId} since={range.since} until={range.until} />}
@@ -1280,7 +1286,7 @@ function FunnelEditor({ clientId, initial, onSaved }: { clientId: string; initia
   )
 }
 
-function FunnelView({ clientId, provider, since, until, plans, month }: { clientId: string; provider: string; since: string; until: string; plans: Plan[]; month?: string | null }) {
+function FunnelView({ clientId, provider, since, until, plans, month, canEdit = true }: { clientId: string; provider: string; since: string; until: string; plans: Plan[]; month?: string | null; canEdit?: boolean }) {
   const [funnels, setFunnels] = useState<FunnelDef[] | null>(null)
   const [nodes, setNodes] = useState<TNode[] | null>(null)
   const [loading, setLoading] = useState(false)
@@ -1326,9 +1332,9 @@ function FunnelView({ clientId, provider, since, until, plans, month }: { client
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-zinc-500">Funis agrupam campanhas por regra de nome. 1 funil → várias campanhas.</p>
-        <button onClick={() => setEditing((v) => !v)} className="text-[11px] text-[#FFB185] hover:underline">{editing ? "fechar" : "Configurar funis"}</button>
+        {canEdit && <button onClick={() => setEditing((v) => !v)} className="text-[11px] text-[#FFB185] hover:underline">{editing ? "fechar" : "Configurar funis"}</button>}
       </div>
-      {editing && <FunnelEditor clientId={clientId} initial={funnels ?? []} onSaved={(f) => { setFunnels(f); setEditing(false) }} />}
+      {canEdit && editing && <FunnelEditor clientId={clientId} initial={funnels ?? []} onSaved={(f) => { setFunnels(f); setEditing(false) }} />}
       {!funnels?.length && !editing && <p className="rounded-xl border border-white/8 bg-black/20 p-4 text-xs text-zinc-500">Nenhum funil definido ainda. Clique em <span className="text-[#FFB185]">Configurar funis</span> pra criar (ex.: &quot;Consultoria&quot; = termos CONSULTORIA, SEGUIMENTAÇÃO).</p>}
       {compares.length > 0 && (
         <div className="space-y-2">

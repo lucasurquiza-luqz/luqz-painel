@@ -6,7 +6,7 @@ type Params = { params: Promise<{ id: string }> }
 
 export async function GET(_req: NextRequest, { params }: Params) {
   const { id } = await params
-  const auth = await requireApiUser(["ADMIN", "OPERADOR"])
+  const auth = await requireApiUser(["ADMIN", "OPERADOR", "CLIENTE"])
   if (!auth.ok) return auth.response
   if (!canAccessClient(auth.user, id)) return denyClientAccess()
 
