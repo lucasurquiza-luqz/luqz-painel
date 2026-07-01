@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { unsealData } from "iron-session"
 import { type SessionData, isEquipe } from "@/lib/auth"
+import { clientHome, isClientAllowedPath } from "@/lib/client-access"
 
 const publicPaths = ["/login"]
 const apiPublicPaths = ["/api/auth/login", "/api/webhook/evolution", "/api/health", "/api/ingest"]
@@ -79,24 +80,19 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // CLIENTE so acessa o proprio cliente
+  // CLIENTE: acesso restrito ao proprio cliente e apenas a superficie liberada.
   if (session.role === "CLIENTE" && session.clientId) {
-    const allowed = `/clientes/${session.clientId}`
-    if (pathname.startsWith(`${allowed}/contexto`) || pathname.startsWith(`${allowed}/status`)) {
+    if (pathname.startsWith("/api/")) {
+      // APIs: bloqueia outros clientes; a autorizacao fina fica em requireApiUser.
+      if (pathname.startsWith("/api/clients/") && !pathname.startsWith(`/api/clients/${session.clientId}`)) {
+        return NextResponse.json({ error: "Acesso negado" }, { status: 403 })
+      }
+    } else if (!isClientAllowedPath(pathname, session.clientId)) {
+      // Paginas internas (metas, tarefas, cadastro, contexto, etc.) e outros clientes
+      // caem aqui e voltam pra home do cliente. Allowlist em lib/client-access.ts.
       const url = request.nextUrl.clone()
-      url.pathname = `${allowed}/chat`
+      url.pathname = clientHome(session.clientId)
       return NextResponse.redirect(url)
-    }
-
-    if (!pathname.startsWith(allowed) && !pathname.startsWith("/api/")) {
-      const url = request.nextUrl.clone()
-      url.pathname = `${allowed}/chat`
-      return NextResponse.redirect(url)
-    }
-
-    // APIs: bloqueia acesso a outros clientes
-    if (pathname.startsWith("/api/clients/") && !pathname.startsWith(`/api/clients/${session.clientId}`)) {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403 })
     }
   }
 
