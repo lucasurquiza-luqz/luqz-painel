@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { prisma } from "@/lib/db"
-import { Users, Eye, Radar, UserPlus, Instagram, Clock, Heart, MousePointerClick, Play, Bookmark, Share2 } from "lucide-react"
+import { Users, Eye, Radar, Instagram, Clock, Heart, Play, Bookmark, Share2, Activity, ArrowUp, ArrowDown } from "lucide-react"
 import { formatInTimeZone } from "date-fns-tz"
 import { ptBR } from "date-fns/locale"
 import { ReachChart, FollowersChart } from "./_chart"
@@ -9,7 +9,8 @@ import { RefreshButton } from "./_refresh"
 const TZ = "America/Sao_Paulo"
 
 type Demo = { label: string; value: number }
-type Totals = { reach: number; views: number; profileViews: number; websiteClicks: number; accountsEngaged: number; interactions: number; saves: number; shares: number; newFollowers: number }
+type Prev = { reach: number; views: number; profileViews: number; interactions: number; saves: number; shares: number }
+type Totals = { reach: number; views: number; profileViews: number; websiteClicks: number; accountsEngaged: number; interactions: number; saves: number; shares: number; newFollowers: number; followerReach: number; nonFollowerReach: number; prev: Prev }
 type SnapData = {
   followersCount: number | null
   mediaCount: number | null
@@ -20,6 +21,14 @@ type SnapData = {
 
 const nf = (n: number | null | undefined) => (n == null ? "—" : new Intl.NumberFormat("pt-BR").format(n))
 const PERIODS = [7, 30, 90]
+
+// Variação % vs. período anterior (null quando não dá pra comparar).
+function pctDelta(cur: number, prev: number): { pct: string; up: boolean } | null {
+  if (!prev) return null
+  const d = ((cur - prev) / prev) * 100
+  if (!isFinite(d)) return null
+  return { pct: Math.abs(d).toFixed(0), up: d >= 0 }
+}
 
 export default async function InstagramVisaoGeralPage({
   params,
@@ -58,7 +67,9 @@ export default async function InstagramVisaoGeralPage({
   }
 
   const data = snapshot.data as unknown as SnapData
-  const t: Totals = data.periods?.[String(days)] ?? { reach: 0, views: 0, profileViews: 0, websiteClicks: 0, accountsEngaged: 0, interactions: 0, saves: 0, shares: 0, newFollowers: 0 }
+  const EMPTY_PREV: Prev = { reach: 0, views: 0, profileViews: 0, interactions: 0, saves: 0, shares: 0 }
+  const t: Totals = data.periods?.[String(days)] ?? { reach: 0, views: 0, profileViews: 0, websiteClicks: 0, accountsEngaged: 0, interactions: 0, saves: 0, shares: 0, newFollowers: 0, followerReach: 0, nonFollowerReach: 0, prev: EMPTY_PREV }
+  const prev = t.prev ?? EMPTY_PREV
 
   const [topByReach, topByViews] = await Promise.all([
     prisma.instagramMedia.findMany({ where: { accountId: account.id }, orderBy: { reach: { sort: "desc", nulls: "last" } }, take: 6 }),
@@ -75,17 +86,18 @@ export default async function InstagramVisaoGeralPage({
     .filter((s) => s.date.toISOString().slice(0, 10) >= cutoff)
     .map((s) => ({ date: s.date.toISOString().slice(0, 10), reach: s.reach, newFollowers: s.newFollowers, followers: s.followers }))
 
-  const kpis = [
+  const engRate = t.reach ? (t.interactions / t.reach) * 100 : null
+  const reachTotal = t.followerReach + t.nonFollowerReach
+  const followerPct = reachTotal ? Math.round((t.followerReach / reachTotal) * 100) : 0
+  const kpis: { label: string; value: string; icon: typeof Users; cur?: number; prevVal?: number }[] = [
     { label: "Seguidores", value: nf(data.followersCount), icon: Users },
-    { label: "Alcance", value: nf(t.reach), icon: Radar },
-    { label: "Visualizações", value: nf(t.views), icon: Eye },
-    { label: "Visitas ao perfil", value: nf(t.profileViews), icon: Users },
-    { label: "Interações", value: nf(t.interactions), icon: Heart },
-    { label: "Salvamentos", value: nf(t.saves), icon: Bookmark },
-    { label: "Compartilhamentos", value: nf(t.shares), icon: Share2 },
-    { label: "Novos seguidores", value: nf(t.newFollowers), icon: UserPlus },
-    { label: "Cliques no site", value: nf(t.websiteClicks), icon: MousePointerClick },
-    { label: "Contas engajadas", value: nf(t.accountsEngaged), icon: Users },
+    { label: "Alcance", value: nf(t.reach), icon: Radar, cur: t.reach, prevVal: prev.reach },
+    { label: "Visualizações", value: nf(t.views), icon: Eye, cur: t.views, prevVal: prev.views },
+    { label: "Visitas ao perfil", value: nf(t.profileViews), icon: Eye, cur: t.profileViews, prevVal: prev.profileViews },
+    { label: "Interações", value: nf(t.interactions), icon: Heart, cur: t.interactions, prevVal: prev.interactions },
+    { label: "Salvamentos", value: nf(t.saves), icon: Bookmark, cur: t.saves, prevVal: prev.saves },
+    { label: "Compartilhamentos", value: nf(t.shares), icon: Share2, cur: t.shares, prevVal: prev.shares },
+    { label: "Taxa de engajamento", value: engRate == null ? "—" : `${engRate.toFixed(1)}%`, icon: Activity },
   ]
 
   const bestTimes = data.bestTimes ?? []
@@ -112,17 +124,25 @@ export default async function InstagramVisaoGeralPage({
         </div>
       </div>
 
-      {/* KPIs */}
+      {/* KPIs (▲▼ vs. período anterior) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {kpis.map((k) => {
           const Icon = k.icon
+          const d = k.cur != null && k.prevVal != null ? pctDelta(k.cur, k.prevVal) : null
           return (
             <div key={k.label} className="bg-zinc-900 border border-white/8 rounded-2xl p-4">
               <div className="flex items-center gap-2 text-zinc-500 mb-2">
                 <Icon size={15} />
                 <span className="text-xs">{k.label}</span>
               </div>
-              <p className="text-2xl font-semibold text-zinc-100">{k.value}</p>
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <p className="text-2xl font-semibold text-zinc-100">{k.value}</p>
+                {d && (
+                  <span className={`flex items-center gap-0.5 text-xs font-medium ${d.up ? "text-green-400" : "text-red-400"}`} title="vs. período anterior">
+                    {d.up ? <ArrowUp size={12} /> : <ArrowDown size={12} />}{d.pct}%
+                  </span>
+                )}
+              </div>
             </div>
           )
         })}
@@ -148,6 +168,26 @@ export default async function InstagramVisaoGeralPage({
         </div>
         <TopStrip title="Por alcance" metric="reach" posts={topByReach} />
         <TopStrip title="Por visualização" metric="views" posts={topByViews} />
+      </div>
+
+      {/* De onde vem o alcance (seguidor x nao-seguidor) */}
+      <div className="bg-zinc-900 border border-white/8 rounded-2xl p-5">
+        <h2 className="text-sm font-medium text-zinc-300 mb-4">De onde vem o alcance</h2>
+        {reachTotal === 0 ? (
+          <p className="text-sm text-zinc-600">Sem dados no período.</p>
+        ) : (
+          <>
+            <div className="flex h-3 rounded-full overflow-hidden">
+              <div className="bg-orange-500" style={{ width: `${followerPct}%` }} />
+              <div className="bg-sky-500/70" style={{ width: `${100 - followerPct}%` }} />
+            </div>
+            <div className="flex justify-between text-xs mt-2">
+              <span className="text-zinc-400 flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-orange-500" /> Seguidores {followerPct}% · {nf(t.followerReach)}</span>
+              <span className="text-zinc-400 flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-sky-500/70" /> Não-seguidores {100 - followerPct}% · {nf(t.nonFollowerReach)}</span>
+            </div>
+            <p className="text-[11px] text-zinc-600 mt-3">Quanto maior a fatia de não-seguidores, mais o conteúdo está alcançando gente nova (motor de crescimento).</p>
+          </>
+        )}
       </div>
 
       {/* Demografia + horarios */}

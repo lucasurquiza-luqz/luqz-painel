@@ -59,6 +59,9 @@ export type PeriodTotals = {
   saves: number
   shares: number
   newFollowers: number
+  followerReach: number // alcance vindo de seguidores
+  nonFollowerReach: number // alcance vindo de nao-seguidores
+  prev: { reach: number; views: number; profileViews: number; interactions: number; saves: number; shares: number } // periodo anterior (mesma duracao)
 }
 
 export async function syncInstagramInsights(accountId: string): Promise<{ ok: boolean; error?: string }> {
@@ -100,26 +103,47 @@ export async function syncInstagramInsights(accountId: string): Promise<{ ok: bo
     }
   }
 
-  // Totais por janela (7/30/90) — metricas total_value com since/until
-  const periods: Record<number, PeriodTotals> = {}
-  for (const days of WINDOWS) {
-    const since = unix(new Date(now.getTime() - days * 86400_000))
-    const until = unix(now)
-    const totals = await safe(
+  // Le as metricas total_value de uma janela (since/until em unix).
+  const fetchTotals = async (sinceU: number, untilU: number) => {
+    const res = await safe(
       () => igGet(`${ig}/insights`, {
         metric: "reach,views,profile_views,website_clicks,accounts_engaged,total_interactions,saves,shares",
         period: "day",
         metric_type: "total_value",
-        since: String(since),
-        until: String(until),
+        since: String(sinceU),
+        until: String(untilU),
         access_token: token,
       }) as Promise<{ data?: InsightRow[] }>,
       { data: [] }
     )
-    const byName = new Map<string, number>()
-    for (const row of totals.data ?? []) byName.set(row.name, row.total_value?.value ?? 0)
+    const m = new Map<string, number>()
+    for (const row of res.data ?? []) m.set(row.name, row.total_value?.value ?? 0)
+    return m
+  }
 
-    // novos seguidores na janela = soma da serie
+  // Totais por janela (7/30/90) — atual + periodo anterior + alcance por follow_type
+  const periods: Record<number, PeriodTotals> = {}
+  for (const days of WINDOWS) {
+    const until = unix(now)
+    const since = unix(new Date(now.getTime() - days * 86400_000))
+    const prevSince = unix(new Date(now.getTime() - 2 * days * 86400_000))
+
+    const byName = await fetchTotals(since, until)
+    const prevName = await fetchTotals(prevSince, since)
+
+    // Alcance seguidor x nao-seguidor
+    const ftJson = await safe(
+      () => igGet(`${ig}/insights`, { metric: "reach", period: "day", metric_type: "total_value", breakdown: "follow_type", since: String(since), until: String(until), access_token: token }),
+      null as unknown
+    )
+    let followerReach = 0
+    let nonFollowerReach = 0
+    for (const r of extractBreakdown(ftJson)) {
+      if (r.label === "FOLLOWER") followerReach = r.value
+      else if (r.label === "NON_FOLLOWER") nonFollowerReach = r.value
+    }
+
+    // novos seguidores na janela = soma da serie (quando coberta pelos 30 dias)
     const cutoff = new Date(now.getTime() - days * 86400_000).toISOString().slice(0, 10)
     let newFoll = 0
     for (const [day, v] of newFollByDay) if (day >= cutoff) newFoll += v
@@ -134,6 +158,16 @@ export async function syncInstagramInsights(accountId: string): Promise<{ ok: bo
       saves: byName.get("saves") ?? 0,
       shares: byName.get("shares") ?? 0,
       newFollowers: newFoll,
+      followerReach,
+      nonFollowerReach,
+      prev: {
+        reach: prevName.get("reach") ?? 0,
+        views: prevName.get("views") ?? 0,
+        profileViews: prevName.get("profile_views") ?? 0,
+        interactions: prevName.get("total_interactions") ?? 0,
+        saves: prevName.get("saves") ?? 0,
+        shares: prevName.get("shares") ?? 0,
+      },
     }
   }
 
