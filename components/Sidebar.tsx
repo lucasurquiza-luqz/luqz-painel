@@ -72,6 +72,7 @@ const clientNav: NavGroup[] = [
     items: [
       { href: "/metas", label: "Performance", icon: Target },
       { href: "/relatorio", label: "Relatório", icon: FileBarChart },
+      { href: "/relatorio-semanal", label: "Report semanal", icon: CalendarClock },
     ],
   },
   {
