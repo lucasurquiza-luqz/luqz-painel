@@ -21,8 +21,8 @@ type Perf = {
   month: string
   current: { total: Totals; byProvider: Provider[]; breakdown: { objective: string; count: number }[]; daily: Daily[]; trackRevenue: boolean; configured: boolean }
   previous: Totals
-  history: { month: string; spend: number; results: number; cpa: number | null }[]
 }
+type History = { month: string; spend: number; results: number; cpa: number | null }[]
 
 function thisMonth() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` }
 function shiftMonth(m: string, delta: number) { const [y, mo] = m.split("-").map(Number); const d = new Date(y, mo - 1 + delta, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}` }
@@ -33,13 +33,14 @@ export default function DesempenhoPage() {
   const [clientName, setClientName] = useState("")
   const [month, setMonth] = useState(thisMonth())
   const [perf, setPerf] = useState<Perf | null>(null)
+  const [history, setHistory] = useState<History>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { fetch(`/api/clients/${clientId}`).then((r) => r.json()).then((d) => setClientName(d.client?.name ?? "")).catch(() => {}) }, [clientId])
   const load = useCallback(async () => {
     setLoading(true)
     const d = await fetch(`/api/clients/${clientId}/performance?month=${month}`).then((r) => r.json()).catch(() => null)
-    setPerf(d && !d.error ? d : null); setLoading(false)
+    setPerf(d?.performance ?? null); setHistory(d?.history ?? []); setLoading(false)
   }, [clientId, month])
   useEffect(() => { void load() }, [load])
 
@@ -123,7 +124,7 @@ export default function DesempenhoPage() {
             <Panel className="p-5">
               <p className="mb-3 text-sm font-semibold text-white">Por fonte</p>
               <div className="space-y-2">
-                {perf.current.byProvider.map((p, i) => (
+                {(perf.current.byProvider ?? []).map((p, i) => (
                   <div key={i} className="flex items-center justify-between gap-3 rounded-lg border border-white/8 bg-black/20 px-3 py-2 text-[13px]">
                     <span className="text-zinc-200">{provLabel(p.provider)}</span>
                     {p.error ? (
@@ -139,11 +140,11 @@ export default function DesempenhoPage() {
             {/* ===== POR OBJETIVO ===== */}
             <Panel className="p-5">
               <p className="mb-3 text-sm font-semibold text-white">Por objetivo</p>
-              {perf.current.breakdown.length === 0 ? (
+              {(perf.current.breakdown ?? []).length === 0 ? (
                 <p className="text-xs text-zinc-600">Sem resultados no período.</p>
               ) : (
                 <div className="space-y-2">
-                  {perf.current.breakdown.map((b, i) => (
+                  {(perf.current.breakdown ?? []).map((b, i) => (
                     <div key={i} className="flex items-center justify-between gap-3 rounded-lg border border-white/8 bg-black/20 px-3 py-2 text-[13px]">
                       <span className="text-zinc-200">{OBJ_LABEL[b.objective] ?? b.objective}{b.objective === "SEGUIDORES" && <span className="ml-1.5 text-[10px] text-zinc-600">(secundário)</span>}</span>
                       <b className="text-zinc-100">{int(b.count)}</b>
@@ -155,7 +156,7 @@ export default function DesempenhoPage() {
           </div>
 
           {/* ===== HISTÓRICO ===== */}
-          {perf.history.length > 1 && (
+          {history.length > 1 && (
             <Panel className="p-5">
               <p className="mb-3 text-sm font-semibold text-white">Últimos meses</p>
               <div className="overflow-x-auto">
@@ -164,7 +165,7 @@ export default function DesempenhoPage() {
                     <tr><th className="pb-2 font-medium">Mês</th><th className="pb-2 text-right font-medium">Investido</th><th className="pb-2 text-right font-medium">{objLabel}</th><th className="pb-2 text-right font-medium">Custo/result.</th></tr>
                   </thead>
                   <tbody>
-                    {perf.history.map((h) => (
+                    {history.map((h) => (
                       <tr key={h.month} className="border-t border-white/6">
                         <td className="py-1.5 capitalize text-zinc-300">{MONTHS[Number(h.month.slice(5)) - 1]?.slice(0, 3)}/{h.month.slice(2, 4)}</td>
                         <td className="py-1.5 text-right text-zinc-300">{brl(h.spend)}</td>
