@@ -1,8 +1,8 @@
 "use client"
 
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts"
+import { AreaChart, Area, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts"
 
-type Point = { date: string; reach: number | null; newFollowers: number | null }
+type Point = { date: string; reach: number | null; newFollowers: number | null; followers: number | null }
 
 const fmtDay = (d: string) => {
   const [, m, day] = d.split("-")
@@ -36,19 +36,23 @@ export function ReachChart({ data }: { data: Point[] }) {
 }
 
 export function FollowersChart({ data }: { data: Point[] }) {
-  const has = data.some((d) => (d.newFollowers ?? 0) !== 0)
-  if (!has) {
-    return <p className="text-sm text-zinc-600 py-10 text-center">Sem variação de seguidores no período.</p>
+  const pts = data.filter((d) => d.followers != null)
+  if (pts.length < 2) {
+    return <p className="text-sm text-zinc-600 py-10 text-center">Série de seguidores ainda curta.</p>
   }
+  const vals = pts.map((d) => d.followers as number)
+  const min = Math.min(...vals)
+  const max = Math.max(...vals)
+  const pad = Math.max(2, Math.round((max - min) * 0.15))
   return (
     <ResponsiveContainer width="100%" height={180}>
-      <BarChart data={data} margin={{ top: 5, right: 8, left: -12, bottom: 0 }}>
+      <LineChart data={data} margin={{ top: 5, right: 8, left: -4, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
         <XAxis dataKey="date" tickFormatter={fmtDay} tick={axisTick} tickLine={false} axisLine={false} minTickGap={20} />
-        <YAxis tick={axisTick} tickLine={false} axisLine={false} width={44} allowDecimals={false} />
+        <YAxis domain={[min - pad, max + pad]} tick={axisTick} tickLine={false} axisLine={false} width={52} allowDecimals={false} />
         <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "#e4e4e7" }} labelFormatter={(l) => `Dia ${fmtDay(String(l))}`} />
-        <Bar dataKey="newFollowers" name="Novos seguidores" fill="#22c55e" radius={[3, 3, 0, 0]} />
-      </BarChart>
+        <Line type="monotone" dataKey="followers" name="Seguidores" stroke="#22c55e" strokeWidth={2} dot={false} />
+      </LineChart>
     </ResponsiveContainer>
   )
 }

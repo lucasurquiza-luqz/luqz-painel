@@ -70,7 +70,7 @@ export default async function InstagramVisaoGeralPage({
   const cutoff = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10)
   const chartData = stats
     .filter((s) => s.date.toISOString().slice(0, 10) >= cutoff)
-    .map((s) => ({ date: s.date.toISOString().slice(0, 10), reach: s.reach, newFollowers: s.newFollowers }))
+    .map((s) => ({ date: s.date.toISOString().slice(0, 10), reach: s.reach, newFollowers: s.newFollowers, followers: s.followers }))
 
   const kpis = [
     { label: "Seguidores", value: nf(data.followersCount), icon: Users },
@@ -131,7 +131,7 @@ export default async function InstagramVisaoGeralPage({
           <ReachChart data={chartData} />
         </div>
         <div className="bg-zinc-900 border border-white/8 rounded-2xl p-5">
-          <h2 className="text-sm font-medium text-zinc-300 mb-4">Novos seguidores</h2>
+          <h2 className="text-sm font-medium text-zinc-300 mb-4">Crescimento de seguidores</h2>
           <FollowersChart data={chartData} />
         </div>
       </div>

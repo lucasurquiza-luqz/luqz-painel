@@ -90,11 +90,25 @@ export async function syncInstagramInsights(accountId: string): Promise<{ ok: bo
     {}
   )
 
-  // Series diarias (grafico + tabela)
-  const reachRes = await safe(() => igGet(`${ig}/insights`, { metric: "reach", period: "day", access_token: token }) as Promise<{ data?: InsightRow[] }>, { data: [] })
-  const newFollRes = await safe(() => igGet(`${ig}/insights`, { metric: "follower_count", period: "day", access_token: token }) as Promise<{ data?: InsightRow[] }>, { data: [] })
+  // Series diarias (grafico + tabela) — since/until obrigatorio, senao a API so devolve ~2 dias.
+  const since30 = String(unix(new Date(now.getTime() - 30 * 86400_000)))
+  const untilNow = String(unix(now))
+  const reachRes = await safe(() => igGet(`${ig}/insights`, { metric: "reach", period: "day", since: since30, until: untilNow, access_token: token }) as Promise<{ data?: InsightRow[] }>, { data: [] })
+  const newFollRes = await safe(() => igGet(`${ig}/insights`, { metric: "follower_count", period: "day", since: since30, until: untilNow, access_token: token }) as Promise<{ data?: InsightRow[] }>, { data: [] })
   const reachByDay = seriesByDay(reachRes.data?.[0])
   const newFollByDay = seriesByDay(newFollRes.data?.[0])
+
+  // Reconstroi o total de seguidores por dia: parte do total atual e subtrai o saldo diario.
+  const followersByDay = new Map<string, number>()
+  const sortedDays = [...new Set([...reachByDay.keys(), ...newFollByDay.keys()])].sort()
+  if (profile.followers_count != null && sortedDays.length > 0) {
+    let running = profile.followers_count
+    for (let i = sortedDays.length - 1; i >= 0; i--) {
+      const day = sortedDays[i]
+      followersByDay.set(day, running)
+      running -= newFollByDay.get(day) ?? 0
+    }
+  }
 
   // Totais por janela (7/30/90) — metricas total_value com since/until
   const periods: Record<number, PeriodTotals> = {}
@@ -184,7 +198,7 @@ export async function syncInstagramInsights(accountId: string): Promise<{ ok: bo
   const allDays = new Set([...reachByDay.keys(), ...newFollByDay.keys()])
   const today = now.toISOString().slice(0, 10)
   for (const day of allDays) {
-    const followers = day === today ? profile.followers_count ?? null : null
+    const followers = followersByDay.get(day) ?? (day === today ? profile.followers_count ?? null : null)
     await prisma.instagramDailyStat.upsert({
       where: { accountId_date: { accountId, date: new Date(day) } },
       create: { accountId, date: new Date(day), reach: reachByDay.get(day) ?? null, newFollowers: newFollByDay.get(day) ?? null, followers },
