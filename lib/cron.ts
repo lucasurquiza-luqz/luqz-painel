@@ -1,5 +1,6 @@
 import cron from "node-cron"
 import { sendDueMessages } from "./scheduler"
+import { publishDueInstagramPosts } from "./instagram-scheduler"
 import { generateAutomaticDailySummaries } from "./group-summary-cron"
 import { refreshActiveSnapshots } from "./ads/snapshot"
 import { generateRecurringTasks } from "./tasks"
@@ -15,6 +16,16 @@ export function startCron() {
       await sendDueMessages()
     } catch (err) {
       console.error("[cron] Erro ao processar mensagens:", err)
+    }
+  })
+
+  // Instagram: publica os posts agendados cujo horário venceu (a cada minuto).
+  cron.schedule("* * * * *", async () => {
+    try {
+      const r = await publishDueInstagramPosts()
+      if (r.published || r.failed) console.log(`[cron] Instagram: ${JSON.stringify(r)}`)
+    } catch (err) {
+      console.error("[cron] Erro ao publicar no Instagram:", err)
     }
   })
 
@@ -61,5 +72,5 @@ export function startCron() {
     { timezone: "America/Sao_Paulo" }
   )
 
-  console.log("[cron] Scheduler iniciado (mensagens + resumos diários + performance + recorrentes)")
+  console.log("[cron] Scheduler iniciado (mensagens + instagram + resumos diários + performance + recorrentes)")
 }
