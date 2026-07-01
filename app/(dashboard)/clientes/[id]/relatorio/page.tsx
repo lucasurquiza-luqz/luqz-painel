@@ -25,6 +25,8 @@ type Perf = { current: { total: Totals; breakdown: Bd; byProvider: Provider[]; d
 type Plan = { id: string; month: string; funnels: PlanFunnel[] }
 type Insight = { id: string; text: string; createdByName: string | null; createdAt: string }
 type History = { month: string; spend: number; results: number; cpa: number | null }[]
+type Action = { id: string; title: string; project: string | null; completedAt: string; result: string | null }
+type Upcoming = { id: string; title: string; dueDate: string | null; status: string; project: string | null }
 
 const tooltipStyle = { background: "#161616", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }
 
@@ -36,20 +38,24 @@ export default function RelatorioPage() {
   const [history, setHistory] = useState<History>([])
   const [plans, setPlans] = useState<Plan[]>([])
   const [insight, setInsight] = useState<Insight | null>(null)
+  const [actions, setActions] = useState<Action[]>([])
+  const [upcoming, setUpcoming] = useState<Upcoming[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { fetch(`/api/clients/${clientId}`).then((r) => r.json()).then((d) => setClientName(d.client?.name ?? "")).catch(() => {}) }, [clientId])
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [p, pl, ins] = await Promise.all([
+    const [p, pl, ins, rep] = await Promise.all([
       fetch(`/api/clients/${clientId}/performance?month=${month}`).then((r) => r.json()).catch(() => ({})),
       fetch(`/api/clients/${clientId}/media-plans?month=${month}`).then((r) => r.json()).catch(() => ({})),
       fetch(`/api/clients/${clientId}/performance/insight?month=${month}`).then((r) => r.json()).catch(() => ({})),
+      fetch(`/api/clients/${clientId}/report?month=${month}`).then((r) => r.json()).catch(() => ({})),
     ])
     setPerf(p.performance ?? null); setHistory(p.history ?? [])
     setPlans(pl.plans ?? [])
     setInsight((ins.insights ?? [])[0] ?? null)
+    setActions(rep.actions ?? []); setUpcoming(rep.upcoming ?? [])
     setLoading(false)
   }, [clientId, month])
   useEffect(() => { void load() }, [load])
@@ -118,6 +124,40 @@ export default function RelatorioPage() {
               )}
             </div>
           </Panel>
+
+          {/* ===== RESUMO EXECUTIVO ===== */}
+          {insight && (
+            <Panel className="border-[#FF8F50]/20 bg-[#FF8F50]/[0.04] p-5">
+              <p className="mb-2 text-xs font-semibold text-[#FFB185]">Resumo executivo</p>
+              <p className="whitespace-pre-wrap text-sm leading-7 text-zinc-200">{insight.text}</p>
+            </Panel>
+          )}
+
+          {/* ===== O QUE FIZEMOS ===== */}
+          <Panel className="p-5">
+            <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">✅ O que fizemos no mês {actions.length > 0 && <span className="text-xs font-normal text-zinc-500">{actions.length} entrega(s)</span>}</p>
+            {actions.length === 0 ? (
+              <p className="text-xs text-zinc-600">Nenhuma tarefa concluída registrada em {fmtMonthLong(month)}.</p>
+            ) : (
+              <ul className="space-y-2.5">
+                {actions.map((a) => (
+                  <li key={a.id} className="flex gap-2.5">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-medium leading-5 text-zinc-100">{a.title}{a.project && <span className="ml-2 rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-500">{a.project}</span>}</p>
+                      {a.result && <p className="mt-0.5 whitespace-pre-wrap text-[12px] leading-5 text-zinc-400">{a.result}</p>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+
+          {/* ===== O QUE GERAMOS ===== */}
+          <div className="flex items-center gap-3 pt-1">
+            <span className="text-sm font-semibold text-white">📈 O que geramos</span>
+            <span className="h-px flex-1 bg-white/8" />
+          </div>
 
           {/* ===== KPIs principais ===== */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -226,16 +266,21 @@ export default function RelatorioPage() {
             </Panel>
           )}
 
-          {/* ===== Leitura de IA ===== */}
-          <Panel className="border-[#FF8F50]/20 bg-[#FF8F50]/[0.04] p-5">
-            <p className="mb-2 text-xs font-semibold text-[#FFB185]">🤖 Leitura de performance</p>
-            {insight ? (
-              <>
-                <p className="whitespace-pre-wrap text-sm leading-7 text-zinc-200">{insight.text}</p>
-                <p className="mt-2 text-[10px] text-zinc-600">{insight.createdByName ?? "IA"} · {new Date(insight.createdAt).toLocaleDateString("pt-BR")}</p>
-              </>
+          {/* ===== PRÓXIMOS PASSOS ===== */}
+          <Panel className="p-5">
+            <p className="mb-3 text-sm font-semibold text-white">➡️ Próximos passos</p>
+            {upcoming.length === 0 ? (
+              <p className="text-xs text-zinc-600">Sem tarefas abertas no momento.</p>
             ) : (
-              <p className="text-xs text-zinc-500">Sem leitura salva deste mês. Gere uma no <Link href={`/clientes/${clientId}/metas`} className="text-[#FFB185] hover:underline">painel de performance</Link>.</p>
+              <ul className="space-y-2">
+                {upcoming.map((u) => (
+                  <li key={u.id} className="flex items-center gap-2.5 text-[13px]">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" />
+                    <span className="min-w-0 flex-1 truncate text-zinc-200">{u.title}{u.project && <span className="ml-2 rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-500">{u.project}</span>}</span>
+                    {u.dueDate && <span className="shrink-0 text-[11px] text-zinc-500">{new Date(u.dueDate).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>}
+                  </li>
+                ))}
+              </ul>
             )}
           </Panel>
 
