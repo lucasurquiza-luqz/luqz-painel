@@ -45,7 +45,7 @@ async function funnelAgg(clientId: string, range: DateRange, funnels: { id: stri
 // Report semanal: semana fechada (seg–dom) + mês até aqui, por funil, com pacing pra meta do mês.
 export async function GET(req: NextRequest, { params }: Params) {
   const { id } = await params
-  const auth = await requireApiUser(["ADMIN", "OPERADOR"])
+  const auth = await requireApiUser(["ADMIN", "OPERADOR", "CLIENTE"])
   if (!auth.ok) return auth.response
   if (!canAccessClient(auth.user, id)) return denyClientAccess()
 

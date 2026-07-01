@@ -67,11 +67,10 @@ const clientNav: NavGroup[] = [
     ],
   },
   {
-    label: "Resultado",
-    internalOnly: true,
+    label: "Performance",
     items: [
-      { href: "/metas", label: "Performance", icon: Target },
-      { href: "/relatorio", label: "Relatório", icon: FileBarChart },
+      { href: "/metas", label: "Painel de performance", icon: Target, internalOnly: true },
+      { href: "/relatorio", label: "Relatório mensal", icon: FileBarChart },
       { href: "/relatorio-semanal", label: "Report semanal", icon: CalendarClock },
     ],
   },

@@ -14,7 +14,7 @@ function validDate(d: string | null): d is string {
 // GET: mês fechado → cache (snapshot); intervalo since/until → leitura ao vivo.
 export async function GET(req: NextRequest, { params }: Params) {
   const { id } = await params
-  const auth = await requireApiUser(["ADMIN", "OPERADOR"])
+  const auth = await requireApiUser(["ADMIN", "OPERADOR", "CLIENTE"])
   if (!auth.ok) return auth.response
   if (!canAccessClient(auth.user, id)) return denyClientAccess()
 

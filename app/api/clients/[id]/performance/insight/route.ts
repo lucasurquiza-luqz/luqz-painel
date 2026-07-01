@@ -10,7 +10,7 @@ type Params = { params: Promise<{ id: string }> }
 // Histórico de leituras salvas do mês (mais recente primeiro).
 export async function GET(req: NextRequest, { params }: Params) {
   const { id } = await params
-  const auth = await requireApiUser(["ADMIN", "OPERADOR"])
+  const auth = await requireApiUser(["ADMIN", "OPERADOR", "CLIENTE"])
   if (!auth.ok) return auth.response
   if (!canAccessClient(auth.user, id)) return denyClientAccess()
   const month = req.nextUrl.searchParams.get("month")

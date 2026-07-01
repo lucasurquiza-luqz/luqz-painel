@@ -81,7 +81,7 @@ export default function RelatorioPage() {
   return (
     <main className="mx-auto max-w-5xl space-y-6 p-6 lg:p-8">
       <div className="flex items-center gap-3 print:hidden">
-        <Link href={`/clientes/${clientId}/metas`} className="rounded-xl p-2 text-zinc-500 hover:bg-white/5 hover:text-zinc-100"><ArrowLeft size={18} /></Link>
+        <Link href={`/clientes/${clientId}`} className="rounded-xl p-2 text-zinc-500 hover:bg-white/5 hover:text-zinc-100"><ArrowLeft size={18} /></Link>
         <PageHeader eyebrow="Resultado" title="Relatório mensal" description="Resumo executivo de performance — pronto pra compartilhar." />
         <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-black/20 p-0.5">
           <button onClick={() => setMonth((mm) => shiftMonth(mm, -1))} className="rounded-md p-1.5 text-zinc-400 hover:bg-white/5"><ChevronLeft size={16} /></button>
