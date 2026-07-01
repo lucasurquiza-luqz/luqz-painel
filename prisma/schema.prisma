@@ -60,6 +60,8 @@ model Client {
   funnels             ClientFunnel[]
   projects            Project[]
   tasks               Task[]
+  instagramAccount    InstagramAccount?
+  instagramPosts      InstagramScheduledPost[]
 }
 
 // Cache de performance por cliente/mês. O painel lê daqui (instantâneo); um cron
@@ -108,6 +110,7 @@ enum AdObjective {
   LEAD
   WHATSAPP
   ECOMMERCE
+  SEGUIDORES
   CUSTOM
 }
 
@@ -1073,4 +1076,54 @@ model Activity {
   createdAt DateTime       @default(now())
 
   @@index([entity, entityId, createdAt])
+}
+
+// ==== Instagram — publicação orgânica agendada ====
+// Conta IG business por cliente. Token cifrado (crypto-secrets, chave = SESSION_SECRET),
+// mesmo padrão de ClientAdAccount. O Dash publica pela Graph API oficial no horário.
+model InstagramAccount {
+  id        String   @id @default(cuid())
+  clientId  String   @unique
+  igUserId  String // ID da conta business (ex: 17841401467060661)
+  username  String? // ex: lucasurquiza_
+  tokenEnc  String // access token cifrado
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  posts  InstagramScheduledPost[]
+}
+
+enum InstagramPostStatus {
+  PENDING
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  CANCELLED
+}
+
+// Post agendado. imageUrls: 1 = imagem única (frase), 2-10 = carrossel.
+// As imagens já entram como URLs públicas (MinIO); o worker só chama a Graph API.
+model InstagramScheduledPost {
+  id          String              @id @default(cuid())
+  clientId    String
+  accountId   String
+  caption     String
+  imageUrls   String[]            @default([])
+  scheduledAt DateTime
+  status      InstagramPostStatus @default(PENDING)
+  igMediaId   String? // ID do post publicado
+  permalink   String?
+  error       String?
+  attempts    Int                 @default(0)
+  ref         String? // rastreio da origem (ex: "dia-04/carrossel-1")
+  createdById String? // audit; "automation" quando vindo da API por chave de serviço
+  createdAt   DateTime            @default(now())
+  publishedAt DateTime?
+
+  client  Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  account InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduledAt])
+  @@index([clientId, scheduledAt])
 }

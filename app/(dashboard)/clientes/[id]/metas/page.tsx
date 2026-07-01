@@ -192,6 +192,7 @@ function SubFunnelCard({ sf, campaignName }: { sf: PlanFunnel; campaignName: str
     <div className="rounded-lg border border-white/8 bg-black/20 p-3">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold text-zinc-100">{sf.name}</span>
+        {sf.platform && <span className="rounded bg-white/8 px-1.5 py-0.5 text-[10px] text-zinc-300">{PLATFORM_LABEL[sf.platform] ?? sf.platform}</span>}
         <span className="rounded bg-[#FF8F50]/15 px-1.5 py-0.5 text-[10px] text-[#FFB185]">{OBJ_LABEL[sf.objective] ?? sf.objective}</span>
         {campaignName && <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] text-sky-300">🎯 {campaignName}</span>}
         <span className="ml-auto text-[11px] text-zinc-500">{brl(sf.budget)}{sf.cpl ? ` · CPL ${brl(sf.cpl)}` : ""}</span>
@@ -225,19 +226,20 @@ function SubFunnelCard({ sf, campaignName }: { sf: PlanFunnel; campaignName: str
 }
 
 type StageForm = { label: string; ratePct: string; ticket: string }
-type FunnelForm = { id: string; name: string; objective: string; campaignFunnelId: string; budget: string; cpl: string; ticket: string; stages: StageForm[] }
+type FunnelForm = { id: string; name: string; objective: string; platform: string; campaignFunnelId: string; budget: string; cpl: string; ticket: string; stages: StageForm[] }
+const PLATFORM_OPTS = [{ v: "META", label: "Meta Ads" }, { v: "GOOGLE", label: "Google Ads" }]
 const numStr = (n: number | null) => (n != null ? String(n) : "")
 const decBR = (v: string) => { const c = v.trim().replace(/\./g, "").replace(",", "."); return c ? Number(c) : null }
 const defaultStages = (): StageForm[] => [{ label: "Leads", ratePct: "", ticket: "" }, { label: "Qualificados", ratePct: "40", ticket: "" }, { label: "Vendas", ratePct: "50", ticket: "" }]
 let _fseq = 0
-const newFunnelForm = (): FunnelForm => ({ id: `nf${_fseq++}`, name: "", objective: "LEAD", campaignFunnelId: "", budget: "", cpl: "", ticket: "", stages: defaultStages() })
+const newFunnelForm = (): FunnelForm => ({ id: `nf${_fseq++}`, name: "", objective: "LEAD", platform: "META", campaignFunnelId: "", budget: "", cpl: "", ticket: "", stages: defaultStages() })
 const funnelFormFromPlan = (sf: PlanFunnel): FunnelForm => ({
-  id: sf.id || `nf${_fseq++}`, name: sf.name, objective: sf.objective, campaignFunnelId: sf.campaignFunnelId ?? "",
+  id: sf.id || `nf${_fseq++}`, name: sf.name, objective: sf.objective, platform: sf.platform ?? "META", campaignFunnelId: sf.campaignFunnelId ?? "",
   budget: numStr(sf.budget), cpl: numStr(sf.cpl), ticket: numStr(sf.ticket),
   stages: sf.stages.length ? sf.stages.map((s, i) => ({ label: s.label, ratePct: i === 0 || s.rate == null ? "" : String(Math.round((s.rate ?? 0) * 1000) / 10), ticket: s.ticket != null ? String(s.ticket) : "" })) : defaultStages(),
 })
 const funnelFormToPlan = (f: FunnelForm): PlanFunnel => ({
-  id: f.id, name: f.name.trim(), objective: f.objective, campaignFunnelId: f.campaignFunnelId || null,
+  id: f.id, name: f.name.trim(), objective: f.objective, platform: f.platform || null, campaignFunnelId: f.campaignFunnelId || null,
   budget: decBR(f.budget), cpl: decBR(f.cpl), ticket: decBR(f.ticket),
   stages: f.stages.filter((s) => s.label.trim()).map((s, i) => ({ label: s.label.trim(), rate: i === 0 ? null : (s.ratePct.trim() ? Number(s.ratePct.replace(",", ".")) / 100 : 0), ticket: decBR(s.ticket) })),
 })
@@ -320,8 +322,11 @@ function SubFunnelEditor({ f, idx, campaignFunnels, onChange, onRemove }: { f: F
         <span className="text-[11px] font-semibold text-zinc-500">Funil {idx + 1}</span>
         {onRemove && <button onClick={onRemove} className="ml-auto text-zinc-600 hover:text-red-300"><Trash2 size={14} /></button>}
       </div>
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2">
         <FormField label="Nome do funil"><Input value={f.name} onChange={(e) => onChange({ name: e.target.value })} placeholder="Captação / Impulsionar…" /></FormField>
+        <FormField label="Plataforma"><select value={f.platform} onChange={(e) => onChange({ platform: e.target.value })} className="dash-input min-h-11 w-full rounded-lg px-3.5 py-2.5 text-sm">{PLATFORM_OPTS.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}</select></FormField>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
         <FormField label="Objetivo"><select value={f.objective} onChange={(e) => onChange({ objective: e.target.value })} className="dash-input min-h-11 w-full rounded-lg px-3.5 py-2.5 text-sm">{OBJ_OPTIONS.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}</select></FormField>
         <FormField label="Funil de campanha (realizado)"><select value={f.campaignFunnelId} onChange={(e) => onChange({ campaignFunnelId: e.target.value })} className="dash-input min-h-11 w-full rounded-lg px-3.5 py-2.5 text-sm"><option value="">— nenhum —</option>{campaignFunnels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></FormField>
       </div>
@@ -567,9 +572,10 @@ function VisualFunnel({ steps, title = "Funil" }: { steps: { label: string; valu
 
 // Controle de período: presets rápidos + intervalo personalizado.
 // Metas × realizado do mês (barras + pacing), por plataforma.
-function MetaProgress({ plan, view, resultLabel, platform, pace }: { plan: Plan; view: { spend: number; results: number; cpa: number | null; roas: number | null }; resultLabel: string; platform: string; pace: { elapsed: number; total: number } | null }) {
-  // Metas agregadas dos sub-funis do plano.
-  const proj = plan.funnels.map((f) => ({ f, p: projectPlanFunnel(f) }))
+function MetaProgress({ plan, view, resultLabel, platform, source, pace }: { plan: Plan; view: { spend: number; results: number; cpa: number | null; roas: number | null }; resultLabel: string; platform: string; source: string; pace: { elapsed: number; total: number } | null }) {
+  // Metas agregadas dos sub-funis do plano — filtradas pela plataforma selecionada.
+  const funnels = plan.funnels.filter((f) => source === "all" || !f.platform || f.platform === source)
+  const proj = funnels.map((f) => ({ f, p: projectPlanFunnel(f) }))
   const budgetTarget = proj.reduce((s, x) => s + (x.f.budget ?? 0), 0) || plan.budget
   const leadsTarget = Math.round(proj.reduce((s, x) => s + (x.p.rows[0]?.value ?? 0), 0)) || plan.targetLeads
   const revTarget = proj.reduce((s, x) => s + (x.p.revenue ?? 0), 0)
@@ -824,7 +830,7 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
           ) : (
           <>
           {/* Metas do mês (meta × realizado) para a plataforma selecionada. */}
-          {range.month && plan && <MetaProgress plan={plan} view={view} resultLabel={resultLabel} platform={SOURCE_LABEL[source] ?? source} pace={pace} />}
+          {range.month && plan && <MetaProgress plan={plan} view={view} resultLabel={resultLabel} platform={SOURCE_LABEL[source] ?? source} source={source} pace={pace} />}
 
           {/* KPIs principais com mini-tendência. Trend só no consolidado; % de meta por plataforma. */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -1287,8 +1293,8 @@ function FunnelView({ clientId, provider, since, until, plans, month }: { client
   const subFunnelFor = (funnelId: string): PlanFunnel | undefined => {
     if (!month) return undefined
     for (const p of plans) {
-      if (p.month !== month || !(p.platform === provider || p.platform === "TOTAL")) continue
-      const sf = p.funnels.find((x) => x.campaignFunnelId === funnelId)
+      if (p.month !== month) continue
+      const sf = p.funnels.find((x) => x.campaignFunnelId === funnelId && (!x.platform || x.platform === provider))
       if (sf) return sf
     }
     return undefined

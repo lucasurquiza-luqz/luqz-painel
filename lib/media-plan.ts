@@ -29,8 +29,9 @@ export type FunnelRow = { label: string; value: number; cost: number | null; rat
 export type FunnelProjection = { rows: FunnelRow[]; revenue: number | null; roas: number | null; cac: number | null; finalLabel: string | null }
 
 // ===== Plano com vários funis =====
-export type PlanFunnel = { id: string; name: string; objective: string; campaignFunnelId: string | null; budget: number | null; cpl: number | null; ticket: number | null; stages: FunnelStage[] }
+export type PlanFunnel = { id: string; name: string; objective: string; platform: string | null; campaignFunnelId: string | null; budget: number | null; cpl: number | null; ticket: number | null; stages: FunnelStage[] }
 const OBJECTIVES = new Set(["LEAD", "WHATSAPP", "ECOMMERCE", "SEGUIDORES", "CUSTOM"])
+const PLATFORMS = new Set(["META", "GOOGLE"])
 
 // Valida/normaliza a lista de funis recebida do cliente.
 export function sanitizePlanFunnels(value: unknown): PlanFunnel[] | null {
@@ -42,6 +43,7 @@ export function sanitizePlanFunnels(value: unknown): PlanFunnel[] | null {
       id: typeof f.id === "string" && f.id ? f.id : `f${i}`,
       name: typeof f.name === "string" ? f.name.trim() : "",
       objective: typeof f.objective === "string" && OBJECTIVES.has(f.objective) ? f.objective : "LEAD",
+      platform: typeof f.platform === "string" && PLATFORMS.has(f.platform) ? f.platform : null,
       campaignFunnelId: typeof f.campaignFunnelId === "string" && f.campaignFunnelId ? f.campaignFunnelId : null,
       budget: num(f.budget),
       cpl: num(f.cpl),
@@ -58,7 +60,7 @@ export function sanitizePlanFunnels(value: unknown): PlanFunnel[] | null {
 
 // Funis efetivos do plano: usa `funnels` novo; se vazio, converte o legado (single-funil).
 export function effectivePlanFunnels(plan: {
-  funnels?: unknown; funnel?: unknown; funnelId?: string | null; objective?: string | null
+  funnels?: unknown; funnel?: unknown; funnelId?: string | null; objective?: string | null; platform?: string | null
   budget?: number | null; targetCpl?: number | null; targetTicket?: number | null
   campaignFunnel?: { id: string; name: string } | null
 }): PlanFunnel[] {
@@ -70,6 +72,7 @@ export function effectivePlanFunnels(plan: {
     id: "legacy",
     name: plan.objective || plan.campaignFunnel?.name || "Funil",
     objective: "LEAD",
+    platform: plan.platform === "META" || plan.platform === "GOOGLE" ? plan.platform : null,
     campaignFunnelId: plan.funnelId ?? null,
     budget: plan.budget ?? null,
     cpl: plan.targetCpl ?? null,
