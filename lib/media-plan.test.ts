@@ -32,6 +32,21 @@ describe("projectFunnel", () => {
     expect(p.revenue).toBeNull()
   })
 
+  it("receita por etapa: soma receita de várias etapas (consulta + procedimento)", () => {
+    const s = [
+      { label: "Leads" },
+      { label: "Agendados", rate: 0.5 },
+      { label: "Consultas", rate: 0.6, ticket: 200 },
+      { label: "Procedimentos", rate: 0.4, ticket: 1500 },
+    ]
+    // leads = 1000/10 = 100 → agendados 50 → consultas 30 (×200=6000) → procedimentos 12 (×1500=18000)
+    const p = projectFunnel({ budget: 1000, cpl: 10, targetLeads: null, stages: s, ticket: null })
+    expect(Math.round(p.rows[2].revenue!)).toBe(6000)
+    expect(Math.round(p.rows[3].revenue!)).toBe(18000)
+    expect(Math.round(p.revenue!)).toBe(24000) // 6000 + 18000
+    expect(Math.round(p.roas! * 10) / 10).toBe(24) // 24000/1000
+  })
+
   it("funil vazio não quebra", () => {
     const p = projectFunnel({ budget: 1000, cpl: 10, targetLeads: null, stages: [], ticket: 500 })
     expect(p.rows).toHaveLength(0)

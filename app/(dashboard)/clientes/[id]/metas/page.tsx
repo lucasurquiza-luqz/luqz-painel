@@ -186,7 +186,10 @@ function FunnelProjection({ plan }: { plan: Plan }) {
             <span className="w-36 shrink-0 text-zinc-400">{r.label}</span>
             <span className="font-semibold text-zinc-100">{Math.round(r.value).toLocaleString("pt-BR")}</span>
             {r.rate != null && <span className="text-[10px] text-zinc-600">({Math.round(r.rate * 100)}%)</span>}
-            {r.cost != null && <span className="ml-auto text-[10px] text-zinc-500">{brl(r.cost)}/un</span>}
+            <span className="ml-auto flex items-center gap-3">
+              {r.revenue != null && <span className="text-[11px] text-emerald-300/80">{brl(r.revenue)}</span>}
+              {r.cost != null && <span className="text-[10px] text-zinc-500">{brl(r.cost)}/un</span>}
+            </span>
           </div>
         ))}
       </div>
@@ -201,10 +204,10 @@ function FunnelProjection({ plan }: { plan: Plan }) {
   )
 }
 
-type StageForm = { label: string; ratePct: string }
+type StageForm = { label: string; ratePct: string; ticket: string }
 const stagesFromFunnel = (funnel: FunnelStage[] | null): StageForm[] =>
-  funnel && funnel.length ? funnel.map((s, i) => ({ label: s.label, ratePct: i === 0 || s.rate == null ? "" : String(Math.round(s.rate * 1000) / 10) }))
-    : [{ label: "Leads", ratePct: "" }, { label: "Qualificados", ratePct: "40" }, { label: "Vendas", ratePct: "50" }]
+  funnel && funnel.length ? funnel.map((s, i) => ({ label: s.label, ratePct: i === 0 || s.rate == null ? "" : String(Math.round(s.rate * 1000) / 10), ticket: s.ticket != null ? String(s.ticket) : "" }))
+    : [{ label: "Leads", ratePct: "", ticket: "" }, { label: "Qualificados", ratePct: "40", ticket: "" }, { label: "Vendas", ratePct: "50", ticket: "" }]
 const numStr = (n: number | null) => (n != null ? String(n) : "")
 
 function AddPlan({ clientId, plan, onAdded, onCancel, onError }: { clientId: string; plan?: Plan; onAdded: () => void; onCancel: () => void; onError: (m: string) => void }) {
@@ -220,11 +223,11 @@ function AddPlan({ clientId, plan, onAdded, onCancel, onError }: { clientId: str
 
   const dec = (value: string) => { const c = value.trim().replace(/\./g, "").replace(",", "."); return c ? Number(c) : null }
   const setStage = (i: number, patch: Partial<StageForm>) => setStages((ss) => ss.map((s, j) => (j === i ? { ...s, ...patch } : s)))
-  const addStage = () => setStages((ss) => [...ss, { label: "", ratePct: "30" }])
+  const addStage = () => setStages((ss) => [...ss, { label: "", ratePct: "30", ticket: "" }])
   const delStage = (i: number) => setStages((ss) => ss.filter((_, j) => j !== i))
 
-  // Etapas → funil ({label, rate}); a 1ª (topo) não tem taxa.
-  const funnelPayload: FunnelStage[] = stages.filter((s) => s.label.trim()).map((s, i) => ({ label: s.label.trim(), rate: i === 0 ? null : (s.ratePct.trim() ? Number(s.ratePct.replace(",", ".")) / 100 : 0) }))
+  // Etapas → funil ({label, rate, ticket}); a 1ª (topo) não tem taxa.
+  const funnelPayload: FunnelStage[] = stages.filter((s) => s.label.trim()).map((s, i) => ({ label: s.label.trim(), rate: i === 0 ? null : (s.ratePct.trim() ? Number(s.ratePct.replace(",", ".")) / 100 : 0), ticket: dec(s.ticket) }))
   const preview = projectFunnel({ budget: dec(form.budget), cpl: dec(form.targetCpl), targetLeads: form.targetLeads.trim() ? Number(form.targetLeads.trim()) : null, stages: funnelPayload, ticket: dec(form.targetTicket) })
 
   async function submit() {
@@ -277,19 +280,24 @@ function AddPlan({ clientId, plan, onAdded, onCancel, onError }: { clientId: str
           <p className="text-xs font-semibold text-zinc-300">🔻 Funil projetado</p>
           <button onClick={addStage} className="text-[11px] text-[#FFB185] hover:underline">+ etapa</button>
         </div>
+        <div className="mb-1.5 flex items-center gap-2 px-1 text-[10px] text-zinc-600">
+          <span className="flex-1">Etapa</span><span className="w-20 text-center">Taxa</span><span className="w-28 text-center">Receita/un (R$)</span><span className="w-5" />
+        </div>
         <div className="space-y-2">
           {stages.map((s, i) => (
             <div key={i} className="flex items-center gap-2">
               <Input value={s.label} onChange={(e) => setStage(i, { label: e.target.value })} placeholder={i === 0 ? "Leads (topo)" : "Etapa"} className="flex-1" />
               {i === 0 ? (
-                <span className="w-28 shrink-0 text-center text-[10px] text-zinc-600">topo (por CPL/leads)</span>
+                <span className="w-20 shrink-0 text-center text-[9px] text-zinc-600">topo</span>
               ) : (
-                <div className="flex w-28 shrink-0 items-center gap-1"><Input value={s.ratePct} onChange={(e) => setStage(i, { ratePct: e.target.value })} placeholder="40" inputMode="decimal" className="text-center" /><span className="text-xs text-zinc-500">%</span></div>
+                <div className="flex w-20 shrink-0 items-center gap-1"><Input value={s.ratePct} onChange={(e) => setStage(i, { ratePct: e.target.value })} placeholder="40" inputMode="decimal" className="text-center" /><span className="text-xs text-zinc-500">%</span></div>
               )}
-              {stages.length > 1 && <button onClick={() => delStage(i)} className="shrink-0 text-zinc-600 hover:text-red-300"><Trash2 size={14} /></button>}
+              <Input value={s.ticket} onChange={(e) => setStage(i, { ticket: e.target.value })} placeholder="—" inputMode="decimal" className="w-28 shrink-0 text-center" />
+              {stages.length > 1 ? <button onClick={() => delStage(i)} className="w-5 shrink-0 text-zinc-600 hover:text-red-300"><Trash2 size={14} /></button> : <span className="w-5" />}
             </div>
           ))}
         </div>
+        <p className="mt-1.5 text-[10px] text-zinc-600">Receita/un opcional por etapa (ex.: consulta R$200 <b>e</b> procedimento R$1500). A receita total soma todas as etapas com valor.</p>
         {preview.rows.length > 0 && (form.budget || form.targetLeads) && (
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-white/8 pt-2 text-[11px] text-zinc-500">
             <span>Prévia:</span>
