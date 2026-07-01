@@ -1090,8 +1090,38 @@ model InstagramAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  client Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  posts  InstagramScheduledPost[]
+  client     Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  posts      InstagramScheduledPost[]
+  snapshot   InstagramSnapshot?
+  dailyStats InstagramDailyStat[]
+}
+
+// Cache dos insights da conta (KPIs + demografia + melhores horarios). Um cron
+// diario refaz a leitura na Graph API e regrava o JSON; os paineis leem daqui.
+model InstagramSnapshot {
+  id        String   @id @default(cuid())
+  accountId String   @unique
+  data      Json // { followersCount, mediaCount, kpis, demographics, bestTimes, rangeDays }
+  fetchedAt DateTime @default(now())
+
+  account InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+// Serie temporal diaria (grafico de crescimento/alcance). Acumula a cada sync.
+model InstagramDailyStat {
+  id           String   @id @default(cuid())
+  accountId    String
+  date         DateTime @db.Date
+  followers    Int? // total de seguidores no dia (snapshot)
+  newFollowers Int? // novos seguidores no dia (metric follower_count)
+  reach        Int?
+  profileViews Int?
+  createdAt    DateTime @default(now())
+
+  account InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, date])
+  @@index([accountId, date])
 }
 
 enum InstagramPostStatus {

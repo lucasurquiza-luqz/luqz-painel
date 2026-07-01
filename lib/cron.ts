@@ -1,6 +1,7 @@
 import cron from "node-cron"
 import { sendDueMessages } from "./scheduler"
 import { publishDueInstagramPosts } from "./instagram-scheduler"
+import { syncAllInstagramInsights } from "./instagram-insights"
 import { generateAutomaticDailySummaries } from "./group-summary-cron"
 import { refreshActiveSnapshots } from "./ads/snapshot"
 import { generateRecurringTasks } from "./tasks"
@@ -39,6 +40,20 @@ export function startCron() {
         console.log(`[cron] Resumos automáticos: ${JSON.stringify(result)}`)
       } catch (err) {
         console.error("[cron] Erro ao gerar resumos automáticos:", err)
+      }
+    },
+    { timezone: "America/Sao_Paulo" }
+  )
+
+  // Insights do Instagram: refaz o cache de metricas das contas (06h05 SP).
+  cron.schedule(
+    "5 6 * * *",
+    async () => {
+      try {
+        const r = await syncAllInstagramInsights()
+        console.log(`[cron] Insights Instagram: ${JSON.stringify(r)}`)
+      } catch (err) {
+        console.error("[cron] Erro ao sincronizar insights do Instagram:", err)
       }
     },
     { timezone: "America/Sao_Paulo" }
