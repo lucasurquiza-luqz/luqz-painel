@@ -6,7 +6,7 @@ import Link from "next/link"
 import { ArrowLeft, Loader2, Pencil, Plug, Plus, RefreshCw, Target, Trash2, X } from "lucide-react"
 import { Area, Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Button, Input, PageHeader, Panel } from "@/components/ui/primitives"
-import { projectFunnel, type FunnelStage } from "@/lib/media-plan"
+import { projectFunnel, type FunnelStage, type PlanFunnel } from "@/lib/media-plan"
 
 type Plan = {
   id: string
@@ -20,12 +20,15 @@ type Plan = {
   targetTicket: number | null
   objective: string | null
   funnel: FunnelStage[] | null
+  funnels: PlanFunnel[]
   narrative: string | null
   funnelId: string | null
   campaignFunnel: { id: string; name: string } | null
   notes: string | null
   createdBy: { name: string }
 }
+const OBJ_OPTIONS = [{ v: "LEAD", label: "Leads" }, { v: "WHATSAPP", label: "Conversas" }, { v: "ECOMMERCE", label: "Compras" }, { v: "SEGUIDORES", label: "Seguidores" }]
+const projectPlanFunnel = (sf: PlanFunnel) => projectFunnel({ budget: sf.budget, cpl: sf.cpl, targetLeads: null, stages: sf.stages, ticket: sf.ticket })
 type InsightRow = { id: string; text: string; createdByName: string | null; createdAt: string }
 
 const PLATFORM_LABEL: Record<string, string> = { META: "Meta Ads", GOOGLE: "Google Ads", TOTAL: "Consolidado" }
@@ -86,6 +89,9 @@ export default function MetasPage() {
   const [error, setError] = useState("")
   const [adding, setAdding] = useState(false)
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null)
+  const [campaignFunnels, setCampaignFunnels] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => { fetch(`/api/clients/${clientId}/funnels`).then((r) => r.json()).then((d) => setCampaignFunnels(d.funnels ?? [])).catch(() => {}) }, [clientId])
+  const funnelName = (fid: string | null) => (fid ? campaignFunnels.find((f) => f.id === fid)?.name ?? null : null)
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/clients/${clientId}/media-plans`)
@@ -141,26 +147,29 @@ export default function MetasPage() {
         <div className="space-y-2">
           {plans.map((plan) => (
             <Panel key={plan.id} className="p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold text-white">{fmtMonth(plan.month)}</span>
-                  <span className="rounded-md bg-white/5 px-2 py-0.5 text-[11px] text-zinc-400">{PLATFORM_LABEL[plan.platform]}</span>
-                  {plan.campaignFunnel && <span className="rounded-md bg-sky-500/15 px-2 py-0.5 text-[11px] text-sky-300">🎯 {plan.campaignFunnel.name}</span>}
-                  {plan.objective && <span className="rounded-md bg-[#FF8F50]/15 px-2 py-0.5 text-[11px] text-[#FFB185]">{plan.objective}</span>}
+              {(() => {
+                const totalBudget = plan.funnels.reduce((s, f) => s + (f.budget ?? 0), 0) || plan.budget
+                return (
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-white">{fmtMonth(plan.month)}</span>
+                      <span className="rounded-md bg-white/5 px-2 py-0.5 text-[11px] text-zinc-400">{PLATFORM_LABEL[plan.platform]}</span>
+                      <span className="text-[11px] text-zinc-500">{plan.funnels.length} funil(s) · {brl(totalBudget)}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => { setAdding(false); setEditingPlan(plan); window.scrollTo({ top: 0, behavior: "smooth" }) }} className="rounded-md p-1 text-zinc-600 hover:text-[#FFB185]" aria-label="Editar"><Pencil size={14} /></button>
+                      <button onClick={() => remove(plan)} className="rounded-md p-1 text-zinc-600 hover:text-red-400" aria-label="Remover"><Trash2 size={15} /></button>
+                    </div>
+                  </div>
+                )
+              })()}
+              {plan.funnels.length > 0 ? (
+                <div className="mt-4 space-y-3">
+                  {plan.funnels.map((sf) => <SubFunnelCard key={sf.id} sf={sf} campaignName={funnelName(sf.campaignFunnelId)} />)}
                 </div>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => { setAdding(false); setEditingPlan(plan); window.scrollTo({ top: 0, behavior: "smooth" }) }} className="rounded-md p-1 text-zinc-600 hover:text-[#FFB185]" aria-label="Editar"><Pencil size={14} /></button>
-                  <button onClick={() => remove(plan)} className="rounded-md p-1 text-zinc-600 hover:text-red-400" aria-label="Remover"><Trash2 size={15} /></button>
-                </div>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
-                <Metric label="Verba" value={brl(plan.budget)} />
-                <Metric label="CPL alvo" value={brl(plan.targetCpl)} />
-                <Metric label="Leads" value={plan.targetLeads != null ? String(plan.targetLeads) : "—"} />
-                <Metric label="ROAS alvo" value={plan.targetRoas != null ? `${plan.targetRoas}x` : "—"} />
-                <Metric label="Ticket" value={brl(plan.targetTicket)} />
-              </div>
-              {plan.funnel && plan.funnel.length > 0 && <FunnelProjection plan={plan} />}
+              ) : (
+                <p className="mt-4 text-xs text-zinc-600">Plano sem funis. Clique em editar para adicionar.</p>
+              )}
               {plan.narrative && (
                 <div className="mt-3 rounded-lg border border-white/8 bg-black/20 p-3">
                   <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-600">Estratégia / cenários</p>
@@ -176,77 +185,84 @@ export default function MetasPage() {
   )
 }
 
-// Funil projetado do plano (calculado a partir de verba/CPL/taxas/ticket).
-function FunnelProjection({ plan }: { plan: Plan }) {
-  const proj = projectFunnel({ budget: plan.budget, cpl: plan.targetCpl, targetLeads: plan.targetLeads, stages: plan.funnel ?? [], ticket: plan.targetTicket })
-  if (!proj.rows.length) return null
+// Card de um sub-funil no plano (projeção + objetivo + funil de campanha).
+function SubFunnelCard({ sf, campaignName }: { sf: PlanFunnel; campaignName: string | null }) {
+  const proj = projectPlanFunnel(sf)
   return (
-    <div className="mt-3 rounded-lg border border-white/8 bg-black/20 p-3">
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-600">🔻 Funil projetado</p>
-      <div className="space-y-1">
-        {proj.rows.map((r, i) => (
-          <div key={i} className="flex items-center gap-2 text-[12px]">
-            <span className="w-36 shrink-0 text-zinc-400">{r.label}</span>
-            <span className="font-semibold text-zinc-100">{Math.round(r.value).toLocaleString("pt-BR")}</span>
-            {r.rate != null && <span className="text-[10px] text-zinc-600">({Math.round(r.rate * 100)}%)</span>}
-            <span className="ml-auto flex items-center gap-3">
-              {r.revenue != null && <span className="text-[11px] text-emerald-300/80">{brl(r.revenue)}</span>}
-              {r.cost != null && <span className="text-[10px] text-zinc-500">{brl(r.cost)}/un</span>}
-            </span>
-          </div>
-        ))}
+    <div className="rounded-lg border border-white/8 bg-black/20 p-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="text-sm font-semibold text-zinc-100">{sf.name}</span>
+        <span className="rounded bg-[#FF8F50]/15 px-1.5 py-0.5 text-[10px] text-[#FFB185]">{OBJ_LABEL[sf.objective] ?? sf.objective}</span>
+        {campaignName && <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] text-sky-300">🎯 {campaignName}</span>}
+        <span className="ml-auto text-[11px] text-zinc-500">{brl(sf.budget)}{sf.cpl ? ` · CPL ${brl(sf.cpl)}` : ""}</span>
       </div>
-      {(proj.revenue != null || proj.roas != null) && (
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-white/8 pt-2 text-[11px]">
-          {proj.revenue != null && <span className="text-zinc-400">Receita proj.: <b className="text-emerald-300">{brl(proj.revenue)}</b></span>}
-          {proj.roas != null && <span className="text-zinc-400">ROAS proj.: <b className="text-emerald-300">{proj.roas.toFixed(2)}x</b></span>}
-          {proj.cac != null && <span className="text-zinc-400">CAC: <b className="text-zinc-200">{brl(proj.cac)}</b></span>}
-        </div>
+      {proj.rows.length > 0 && (
+        <>
+          <div className="space-y-1">
+            {proj.rows.map((r, i) => (
+              <div key={i} className="flex items-center gap-2 text-[12px]">
+                <span className="w-36 shrink-0 text-zinc-400">{r.label}</span>
+                <span className="font-semibold text-zinc-100">{Math.round(r.value).toLocaleString("pt-BR")}</span>
+                {r.rate != null && <span className="text-[10px] text-zinc-600">({Math.round(r.rate * 100)}%)</span>}
+                <span className="ml-auto flex items-center gap-3">
+                  {r.revenue != null && <span className="text-[11px] text-emerald-300/80">{brl(r.revenue)}</span>}
+                  {r.cost != null && <span className="text-[10px] text-zinc-500">{brl(r.cost)}/un</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+          {(proj.revenue != null || proj.roas != null) && (
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 border-t border-white/8 pt-2 text-[11px]">
+              {proj.revenue != null && <span className="text-zinc-400">Receita proj.: <b className="text-emerald-300">{brl(proj.revenue)}</b></span>}
+              {proj.roas != null && <span className="text-zinc-400">ROAS proj.: <b className="text-emerald-300">{proj.roas.toFixed(2)}x</b></span>}
+              {proj.cac != null && <span className="text-zinc-400">CAC: <b className="text-zinc-200">{brl(proj.cac)}</b></span>}
+            </div>
+          )}
+        </>
       )}
     </div>
   )
 }
 
 type StageForm = { label: string; ratePct: string; ticket: string }
-const stagesFromFunnel = (funnel: FunnelStage[] | null): StageForm[] =>
-  funnel && funnel.length ? funnel.map((s, i) => ({ label: s.label, ratePct: i === 0 || s.rate == null ? "" : String(Math.round(s.rate * 1000) / 10), ticket: s.ticket != null ? String(s.ticket) : "" }))
-    : [{ label: "Leads", ratePct: "", ticket: "" }, { label: "Qualificados", ratePct: "40", ticket: "" }, { label: "Vendas", ratePct: "50", ticket: "" }]
+type FunnelForm = { id: string; name: string; objective: string; campaignFunnelId: string; budget: string; cpl: string; ticket: string; stages: StageForm[] }
 const numStr = (n: number | null) => (n != null ? String(n) : "")
+const decBR = (v: string) => { const c = v.trim().replace(/\./g, "").replace(",", "."); return c ? Number(c) : null }
+const defaultStages = (): StageForm[] => [{ label: "Leads", ratePct: "", ticket: "" }, { label: "Qualificados", ratePct: "40", ticket: "" }, { label: "Vendas", ratePct: "50", ticket: "" }]
+let _fseq = 0
+const newFunnelForm = (): FunnelForm => ({ id: `nf${_fseq++}`, name: "", objective: "LEAD", campaignFunnelId: "", budget: "", cpl: "", ticket: "", stages: defaultStages() })
+const funnelFormFromPlan = (sf: PlanFunnel): FunnelForm => ({
+  id: sf.id || `nf${_fseq++}`, name: sf.name, objective: sf.objective, campaignFunnelId: sf.campaignFunnelId ?? "",
+  budget: numStr(sf.budget), cpl: numStr(sf.cpl), ticket: numStr(sf.ticket),
+  stages: sf.stages.length ? sf.stages.map((s, i) => ({ label: s.label, ratePct: i === 0 || s.rate == null ? "" : String(Math.round((s.rate ?? 0) * 1000) / 10), ticket: s.ticket != null ? String(s.ticket) : "" })) : defaultStages(),
+})
+const funnelFormToPlan = (f: FunnelForm): PlanFunnel => ({
+  id: f.id, name: f.name.trim(), objective: f.objective, campaignFunnelId: f.campaignFunnelId || null,
+  budget: decBR(f.budget), cpl: decBR(f.cpl), ticket: decBR(f.ticket),
+  stages: f.stages.filter((s) => s.label.trim()).map((s, i) => ({ label: s.label.trim(), rate: i === 0 ? null : (s.ratePct.trim() ? Number(s.ratePct.replace(",", ".")) / 100 : 0), ticket: decBR(s.ticket) })),
+})
 
 function AddPlan({ clientId, plan, onAdded, onCancel, onError }: { clientId: string; plan?: Plan; onAdded: () => void; onCancel: () => void; onError: (m: string) => void }) {
   const editing = !!plan
-  const [form, setForm] = useState({
-    month: plan?.month ?? currentMonth(), platform: String(plan?.platform ?? "TOTAL"), objective: plan?.objective ?? "", funnelId: plan?.funnelId ?? "",
-    budget: numStr(plan?.budget ?? null), targetCpl: numStr(plan?.targetCpl ?? null), targetLeads: numStr(plan?.targetLeads ?? null),
-    targetCpa: numStr(plan?.targetCpa ?? null), targetRoas: numStr(plan?.targetRoas ?? null), targetTicket: numStr(plan?.targetTicket ?? null),
-    narrative: plan?.narrative ?? "", notes: plan?.notes ?? "",
-  })
-  const [stages, setStages] = useState<StageForm[]>(stagesFromFunnel(plan?.funnel ?? null))
+  const [form, setForm] = useState({ month: plan?.month ?? currentMonth(), platform: String(plan?.platform ?? "TOTAL"), narrative: plan?.narrative ?? "", notes: plan?.notes ?? "" })
+  const [funnels, setFunnels] = useState<FunnelForm[]>(plan?.funnels?.length ? plan.funnels.map(funnelFormFromPlan) : [newFunnelForm()])
   const [campaignFunnels, setCampaignFunnels] = useState<{ id: string; name: string }[]>([])
   useEffect(() => { fetch(`/api/clients/${clientId}/funnels`).then((r) => r.json()).then((d) => setCampaignFunnels(d.funnels ?? [])).catch(() => {}) }, [clientId])
   const [busy, setBusy] = useState(false)
 
-  const dec = (value: string) => { const c = value.trim().replace(/\./g, "").replace(",", "."); return c ? Number(c) : null }
-  const setStage = (i: number, patch: Partial<StageForm>) => setStages((ss) => ss.map((s, j) => (j === i ? { ...s, ...patch } : s)))
-  const addStage = () => setStages((ss) => [...ss, { label: "", ratePct: "30", ticket: "" }])
-  const delStage = (i: number) => setStages((ss) => ss.filter((_, j) => j !== i))
-
-  // Etapas → funil ({label, rate, ticket}); a 1ª (topo) não tem taxa.
-  const funnelPayload: FunnelStage[] = stages.filter((s) => s.label.trim()).map((s, i) => ({ label: s.label.trim(), rate: i === 0 ? null : (s.ratePct.trim() ? Number(s.ratePct.replace(",", ".")) / 100 : 0), ticket: dec(s.ticket) }))
-  const preview = projectFunnel({ budget: dec(form.budget), cpl: dec(form.targetCpl), targetLeads: form.targetLeads.trim() ? Number(form.targetLeads.trim()) : null, stages: funnelPayload, ticket: dec(form.targetTicket) })
+  const setF = (id: string, patch: Partial<FunnelForm>) => setFunnels((fs) => fs.map((f) => (f.id === id ? { ...f, ...patch } : f)))
+  const addF = () => setFunnels((fs) => [...fs, newFunnelForm()])
+  const delF = (id: string) => setFunnels((fs) => fs.filter((f) => f.id !== id))
+  const totalBudget = funnels.reduce((s, f) => s + (decBR(f.budget) ?? 0), 0)
 
   async function submit() {
     if (!form.month) { onError("Informe o mês."); return }
+    const payloadFunnels = funnels.filter((f) => f.name.trim()).map(funnelFormToPlan)
+    if (!payloadFunnels.length) { onError("Adicione ao menos um funil com nome."); return }
     setBusy(true); onError("")
-    const payload = {
-      month: form.month, platform: form.platform, objective: form.objective, funnelId: form.funnelId || null,
-      budget: dec(form.budget), targetCpl: dec(form.targetCpl),
-      targetLeads: form.targetLeads.trim() ? Number(form.targetLeads.trim()) : null,
-      targetCpa: dec(form.targetCpa), targetRoas: dec(form.targetRoas), targetTicket: dec(form.targetTicket),
-      funnel: funnelPayload, narrative: form.narrative, notes: form.notes,
-    }
+    const body = { month: form.month, platform: form.platform, narrative: form.narrative, notes: form.notes, funnels: payloadFunnels }
     const res = await fetch(editing ? `/api/clients/${clientId}/media-plans/${plan!.id}` : `/api/clients/${clientId}/media-plans`, {
-      method: editing ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      method: editing ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     })
     setBusy(false)
     if (!res.ok) { onError((await res.json()).error ?? "Erro ao salvar plano."); return }
@@ -259,7 +275,7 @@ function AddPlan({ clientId, plan, onAdded, onCancel, onError }: { clientId: str
         <h2 className="text-sm font-semibold text-white">{editing ? "Editar plano de mídia" : "Novo plano de mídia"}</h2>
         <button onClick={onCancel} className="text-zinc-600 hover:text-white"><X size={18} /></button>
       </div>
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         <FormField label="Mês"><Input type="month" value={form.month} disabled={editing} onChange={(e) => setForm({ ...form, month: e.target.value })} className="[color-scheme:dark] disabled:opacity-50" /></FormField>
         <FormField label="Plataforma">
           <select value={form.platform} disabled={editing} onChange={(e) => setForm({ ...form, platform: e.target.value })} className="dash-input min-h-11 w-full rounded-lg px-3.5 py-2.5 text-sm disabled:opacity-50">
@@ -268,59 +284,18 @@ function AddPlan({ clientId, plan, onAdded, onCancel, onError }: { clientId: str
             <option value="GOOGLE">Google Ads</option>
           </select>
         </FormField>
-        <FormField label="Objetivo do canal"><Input value={form.objective} onChange={(e) => setForm({ ...form, objective: e.target.value })} placeholder="Venda / Seguidores…" /></FormField>
-      </div>
-      <FormField label="Funil de campanha (opcional — atrela a meta às campanhas desse funil)">
-        <select value={form.funnelId} onChange={(e) => setForm({ ...form, funnelId: e.target.value })} className="dash-input min-h-11 w-full rounded-lg px-3.5 py-2.5 text-sm">
-          <option value="">Plano geral (sem funil específico)</option>
-          {campaignFunnels.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-        </select>
-        {campaignFunnels.length === 0 && <p className="mt-1 text-[10px] text-zinc-600">Nenhum funil de campanha ainda. Crie em Painel de performance → aba Funis.</p>}
-      </FormField>
-      <div className="grid gap-4 md:grid-cols-3">
-        <FormField label="Verba (R$)"><Input value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })} placeholder="8000,00" inputMode="decimal" /></FormField>
-        <FormField label="CPL alvo (R$)"><Input value={form.targetCpl} onChange={(e) => setForm({ ...form, targetCpl: e.target.value })} placeholder="12,00" inputMode="decimal" /></FormField>
-        <FormField label="Ticket médio (R$)"><Input value={form.targetTicket} onChange={(e) => setForm({ ...form, targetTicket: e.target.value })} placeholder="750,00" inputMode="decimal" /></FormField>
-        <FormField label="Meta de leads (se sem CPL)"><Input value={form.targetLeads} onChange={(e) => setForm({ ...form, targetLeads: e.target.value })} placeholder="200" inputMode="numeric" /></FormField>
-        <FormField label="CPA alvo (R$)"><Input value={form.targetCpa} onChange={(e) => setForm({ ...form, targetCpa: e.target.value })} placeholder="40,00" inputMode="decimal" /></FormField>
-        <FormField label="ROAS alvo"><Input value={form.targetRoas} onChange={(e) => setForm({ ...form, targetRoas: e.target.value })} placeholder="3,5" inputMode="decimal" /></FormField>
       </div>
 
-      {/* Construtor de funil */}
-      <div className="rounded-lg border border-white/10 bg-black/20 p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs font-semibold text-zinc-300">🔻 Funil projetado</p>
-          <button onClick={addStage} className="text-[11px] text-[#FFB185] hover:underline">+ etapa</button>
-        </div>
-        <div className="mb-1.5 flex items-center gap-2 px-1 text-[10px] text-zinc-600">
-          <span className="flex-1">Etapa</span><span className="w-20 text-center">Taxa</span><span className="w-28 text-center">Receita/un (R$)</span><span className="w-5" />
-        </div>
-        <div className="space-y-2">
-          {stages.map((s, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <Input value={s.label} onChange={(e) => setStage(i, { label: e.target.value })} placeholder={i === 0 ? "Leads (topo)" : "Etapa"} className="flex-1" />
-              {i === 0 ? (
-                <span className="w-20 shrink-0 text-center text-[9px] text-zinc-600">topo</span>
-              ) : (
-                <div className="flex w-20 shrink-0 items-center gap-1"><Input value={s.ratePct} onChange={(e) => setStage(i, { ratePct: e.target.value })} placeholder="40" inputMode="decimal" className="text-center" /><span className="text-xs text-zinc-500">%</span></div>
-              )}
-              <Input value={s.ticket} onChange={(e) => setStage(i, { ticket: e.target.value })} placeholder="—" inputMode="decimal" className="w-28 shrink-0 text-center" />
-              {stages.length > 1 ? <button onClick={() => delStage(i)} className="w-5 shrink-0 text-zinc-600 hover:text-red-300"><Trash2 size={14} /></button> : <span className="w-5" />}
-            </div>
-          ))}
-        </div>
-        <p className="mt-1.5 text-[10px] text-zinc-600">Receita/un opcional por etapa (ex.: consulta R$200 <b>e</b> procedimento R$1500). A receita total soma todas as etapas com valor.</p>
-        {preview.rows.length > 0 && (form.budget || form.targetLeads) && (
-          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-white/8 pt-2 text-[11px] text-zinc-500">
-            <span>Prévia:</span>
-            {preview.rows.map((r, i) => <span key={i} className="text-zinc-400">{r.label} <b className="text-zinc-200">{Math.round(r.value).toLocaleString("pt-BR")}</b></span>)}
-            {preview.roas != null && <span className="text-emerald-300">ROAS {preview.roas.toFixed(2)}x</span>}
-          </div>
-        )}
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-zinc-300">Funis do plano · total {brl(totalBudget)}</p>
+        <Button variant="secondary" className="min-h-8 px-3 py-1 text-xs" onClick={addF}><Plus size={14} /> funil</Button>
+      </div>
+      <div className="space-y-3">
+        {funnels.map((f, idx) => <SubFunnelEditor key={f.id} f={f} idx={idx} campaignFunnels={campaignFunnels} onChange={(p) => setF(f.id, p)} onRemove={funnels.length > 1 ? () => delF(f.id) : undefined} />)}
       </div>
 
       <FormField label="Estratégia / cenários / controle semanal (opcional)">
-        <textarea rows={4} value={form.narrative} onChange={(e) => setForm({ ...form, narrative: e.target.value })} className="dash-input w-full resize-none rounded-lg px-3.5 py-3 text-sm" placeholder="Diagnóstico, cenários (conservador/realista), distribuição por campanha, metas semanais…" />
+        <textarea rows={4} value={form.narrative} onChange={(e) => setForm({ ...form, narrative: e.target.value })} className="dash-input w-full resize-none rounded-lg px-3.5 py-3 text-sm" placeholder="Diagnóstico, cenários (conservador/realista), metas semanais…" />
       </FormField>
       <FormField label="Observações">
         <textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="dash-input w-full resize-none rounded-lg px-3.5 py-3 text-sm" placeholder="Contexto do plano do mês." />
@@ -330,6 +305,56 @@ function AddPlan({ clientId, plan, onAdded, onCancel, onError }: { clientId: str
         <Button onClick={submit} disabled={busy}>{busy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Salvar plano</Button>
       </div>
     </Panel>
+  )
+}
+
+// Editor de um sub-funil (nome, objetivo, funil de campanha, verba, CPL, etapas).
+function SubFunnelEditor({ f, idx, campaignFunnels, onChange, onRemove }: { f: FunnelForm; idx: number; campaignFunnels: { id: string; name: string }[]; onChange: (p: Partial<FunnelForm>) => void; onRemove?: () => void }) {
+  const setStage = (i: number, patch: Partial<StageForm>) => onChange({ stages: f.stages.map((s, j) => (j === i ? { ...s, ...patch } : s)) })
+  const addStage = () => onChange({ stages: [...f.stages, { label: "", ratePct: "30", ticket: "" }] })
+  const delStage = (i: number) => onChange({ stages: f.stages.filter((_, j) => j !== i) })
+  const preview = projectPlanFunnel(funnelFormToPlan(f))
+  return (
+    <div className="space-y-3 rounded-lg border border-white/10 bg-black/20 p-3">
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-semibold text-zinc-500">Funil {idx + 1}</span>
+        {onRemove && <button onClick={onRemove} className="ml-auto text-zinc-600 hover:text-red-300"><Trash2 size={14} /></button>}
+      </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        <FormField label="Nome do funil"><Input value={f.name} onChange={(e) => onChange({ name: e.target.value })} placeholder="Captação / Impulsionar…" /></FormField>
+        <FormField label="Objetivo"><select value={f.objective} onChange={(e) => onChange({ objective: e.target.value })} className="dash-input min-h-11 w-full rounded-lg px-3.5 py-2.5 text-sm">{OBJ_OPTIONS.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}</select></FormField>
+        <FormField label="Funil de campanha (realizado)"><select value={f.campaignFunnelId} onChange={(e) => onChange({ campaignFunnelId: e.target.value })} className="dash-input min-h-11 w-full rounded-lg px-3.5 py-2.5 text-sm"><option value="">— nenhum —</option>{campaignFunnels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></FormField>
+      </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        <FormField label="Verba (R$)"><Input value={f.budget} onChange={(e) => onChange({ budget: e.target.value })} placeholder="8000,00" inputMode="decimal" /></FormField>
+        <FormField label="CPL/CPF alvo (R$)"><Input value={f.cpl} onChange={(e) => onChange({ cpl: e.target.value })} placeholder="12,00" inputMode="decimal" /></FormField>
+        <FormField label="Ticket global (opcional)"><Input value={f.ticket} onChange={(e) => onChange({ ticket: e.target.value })} placeholder="750,00" inputMode="decimal" /></FormField>
+      </div>
+      <div>
+        <div className="mb-1.5 flex items-center justify-between">
+          <p className="text-[11px] font-semibold text-zinc-400">Etapas do funil</p>
+          <button onClick={addStage} className="text-[11px] text-[#FFB185] hover:underline">+ etapa</button>
+        </div>
+        <div className="mb-1 flex items-center gap-2 px-1 text-[10px] text-zinc-600"><span className="flex-1">Etapa</span><span className="w-16 text-center">Taxa</span><span className="w-24 text-center">Receita/un</span><span className="w-5" /></div>
+        <div className="space-y-2">
+          {f.stages.map((s, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input value={s.label} onChange={(e) => setStage(i, { label: e.target.value })} placeholder={i === 0 ? "Topo (Leads/Seguidores)" : "Etapa"} className="flex-1" />
+              {i === 0 ? <span className="w-16 shrink-0 text-center text-[9px] text-zinc-600">topo</span> : <div className="flex w-16 shrink-0 items-center gap-1"><Input value={s.ratePct} onChange={(e) => setStage(i, { ratePct: e.target.value })} placeholder="40" inputMode="decimal" className="text-center" /><span className="text-xs text-zinc-500">%</span></div>}
+              <Input value={s.ticket} onChange={(e) => setStage(i, { ticket: e.target.value })} placeholder="—" inputMode="decimal" className="w-24 shrink-0 text-center" />
+              {f.stages.length > 1 ? <button onClick={() => delStage(i)} className="w-5 shrink-0 text-zinc-600 hover:text-red-300"><Trash2 size={13} /></button> : <span className="w-5" />}
+            </div>
+          ))}
+        </div>
+        {preview.rows.length > 0 && (f.budget || f.cpl) && (
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-white/8 pt-2 text-[11px] text-zinc-500">
+            <span>Prévia:</span>
+            {preview.rows.map((r, i) => <span key={i} className="text-zinc-400">{r.label} <b className="text-zinc-200">{Math.round(r.value).toLocaleString("pt-BR")}</b></span>)}
+            {preview.roas != null && <span className="text-emerald-300">ROAS {preview.roas.toFixed(2)}x</span>}
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -543,18 +568,21 @@ function VisualFunnel({ steps, title = "Funil" }: { steps: { label: string; valu
 // Controle de período: presets rápidos + intervalo personalizado.
 // Metas × realizado do mês (barras + pacing), por plataforma.
 function MetaProgress({ plan, view, resultLabel, platform, pace }: { plan: Plan; view: { spend: number; results: number; cpa: number | null; roas: number | null }; resultLabel: string; platform: string; pace: { elapsed: number; total: number } | null }) {
-  // Meta de leads: absoluta, ou derivada de verba/CPL (topo do funil).
-  const leadsTarget = plan.targetLeads ?? (plan.budget && plan.targetCpl ? Math.round(plan.budget / plan.targetCpl) : null)
+  // Metas agregadas dos sub-funis do plano.
+  const proj = plan.funnels.map((f) => ({ f, p: projectPlanFunnel(f) }))
+  const budgetTarget = proj.reduce((s, x) => s + (x.f.budget ?? 0), 0) || plan.budget
+  const leadsTarget = Math.round(proj.reduce((s, x) => s + (x.p.rows[0]?.value ?? 0), 0)) || plan.targetLeads
+  const revTarget = proj.reduce((s, x) => s + (x.p.revenue ?? 0), 0)
+  const roasTarget = budgetTarget && revTarget ? revTarget / budgetTarget : plan.targetRoas
   // Projeção no ritmo atual (só faz sentido no mês em curso).
   const inMonth = pace && pace.elapsed > 0 && pace.elapsed < pace.total
   const project = (v: number) => (inMonth ? Math.round((v / pace!.elapsed) * pace!.total) : null)
 
   type Row = { label: string; cur: string; target: string; pct: number; good: boolean; proj?: string; projGood?: boolean }
   const rows: Row[] = []
-  if (plan.budget) { const pj = project(view.spend); rows.push({ label: "Investimento", cur: brl(view.spend), target: brl(plan.budget), pct: Math.round((view.spend / plan.budget) * 100), good: true, proj: pj != null ? brl(pj) : undefined, projGood: pj != null ? pj <= plan.budget * 1.05 : undefined }) }
+  if (budgetTarget) { const pj = project(view.spend); rows.push({ label: "Investimento", cur: brl(view.spend), target: brl(budgetTarget), pct: Math.round((view.spend / budgetTarget) * 100), good: true, proj: pj != null ? brl(pj) : undefined, projGood: pj != null ? pj <= budgetTarget * 1.05 : undefined }) }
   if (leadsTarget) { const p = Math.round((view.results / leadsTarget) * 100); const pj = project(view.results); rows.push({ label: resultLabel, cur: String(view.results), target: String(leadsTarget), pct: p, good: p >= 100, proj: pj != null ? String(pj) : undefined, projGood: pj != null ? pj >= leadsTarget : undefined }) }
-  if (plan.targetCpa && view.cpa != null) rows.push({ label: "CPA", cur: brl(view.cpa), target: `≤ ${brl(plan.targetCpa)}`, pct: Math.round((view.cpa / plan.targetCpa) * 100), good: view.cpa <= plan.targetCpa })
-  if (plan.targetRoas && view.roas != null) rows.push({ label: "ROAS", cur: `${view.roas.toFixed(2)}x`, target: `≥ ${plan.targetRoas}x`, pct: Math.round((view.roas / plan.targetRoas) * 100), good: view.roas >= plan.targetRoas })
+  if (roasTarget && view.roas != null) rows.push({ label: "ROAS", cur: `${view.roas.toFixed(2)}x`, target: `≥ ${Number(roasTarget).toFixed(2)}x`, pct: Math.round((view.roas / roasTarget) * 100), good: view.roas >= roasTarget })
   if (!rows.length) return null
   return (
     <div className="rounded-xl border border-white/8 bg-black/20 p-4">
@@ -1255,9 +1283,17 @@ function FunnelView({ clientId, provider, since, until, plans, month }: { client
 
   const grouped = groupByFunnel(nodes, funnels ?? [])
   const leaf = provider === "GOOGLE" ? "Grupo ▸ Palavra" : "Conjunto ▸ Anúncio"
-  // Casa cada funil (id) com o plano do mês atrelado a ele (por funil + mês + plataforma).
-  const planFor = (funnelId: string) => month ? plans.find((p) => p.funnelId === funnelId && p.month === month && (p.platform === provider || p.platform === "TOTAL")) : undefined
-  const compares = grouped.map((n) => ({ node: n, plan: planFor(n.id) })).filter((c) => c.plan)
+  // Casa cada funil de campanha (id) com o sub-funil atrelado (em qualquer plano do mês).
+  const subFunnelFor = (funnelId: string): PlanFunnel | undefined => {
+    if (!month) return undefined
+    for (const p of plans) {
+      if (p.month !== month || !(p.platform === provider || p.platform === "TOTAL")) continue
+      const sf = p.funnels.find((x) => x.campaignFunnelId === funnelId)
+      if (sf) return sf
+    }
+    return undefined
+  }
+  const compares = grouped.map((n) => ({ node: n, sf: subFunnelFor(n.id) })).filter((c) => c.sf)
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
@@ -1269,7 +1305,7 @@ function FunnelView({ clientId, provider, since, until, plans, month }: { client
       {compares.length > 0 && (
         <div className="space-y-2">
           <p className="text-[11px] font-semibold text-zinc-400">🎯 Meta × realizado por funil</p>
-          {compares.map((c) => <FunnelPlanCompare key={c.node.id} node={c.node} plan={c.plan!} />)}
+          {compares.map((c) => <FunnelPlanCompare key={c.node.id} node={c.node} sf={c.sf!} />)}
         </div>
       )}
       <MetricTree nodes={grouped} title={`Funis (${provider === "GOOGLE" ? "Google" : "Meta"})`} levels={["Funil", "Campanha", leaf]} />
@@ -1277,16 +1313,17 @@ function FunnelView({ clientId, provider, since, until, plans, month }: { client
   )
 }
 
-// Meta × realizado de um funil de campanha (gasto/verba, resultados/leads, CPA).
-function FunnelPlanCompare({ node, plan }: { node: TNode; plan: Plan }) {
-  const leadsTarget = plan.targetLeads ?? (plan.budget && plan.targetCpl ? Math.round(plan.budget / plan.targetCpl) : null)
+// Meta × realizado de um funil de campanha vs seu sub-funil no plano.
+function FunnelPlanCompare({ node, sf }: { node: TNode; sf: PlanFunnel }) {
+  const proj = projectPlanFunnel(sf)
+  const leadsTarget = Math.round(proj.rows[0]?.value ?? 0) || null
   const rows: { label: string; cur: string; target: string; pct: number; good: boolean }[] = []
-  if (plan.budget) rows.push({ label: "Gasto", cur: brl(node.spend), target: brl(plan.budget), pct: Math.round((node.spend / plan.budget) * 100), good: node.spend <= plan.budget * 1.05 })
-  if (leadsTarget) { const p = Math.round((node.results / leadsTarget) * 100); rows.push({ label: "Resultados", cur: String(node.results), target: String(leadsTarget), pct: p, good: p >= 100 }) }
-  if (plan.targetCpa && node.cpa != null) rows.push({ label: "CPA", cur: brl(node.cpa), target: `≤ ${brl(plan.targetCpa)}`, pct: Math.round((node.cpa / plan.targetCpa) * 100), good: node.cpa <= plan.targetCpa })
+  if (sf.budget) rows.push({ label: "Gasto", cur: brl(node.spend), target: brl(sf.budget), pct: Math.round((node.spend / sf.budget) * 100), good: node.spend <= sf.budget * 1.05 })
+  if (leadsTarget) { const p = Math.round((node.results / leadsTarget) * 100); rows.push({ label: OBJ_LABEL[sf.objective] ?? "Resultados", cur: String(node.results), target: String(leadsTarget), pct: p, good: p >= 100 }) }
+  if (sf.cpl && node.cpa != null) rows.push({ label: "Custo/result.", cur: brl(node.cpa), target: `≤ ${brl(sf.cpl)}`, pct: Math.round((node.cpa / sf.cpl) * 100), good: node.cpa <= sf.cpl })
   return (
     <div className="rounded-xl border border-white/8 bg-black/20 p-3">
-      <p className="mb-2 text-xs font-semibold text-sky-300">{node.name}</p>
+      <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-sky-300">{node.name} <span className="rounded bg-[#FF8F50]/15 px-1.5 py-0.5 text-[10px] text-[#FFB185]">{OBJ_LABEL[sf.objective] ?? sf.objective}</span></p>
       <div className="grid gap-2 sm:grid-cols-3">
         {rows.map((r) => (
           <div key={r.label}>
