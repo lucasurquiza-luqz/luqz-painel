@@ -28,6 +28,56 @@ export type FunnelInput = { budget: number | null; cpl: number | null; targetLea
 export type FunnelRow = { label: string; value: number; cost: number | null; rate: number | null; ticket: number | null; revenue: number | null }
 export type FunnelProjection = { rows: FunnelRow[]; revenue: number | null; roas: number | null; cac: number | null; finalLabel: string | null }
 
+// ===== Plano com vários funis =====
+export type PlanFunnel = { id: string; name: string; objective: string; campaignFunnelId: string | null; budget: number | null; cpl: number | null; ticket: number | null; stages: FunnelStage[] }
+const OBJECTIVES = new Set(["LEAD", "WHATSAPP", "ECOMMERCE", "SEGUIDORES", "CUSTOM"])
+
+// Valida/normaliza a lista de funis recebida do cliente.
+export function sanitizePlanFunnels(value: unknown): PlanFunnel[] | null {
+  if (!Array.isArray(value)) return null
+  const num = (v: unknown) => (typeof v === "number" && isFinite(v) ? v : null)
+  const out = value
+    .filter((f): f is Record<string, unknown> => !!f && typeof f === "object")
+    .map((f, i) => ({
+      id: typeof f.id === "string" && f.id ? f.id : `f${i}`,
+      name: typeof f.name === "string" ? f.name.trim() : "",
+      objective: typeof f.objective === "string" && OBJECTIVES.has(f.objective) ? f.objective : "LEAD",
+      campaignFunnelId: typeof f.campaignFunnelId === "string" && f.campaignFunnelId ? f.campaignFunnelId : null,
+      budget: num(f.budget),
+      cpl: num(f.cpl),
+      ticket: num(f.ticket),
+      stages: (Array.isArray(f.stages) ? f.stages : []).filter((s): s is Record<string, unknown> => !!s && typeof s === "object").map((s) => ({
+        label: typeof s.label === "string" ? s.label.trim() : "",
+        rate: typeof s.rate === "number" && isFinite(s.rate) ? s.rate : null,
+        ticket: typeof s.ticket === "number" && isFinite(s.ticket) && s.ticket > 0 ? s.ticket : null,
+      })).filter((s) => s.label),
+    }))
+    .filter((f) => f.name)
+  return out.length ? out : null
+}
+
+// Funis efetivos do plano: usa `funnels` novo; se vazio, converte o legado (single-funil).
+export function effectivePlanFunnels(plan: {
+  funnels?: unknown; funnel?: unknown; funnelId?: string | null; objective?: string | null
+  budget?: number | null; targetCpl?: number | null; targetTicket?: number | null
+  campaignFunnel?: { id: string; name: string } | null
+}): PlanFunnel[] {
+  const fromNew = sanitizePlanFunnels(plan.funnels)
+  if (fromNew) return fromNew
+  const legacyStages = Array.isArray(plan.funnel) ? plan.funnel : []
+  if (!legacyStages.length && !plan.budget) return []
+  return [{
+    id: "legacy",
+    name: plan.objective || plan.campaignFunnel?.name || "Funil",
+    objective: "LEAD",
+    campaignFunnelId: plan.funnelId ?? null,
+    budget: plan.budget ?? null,
+    cpl: plan.targetCpl ?? null,
+    ticket: plan.targetTicket ?? null,
+    stages: legacyStages as FunnelStage[],
+  }]
+}
+
 export function projectFunnel({ budget, cpl, targetLeads, stages, ticket }: FunnelInput): FunnelProjection {
   const rows: FunnelRow[] = []
   if (!stages.length) return { rows, revenue: null, roas: null, cac: null, finalLabel: null }

@@ -163,11 +163,12 @@ model MediaPlan {
   targetCpl    Decimal?   @db.Decimal(12, 2) // custo por lead alvo (topo do funil projetado)
   targetRoas   Decimal?   @db.Decimal(6, 2)
   targetTicket Decimal?   @db.Decimal(12, 2)
-  objective    String? // objetivo do canal (ex.: "Venda", "Seguidores/base")
-  funnel       Json? // etapas do funil projetado: [{ label, rate }] a partir de Leads
+  objective    String? // (legado) objetivo do canal do plano single-funil
+  funnel       Json? // (legado) etapas do funil projetado de um plano single-funil
   narrative    String? // parte rica: diagnóstico, cenários, controle semanal (markdown)
-  funnelId     String? // atrela a meta a um funil de campanha (ClientFunnel); null = plano geral
-  distribution Json? // rateio de verba por funil de campanha: [{ funnelId, budget }]
+  funnelId     String? // (legado) vínculo single-funil a um ClientFunnel
+  distribution Json? // (legado) rateio de verba
+  funnels      Json? // NOVO: lista de funis do plano [{ id, name, objective, campaignFunnelId, budget, cpl, ticket, stages:[{label,rate,ticket}] }]
   notes        String?
   createdById  String
   createdAt    DateTime   @default(now())

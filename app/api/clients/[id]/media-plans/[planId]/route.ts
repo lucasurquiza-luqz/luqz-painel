@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { requireApiUser } from "@/lib/api-auth"
-import { serializePlan } from "@/lib/media-plan"
+import { serializePlan, sanitizePlanFunnels, effectivePlanFunnels } from "@/lib/media-plan"
 import { sanitizeFunnel } from "@/app/api/clients/[id]/media-plans/route"
 
 type Params = { params: Promise<{ id: string; planId: string }> }
@@ -29,6 +29,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if ("targetTicket" in body) data.targetTicket = num(body.targetTicket)
   if ("objective" in body) data.objective = str(body.objective)
   if ("funnel" in body) data.funnel = (sanitizeFunnel(body.funnel) ?? Prisma.JsonNull) as Prisma.InputJsonValue
+  if ("funnels" in body) data.funnels = (sanitizePlanFunnels(body.funnels) ?? Prisma.JsonNull) as Prisma.InputJsonValue
   if ("narrative" in body) data.narrative = str(body.narrative)
   if ("notes" in body) data.notes = str(body.notes)
   if ("funnelId" in body) {
@@ -41,7 +42,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     data,
     include: { createdBy: { select: { name: true } }, campaignFunnel: { select: { id: true, name: true } } },
   })
-  return NextResponse.json({ plan: serializePlan(plan) })
+  const s = serializePlan(plan)
+  return NextResponse.json({ plan: { ...s, funnels: effectivePlanFunnels(s) } })
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {

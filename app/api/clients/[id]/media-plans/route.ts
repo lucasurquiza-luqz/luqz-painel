@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db"
 import { canAccessClient, denyClientAccess, requireApiUser } from "@/lib/api-auth"
-import { serializePlan } from "@/lib/media-plan"
+import { serializePlan, sanitizePlanFunnels, effectivePlanFunnels } from "@/lib/media-plan"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     orderBy: [{ month: "desc" }, { platform: "asc" }],
     include: { createdBy: { select: { name: true } }, campaignFunnel: { select: { id: true, name: true } } },
   })
-  return NextResponse.json({ plans: plans.map(serializePlan) })
+  return NextResponse.json({ plans: plans.map(serializePlan).map((p) => ({ ...p, funnels: effectivePlanFunnels(p) })) })
 }
 
 export async function POST(req: NextRequest, { params }: Params) {
@@ -72,13 +72,15 @@ export async function POST(req: NextRequest, { params }: Params) {
         targetTicket: num(body.targetTicket),
         objective: str(body.objective),
         funnel: (sanitizeFunnel(body.funnel) ?? undefined) as Prisma.InputJsonValue | undefined,
+        funnels: (sanitizePlanFunnels(body.funnels) ?? undefined) as Prisma.InputJsonValue | undefined,
         narrative: str(body.narrative),
         notes: str(body.notes),
         createdById: auth.user.userId,
       },
       include: { createdBy: { select: { name: true } }, campaignFunnel: { select: { id: true, name: true } } },
     })
-    return NextResponse.json({ plan: serializePlan(plan) }, { status: 201 })
+    const s = serializePlan(plan)
+    return NextResponse.json({ plan: { ...s, funnels: effectivePlanFunnels(s) } }, { status: 201 })
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return NextResponse.json({ error: "Já existe um plano para este período/plataforma/funil." }, { status: 409 })
