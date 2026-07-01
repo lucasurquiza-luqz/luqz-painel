@@ -45,3 +45,28 @@ export async function POST(req: NextRequest) {
   })
   return NextResponse.json({ account }, { status: 201 })
 }
+
+// Desconecta a conta de um cliente. Bloqueia se houver posts na fila (agendados/publicando).
+export async function DELETE(req: NextRequest) {
+  const auth = await requireApiKeyOrUser(req, ["ADMIN", "OPERADOR"])
+  if (!auth.ok) return auth.response
+
+  const clientId = req.nextUrl.searchParams.get("clientId")
+  if (!clientId) return NextResponse.json({ error: "clientId obrigatório." }, { status: 400 })
+
+  const account = await prisma.instagramAccount.findUnique({ where: { clientId } })
+  if (!account) return NextResponse.json({ error: "Conta não encontrada." }, { status: 404 })
+
+  const active = await prisma.instagramScheduledPost.count({
+    where: { accountId: account.id, status: { in: ["PENDING", "PUBLISHING"] } },
+  })
+  if (active > 0) {
+    return NextResponse.json(
+      { error: `Há ${active} post(s) na fila. Cancele ou aguarde a publicação antes de desconectar.` },
+      { status: 400 }
+    )
+  }
+
+  await prisma.instagramAccount.delete({ where: { id: account.id } })
+  return NextResponse.json({ ok: true })
+}

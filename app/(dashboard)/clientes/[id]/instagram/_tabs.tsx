@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, CalendarDays, BarChart3, ListChecks } from "lucide-react"
+import { LayoutDashboard, CalendarDays, BarChart3, ListChecks, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export function InstagramTabs({ clientId }: { clientId: string }) {
@@ -14,6 +14,7 @@ export function InstagramTabs({ clientId }: { clientId: string }) {
     { href: `${base}/calendario`, label: "Calendário", icon: CalendarDays },
     { href: `${base}/analise`, label: "Análise", icon: BarChart3 },
     { href: `${base}/programados`, label: "Programados", icon: ListChecks },
+    { href: `${base}/configuracoes`, label: "Configurações", icon: Settings },
   ]
 
   return (
