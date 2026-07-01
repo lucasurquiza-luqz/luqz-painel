@@ -56,6 +56,7 @@ model Client {
   mediaPlans          MediaPlan[]
   adAccounts          ClientAdAccount[]
   perfSnapshots       PerformanceSnapshot[]
+  perfInsights        PerformanceInsight[]
   funnels             ClientFunnel[]
   projects            Project[]
   tasks               Task[]
@@ -74,6 +75,22 @@ model PerformanceSnapshot {
 
   @@unique([clientId, month])
   @@index([clientId])
+}
+
+// Leitura de IA da performance, salva por cliente/mês (histórico de análises).
+model PerformanceInsight {
+  id            String   @id @default(cuid())
+  clientId      String
+  month         String // AAAA-MM
+  text          String
+  model         String?
+  createdById   String?
+  createdByName String?
+  createdAt     DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, month, createdAt])
 }
 
 enum AdPlatform {

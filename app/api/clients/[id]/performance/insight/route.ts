@@ -7,6 +7,21 @@ import { AiProviderNotConfiguredError } from "@/lib/ai/openai"
 
 type Params = { params: Promise<{ id: string }> }
 
+// Histórico de leituras salvas do mês (mais recente primeiro).
+export async function GET(req: NextRequest, { params }: Params) {
+  const { id } = await params
+  const auth = await requireApiUser(["ADMIN", "OPERADOR"])
+  if (!auth.ok) return auth.response
+  if (!canAccessClient(auth.user, id)) return denyClientAccess()
+  const month = req.nextUrl.searchParams.get("month")
+  if (!month || !/^\d{4}-\d{2}$/.test(month)) return NextResponse.json({ error: "Mês inválido." }, { status: 400 })
+  const insights = await prisma.performanceInsight.findMany({
+    where: { clientId: id, month }, orderBy: { createdAt: "desc" }, take: 10,
+    select: { id: true, text: true, createdByName: true, createdAt: true },
+  })
+  return NextResponse.json({ insights })
+}
+
 // Leitura de IA da performance do mês (o que ganha/perde, o que otimizar) — ancorada nos números.
 export async function POST(req: NextRequest, { params }: Params) {
   const { id } = await params
@@ -40,7 +55,11 @@ METAS: ${metas}.`
 
   try {
     const reading = await chatComplete("ASSISTANT", system, [{ role: "user", content: user }])
-    return NextResponse.json({ reading })
+    const saved = await prisma.performanceInsight.create({
+      data: { clientId: id, month, text: reading, createdById: auth.user.userId, createdByName: auth.user.name },
+      select: { id: true, text: true, createdByName: true, createdAt: true },
+    })
+    return NextResponse.json({ reading, insight: saved })
   } catch (error) {
     if (error instanceof AiProviderNotConfiguredError) return NextResponse.json({ error: error.message }, { status: 503 })
     return NextResponse.json({ error: error instanceof Error ? error.message : "Falha na leitura." }, { status: 502 })

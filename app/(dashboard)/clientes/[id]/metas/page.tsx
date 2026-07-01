@@ -19,6 +19,7 @@ type Plan = {
   notes: string | null
   createdBy: { name: string }
 }
+type InsightRow = { id: string; text: string; createdByName: string | null; createdAt: string }
 
 const PLATFORM_LABEL: Record<string, string> = { META: "Meta Ads", GOOGLE: "Google Ads", TOTAL: "Consolidado" }
 
@@ -437,6 +438,32 @@ function VisualFunnel({ steps, title = "Funil" }: { steps: { label: string; valu
 }
 
 // Controle de período: presets rápidos + intervalo personalizado.
+// Metas × realizado do mês (barras de progresso), por plataforma.
+function MetaProgress({ plan, view, resultLabel, platform }: { plan: Plan; view: { spend: number; results: number; cpa: number | null; roas: number | null }; resultLabel: string; platform: string }) {
+  const rows: { label: string; cur: string; target: string; pct: number; good: boolean }[] = []
+  if (plan.budget) rows.push({ label: "Investimento", cur: brl(view.spend), target: brl(plan.budget), pct: Math.round((view.spend / plan.budget) * 100), good: true })
+  if (plan.targetLeads) { const p = Math.round((view.results / plan.targetLeads) * 100); rows.push({ label: resultLabel, cur: String(view.results), target: String(plan.targetLeads), pct: p, good: p >= 100 }) }
+  if (plan.targetCpa && view.cpa != null) rows.push({ label: "CPA", cur: brl(view.cpa), target: `≤ ${brl(plan.targetCpa)}`, pct: Math.round((view.cpa / plan.targetCpa) * 100), good: view.cpa <= plan.targetCpa })
+  if (plan.targetRoas && view.roas != null) rows.push({ label: "ROAS", cur: `${view.roas.toFixed(2)}x`, target: `≥ ${plan.targetRoas}x`, pct: Math.round((view.roas / plan.targetRoas) * 100), good: view.roas >= plan.targetRoas })
+  if (!rows.length) return null
+  return (
+    <div className="rounded-xl border border-white/8 bg-black/20 p-4">
+      <p className="mb-3 text-xs font-semibold text-zinc-300">🎯 Metas do mês · {platform}</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {rows.map((r) => (
+          <div key={r.label}>
+            <div className="mb-1 flex items-center justify-between text-[11px]">
+              <span className="text-zinc-400">{r.label}</span>
+              <span className={r.good ? "text-emerald-300" : "text-amber-300"}>{r.cur} <span className="text-zinc-600">/ {r.target} · {r.pct}%</span></span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/8"><div className={`h-full rounded-full ${r.good ? "bg-emerald-400" : "bg-amber-400"}`} style={{ width: `${Math.min(100, Math.max(3, r.pct))}%` }} /></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function DateRangeControl({ value, onChange }: { value: RangeSel; onChange: (r: RangeSel) => void }) {
   const [custom, setCustom] = useState(value.month === null)
   const presets = [
@@ -478,7 +505,8 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [err, setErr] = useState("")
-  const [reading, setReading] = useState("")
+  const [insights, setInsights] = useState<InsightRow[]>([])
+  const [showAllInsights, setShowAllInsights] = useState(false)
   const [readingBusy, setReadingBusy] = useState(false)
   const [source, setSource] = useState<string>("all") // "all" | "META" | "GOOGLE"
   const [tab, setTab] = useState<string>("overview") // overview | campaigns | creatives | insights
@@ -487,13 +515,19 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
   const qs = range.month ? `month=${range.month}` : `since=${range.since}&until=${range.until}`
 
   const load = useCallback(async () => {
-    setLoading(true); setErr(""); setReading("")
+    setLoading(true); setErr("")
     const { ok, data } = await cachedJson(`/api/clients/${clientId}/performance?${qs}`)
     setLoading(false)
     if (!ok) { setErr(data.error ?? "Falha ao carregar performance."); setPerf(null); return }
     setPerf(data.performance as Perf); setHistory((data.history as History) ?? []); setFetchedAt((data.fetchedAt as string) ?? null)
   }, [clientId, qs])
   useEffect(() => { void load() }, [load])
+
+  // Leituras de IA salvas do mês (histórico).
+  useEffect(() => {
+    if (!range.month) { setInsights([]); return }
+    fetch(`/api/clients/${clientId}/performance/insight?month=${range.month}`).then((r) => r.json()).then((d) => setInsights(d.insights ?? [])).catch(() => {})
+  }, [clientId, range.month])
 
   // Prefetch em paralelo das abas pesadas (campanhas/criativos/análises) assim que o painel abre —
   // quando o usuário clicar na aba, já está em cache. "Não pode demorar."
@@ -526,16 +560,20 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
   }
 
   async function genReading() {
-    setReadingBusy(true)
+    if (!range.month) return
+    setReadingBusy(true); setErr("")
     const res = await fetch(`/api/clients/${clientId}/performance/insight`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ month: range.month }),
     })
     const data = await res.json()
     setReadingBusy(false)
-    setReading(res.ok ? data.reading : (data.error ?? "Falha na leitura."))
+    if (res.ok && data.insight) setInsights((xs) => [data.insight, ...xs])
+    else setErr(data.error ?? "Falha na leitura.")
   }
 
-  const plan = range.month ? (plans.find((p) => p.month === range.month && p.platform === "TOTAL") ?? plans.find((p) => p.month === range.month)) : undefined
+  // Plano do mês para a plataforma selecionada (Meta/Google/Consolidado), com fallback pro TOTAL.
+  const planKey = source === "META" ? "META" : source === "GOOGLE" ? "GOOGLE" : "TOTAL"
+  const plan = range.month ? (plans.find((p) => p.month === range.month && p.platform === planKey) ?? plans.find((p) => p.month === range.month && p.platform === "TOTAL")) : undefined
   const t = perf?.current.total
   const pct = (real: number, target: number | null | undefined) => (target && target > 0 ? Math.round((real / target) * 100) : null)
 
@@ -588,6 +626,17 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
         <div className="mt-4 space-y-4">
           {status && <p className="text-sm"><span className="text-zinc-500">Saúde de resultado: </span><span className={`font-semibold ${status.tone}`}>{status.label}</span> <span className="text-zinc-600">· {status.why}</span></p>}
 
+          {/* Status das integrações (conectada / erro) — sempre visível. */}
+          {perf.current.byProvider.length > 0 && (
+            <div className="flex flex-wrap gap-2 text-[11px]">
+              {perf.current.byProvider.map((p) => (
+                <span key={p.provider} className={`flex items-center gap-1 rounded px-2 py-1 ${p.error ? "bg-red-500/10 text-red-300" : "bg-emerald-500/10 text-emerald-300"}`} title={p.error ?? "Conectada"}>
+                  {p.error ? "✗" : "✓"} {SOURCE_LABEL[p.provider] ?? p.provider}{p.error ? ` · ${p.error.slice(0, 60)}` : ""}
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* Navegação de plataforma — Consolidado / Meta / Google */}
           {okProviders.length > 1 && (
             <div className="flex flex-wrap gap-1.5">
@@ -624,10 +673,13 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
             <p className="text-sm text-zinc-500">Sem dados para {SOURCE_LABEL[source] ?? source} neste período.</p>
           ) : (
           <>
-          {/* KPIs principais com mini-tendência. Metas/trend só no consolidado. */}
+          {/* Metas do mês (meta × realizado) para a plataforma selecionada. */}
+          {range.month && plan && <MetaProgress plan={plan} view={view} resultLabel={resultLabel} platform={SOURCE_LABEL[source] ?? source} />}
+
+          {/* KPIs principais com mini-tendência. Trend só no consolidado; % de meta por plataforma. */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <KpiCard label="Investimento" value={brl(view.spend)} pct={isAll ? pct(view.spend, plan?.budget) : null} trend={isAll ? <Trend cur={view.spend} prev={perf.previous.spend} /> : undefined} spark={view.daily.map((d) => d.spend ?? 0)} sparkColor="#FF8F50" />
-            <KpiCard label={resultLabel} value={String(view.results)} pct={isAll ? pct(view.results, plan?.targetLeads) : null} trend={isAll ? <Trend cur={view.results} prev={perf.previous.results} /> : undefined} spark={view.daily.map((d) => d.results ?? 0)} sparkColor="#38bdf8" />
+            <KpiCard label="Investimento" value={brl(view.spend)} pct={pct(view.spend, plan?.budget)} trend={isAll ? <Trend cur={view.spend} prev={perf.previous.spend} /> : undefined} spark={view.daily.map((d) => d.spend ?? 0)} sparkColor="#FF8F50" />
+            <KpiCard label={resultLabel} value={String(view.results)} pct={pct(view.results, plan?.targetLeads)} trend={isAll ? <Trend cur={view.results} prev={perf.previous.results} /> : undefined} spark={view.daily.map((d) => d.results ?? 0)} sparkColor="#38bdf8" />
             <KpiCard label="CPA" value={brl(view.cpa)} trend={isAll ? <Trend cur={view.cpa} prev={perf.previous.cpa} goodWhenUp={false} /> : undefined} spark={view.daily.map((d) => ((d.results ?? 0) > 0 ? (d.spend ?? 0) / (d.results ?? 0) : 0))} sparkColor="#fca5a5" />
             {perf.current.trackRevenue
               ? <KpiCard label="ROAS" value={view.roas != null ? `${view.roas.toFixed(2)}x` : "—"} trend={isAll ? <Trend cur={view.roas} prev={perf.previous.roas} /> : undefined} spark={view.daily.map((d) => ((d.spend ?? 0) > 0 ? (d.revenue ?? 0) / (d.spend ?? 0) : 0))} sparkColor="#4ade80" />
@@ -667,9 +719,31 @@ function PerformanceDashboard({ clientId, plans }: { clientId: string; plans: Pl
             <div className="rounded-xl border border-[#FF8F50]/20 bg-[#FF8F50]/[0.05] p-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-[#FFB185]">🤖 Leitura de performance</span>
-                <Button variant="secondary" className="min-h-8 px-3 py-1 text-xs" onClick={genReading} disabled={readingBusy}>{readingBusy ? <Loader2 size={13} className="animate-spin" /> : "Gerar leitura"}</Button>
+                <Button variant="secondary" className="min-h-8 px-3 py-1 text-xs" onClick={genReading} disabled={readingBusy}>{readingBusy ? <Loader2 size={13} className="animate-spin" /> : insights.length ? "Gerar nova" : "Gerar leitura"}</Button>
               </div>
-              {reading && <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-200">{reading}</p>}
+              {insights.length === 0 ? (
+                <p className="mt-2 text-xs text-zinc-500">Sem leitura ainda. Gere uma análise do mês (compara com as metas e o mês anterior).</p>
+              ) : (
+                <>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-200">{insights[0].text}</p>
+                  <p className="mt-1 text-[10px] text-zinc-600">{insights[0].createdByName ?? "IA"} · {new Date(insights[0].createdAt).toLocaleString("pt-BR")}</p>
+                  {insights.length > 1 && (
+                    <>
+                      <button onClick={() => setShowAllInsights((v) => !v)} className="mt-2 text-[11px] font-medium text-[#FFB185] hover:underline">{showAllInsights ? "Ocultar histórico" : `Ver histórico (${insights.length - 1})`}</button>
+                      {showAllInsights && (
+                        <div className="mt-2 space-y-3 border-t border-white/8 pt-3">
+                          {insights.slice(1).map((ins) => (
+                            <div key={ins.id}>
+                              <p className="whitespace-pre-wrap text-[12px] leading-5 text-zinc-400">{ins.text}</p>
+                              <p className="mt-0.5 text-[10px] text-zinc-600">{ins.createdByName ?? "IA"} · {new Date(ins.createdAt).toLocaleString("pt-BR")}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
             </div>
           )}
           </>
