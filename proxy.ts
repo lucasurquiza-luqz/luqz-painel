@@ -22,6 +22,20 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Automação LUQZ: chamadas a /api/instagram/* com AUTOMATION_API_KEY válida
+  // passam direto pro handler (que refaz a verificação). Sem sessão de navegador.
+  if (pathname.startsWith("/api/instagram")) {
+    const key = process.env.AUTOMATION_API_KEY?.trim()
+    if (key) {
+      const authHeader = request.headers.get("authorization") ?? ""
+      const bearer = /^bearer\s+/i.test(authHeader) ? authHeader.replace(/^bearer\s+/i, "").trim() : ""
+      const provided = (bearer || (request.headers.get("x-api-key") ?? "")).trim()
+      if (provided && provided === key) {
+        return NextResponse.next()
+      }
+    }
+  }
+
   if (apiPublicPaths.some((p) => pathname.startsWith(p))) {
     return NextResponse.next()
   }
