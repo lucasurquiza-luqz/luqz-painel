@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db"
 import { formatInTimeZone } from "date-fns-tz"
 import { ptBR } from "date-fns/locale"
 import { cn } from "@/lib/utils"
+import { PostActions } from "../_post-actions"
 
 const TZ = "America/Sao_Paulo"
 
@@ -92,7 +93,7 @@ export default async function InstagramProgramadosPage({ params }: { params: Pro
                     <Icon size={12} />
                     {cfg.label}
                   </span>
-                  {post.status === "PENDING" && <CancelButton id={post.id} />}
+                  <PostActions clientId={clientId} postId={post.id} status={post.status} />
                 </div>
               </div>
             )
@@ -103,17 +104,3 @@ export default async function InstagramProgramadosPage({ params }: { params: Pro
   )
 }
 
-function CancelButton({ id }: { id: string }) {
-  return (
-    <form
-      action={async () => {
-        "use server"
-        await prisma.instagramScheduledPost.update({ where: { id }, data: { status: "CANCELLED" } })
-      }}
-    >
-      <button type="submit" className="text-xs text-zinc-500 hover:text-red-400 transition-colors px-2 py-1 rounded-lg hover:bg-red-900/10 cursor-pointer">
-        Cancelar
-      </button>
-    </form>
-  )
-}
