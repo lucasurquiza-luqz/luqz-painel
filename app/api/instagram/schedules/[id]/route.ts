@@ -17,7 +17,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Só dá pra editar posts pendentes." }, { status: 400 })
   }
 
-  const { caption, scheduledAt } = await req.json()
+  const { caption, scheduledAt, pillar } = await req.json()
   const data: Prisma.InstagramScheduledPostUpdateInput = {}
   if (caption !== undefined) {
     if (String(caption).length > 2200) {
@@ -31,6 +31,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "scheduledAt inválido (use ISO 8601)." }, { status: 400 })
     }
     data.scheduledAt = d
+  }
+  if (pillar !== undefined) {
+    data.pillar = pillar ? String(pillar) : null
   }
 
   const updated = await prisma.instagramScheduledPost.update({ where: { id }, data })
