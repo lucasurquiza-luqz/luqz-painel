@@ -44,6 +44,9 @@ export default function DocumentosPage() {
   const [error, setError] = useState("")
   const [adding, setAdding] = useState(false)
   const [filter, setFilter] = useState<string>("ALL")
+  // CLIENTE vê só documentos aprovados + visíveis (a API já filtra), em modo download.
+  const [canEdit, setCanEdit] = useState(false)
+  useEffect(() => { fetch("/api/me").then((r) => r.json()).then((d) => setCanEdit(d.role === "ADMIN" || d.role === "OPERADOR")).catch(() => {}) }, [])
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/clients/${clientId}/documents`)
@@ -95,7 +98,7 @@ export default function DocumentosPage() {
         <Link href={`/clientes/${clientId}`} className="rounded-xl p-2 text-zinc-500 hover:bg-white/5 hover:text-zinc-100">
           <ArrowLeft size={18} />
         </Link>
-        <PageHeader eyebrow="Documentos" title="Documentos do cliente" description="Propostas, contratos, briefings, relatórios e criativos — arquivo ou link, com aprovação." />
+        <PageHeader eyebrow="Documentos" title="Documentos do cliente" description={canEdit ? "Propostas, contratos, briefings, relatórios e criativos — arquivo ou link, com aprovação." : "Documentos disponíveis para download."} />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -105,12 +108,12 @@ export default function DocumentosPage() {
             <FilterChip key={c} active={filter === c} onClick={() => setFilter(c)}>{CATEGORY_LABEL[c]}</FilterChip>
           ))}
         </div>
-        <Button onClick={() => setAdding((v) => !v)}><Plus size={16} /> Novo documento</Button>
+        {canEdit && <Button onClick={() => setAdding((v) => !v)}><Plus size={16} /> Novo documento</Button>}
       </div>
 
       {error && <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}
 
-      {adding && <AddDocument clientId={clientId} onAdded={() => { setAdding(false); void load() }} onCancel={() => setAdding(false)} onError={setError} />}
+      {canEdit && adding && <AddDocument clientId={clientId} onAdded={() => { setAdding(false); void load() }} onCancel={() => setAdding(false)} onError={setError} />}
 
       {loading ? (
         <Panel className="flex min-h-52 items-center justify-center"><Loader2 className="animate-spin text-[#FF8F50]" /></Panel>
@@ -118,7 +121,7 @@ export default function DocumentosPage() {
         <Panel className="flex min-h-52 flex-col items-center justify-center p-8 text-center">
           <FileText size={30} className="text-zinc-700" />
           <h3 className="mt-4 text-sm font-semibold text-zinc-300">Nenhum documento</h3>
-          <p className="mt-2 max-w-sm text-sm text-zinc-600">Adicione propostas, contratos, briefings ou links de relatórios.</p>
+          <p className="mt-2 max-w-sm text-sm text-zinc-600">{canEdit ? "Adicione propostas, contratos, briefings ou links de relatórios." : "Ainda não há documentos disponíveis para você."}</p>
         </Panel>
       ) : (
         <div className="space-y-2">
@@ -144,17 +147,23 @@ export default function DocumentosPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex shrink-0 flex-wrap gap-2">
-                <Button variant="secondary" className="min-h-8 px-2.5 py-1 text-xs" onClick={() => setVisibility(doc, doc.visibility === "CLIENT" ? "INTERNAL" : "CLIENT")}>
-                  {doc.visibility === "CLIENT" ? "Tornar interno" : "Mostrar ao cliente"}
-                </Button>
-                {doc.status === "APPROVED" ? (
-                  <Button variant="secondary" className="min-h-8 px-2.5 py-1 text-xs" onClick={() => approve(doc, false)}><RotateCcw size={13} /> Reabrir</Button>
-                ) : (
-                  <Button className="min-h-8 px-2.5 py-1 text-xs" onClick={() => approve(doc, true)}><Check size={13} /> Aprovar</Button>
-                )}
-                <Button variant="danger" className="min-h-8 px-2.5 py-1 text-xs" onClick={() => remove(doc)}><Trash2 size={13} /></Button>
-              </div>
+              {canEdit ? (
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button variant="secondary" className="min-h-8 px-2.5 py-1 text-xs" onClick={() => setVisibility(doc, doc.visibility === "CLIENT" ? "INTERNAL" : "CLIENT")}>
+                    {doc.visibility === "CLIENT" ? "Tornar interno" : "Mostrar ao cliente"}
+                  </Button>
+                  {doc.status === "APPROVED" ? (
+                    <Button variant="secondary" className="min-h-8 px-2.5 py-1 text-xs" onClick={() => approve(doc, false)}><RotateCcw size={13} /> Reabrir</Button>
+                  ) : (
+                    <Button className="min-h-8 px-2.5 py-1 text-xs" onClick={() => approve(doc, true)}><Check size={13} /> Aprovar</Button>
+                  )}
+                  <Button variant="danger" className="min-h-8 px-2.5 py-1 text-xs" onClick={() => remove(doc)}><Trash2 size={13} /></Button>
+                </div>
+              ) : (
+                <a href={doc.fileUrl ?? doc.externalUrl ?? "#"} target="_blank" rel="noopener noreferrer" className="flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/10">
+                  <ExternalLink size={13} /> Abrir
+                </a>
+              )}
             </Panel>
           ))}
         </div>

@@ -53,7 +53,6 @@ const clientNav: NavGroup[] = [
     internalOnly: true,
     items: [
       { href: "/cadastro", label: "Cadastro", icon: ClipboardList },
-      { href: "/documentos", label: "Documentos", icon: FileText },
     ],
   },
   {
@@ -74,6 +73,12 @@ const clientNav: NavGroup[] = [
       { href: "/plano-de-midia", label: "Plano de mídia", icon: Map },
       { href: "/relatorio", label: "Relatório mensal", icon: FileBarChart },
       { href: "/relatorio-semanal", label: "Report semanal", icon: CalendarClock },
+    ],
+  },
+  {
+    label: "Documentos",
+    items: [
+      { href: "/documentos", label: "Documentos", icon: FileText },
     ],
   },
   {

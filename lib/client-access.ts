@@ -11,6 +11,7 @@ const CLIENT_SUFFIXES = [
   "/plano-de-midia",
   "/relatorio",
   "/relatorio-semanal",
+  "/documentos",
 ] as const
 
 // Página inicial do CLIENTE (pós-login e destino de qualquer rota negada).
