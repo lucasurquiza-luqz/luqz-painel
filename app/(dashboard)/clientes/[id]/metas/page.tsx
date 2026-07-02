@@ -842,7 +842,7 @@ function PerformanceDashboard({ clientId, plans, canEdit = true }: { clientId: s
               {(source === "META"
                 ? [["overview", "Visão Geral"], ["campaigns", "Campanhas"], ["funnels", "Funis"], ["creatives", "Criativos"], ["insights", "Análises"]]
                 : [["overview", "Visão Geral"], ["campaigns", "Campanhas"], ["funnels", "Funis"], ["insights", "Termos & análises"]]
-              ).filter(([key]) => canEdit || key === "overview" || key === "funnels").map(([key, label]) => (
+              ).map(([key, label]) => (
                 <button key={key} onClick={() => setTab(key)}
                   className={`-mb-px border-b-2 pb-2 font-medium transition ${tab === key ? "border-[#FF8F50] text-white" : "border-transparent text-zinc-500 hover:text-zinc-300"}`}>
                   {label}

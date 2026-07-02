@@ -11,7 +11,7 @@ const validDate = (d: string | null): d is string => !!d && /^\d{4}-\d{2}-\d{2}$
 // Análises profundas Meta: posicionamentos, demografia, alcance/frequência e vídeo.
 export async function GET(req: NextRequest, { params }: Params) {
   const { id } = await params
-  const auth = await requireApiUser(["ADMIN", "OPERADOR"])
+  const auth = await requireApiUser(["ADMIN", "OPERADOR", "CLIENTE"])
   if (!auth.ok) return auth.response
   if (!canAccessClient(auth.user, id)) return denyClientAccess()
 

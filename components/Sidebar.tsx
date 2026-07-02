@@ -93,6 +93,7 @@ const clientNav: NavGroup[] = [
   },
   {
     label: "Mensageria",
+    internalOnly: true,
     items: [
       { href: "/chat", label: "Chat", icon: MessageSquare },
       { href: "/agendamentos", label: "Agendamentos", icon: CalendarClock, internalOnly: true },

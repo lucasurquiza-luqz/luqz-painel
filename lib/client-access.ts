@@ -11,12 +11,11 @@ const CLIENT_SUFFIXES = [
   "/plano-de-midia",
   "/relatorio",
   "/relatorio-semanal",
-  "/chat",
 ] as const
 
 // Página inicial do CLIENTE (pós-login e destino de qualquer rota negada).
 export function clientHome(clientId: string): string {
-  return `/clientes/${clientId}/chat`
+  return `/clientes/${clientId}`
 }
 
 // O CLIENTE pode abrir esta página? Só rotas do próprio cliente e dentro da allowlist.

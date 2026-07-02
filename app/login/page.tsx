@@ -32,7 +32,7 @@ export default function LoginPage() {
       }
 
       window.location.href = data.role === "CLIENTE" && data.clientId
-        ? `/clientes/${data.clientId}/chat`
+        ? `/clientes/${data.clientId}`
         : "/clientes"
     } catch {
       setError("Não foi possível conectar ao LUQZ Dash.")
