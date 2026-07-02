@@ -247,6 +247,27 @@ const PLATFORM_OPTS = [{ v: "META", label: "Meta Ads" }, { v: "GOOGLE", label: "
 const numStr = (n: number | null) => (n != null ? String(n) : "")
 const decBR = (v: string) => { const c = v.trim().replace(/\./g, "").replace(",", "."); return c ? Number(c) : null }
 const defaultStages = (): StageForm[] => [{ label: "Leads", ratePct: "", ticket: "" }, { label: "Qualificados", ratePct: "40", ticket: "" }, { label: "Vendas", ratePct: "50", ticket: "" }]
+
+// Modelos de funil por vertical: PADRONIZAM o começo, mas todas as etapas seguem
+// 100% editáveis por cliente (taxas/ticket/labels). Um clique monta o funil certo.
+const FUNNEL_TEMPLATES: { key: string; label: string; objective: string; stages: StageForm[] }[] = [
+  { key: "clinica", label: "Clínica / saúde", objective: "LEAD", stages: [
+    { label: "Leads", ratePct: "", ticket: "" }, { label: "Qualificados", ratePct: "50", ticket: "" },
+    { label: "Agendamentos", ratePct: "60", ticket: "" }, { label: "Comparecimentos", ratePct: "70", ticket: "" },
+    { label: "Procedimentos", ratePct: "40", ticket: "" },
+  ] },
+  { key: "servico", label: "Serviço / consultoria", objective: "LEAD", stages: [
+    { label: "Leads", ratePct: "", ticket: "" }, { label: "Qualificados", ratePct: "50", ticket: "" },
+    { label: "Reuniões", ratePct: "60", ticket: "" }, { label: "Propostas", ratePct: "70", ticket: "" },
+    { label: "Fechamentos", ratePct: "35", ticket: "" },
+  ] },
+  { key: "whatsapp", label: "Venda por WhatsApp", objective: "WHATSAPP", stages: [
+    { label: "Conversas", ratePct: "", ticket: "" }, { label: "Qualificados", ratePct: "50", ticket: "" },
+    { label: "Vendas", ratePct: "40", ticket: "" },
+  ] },
+  { key: "ecommerce", label: "E-commerce", objective: "ECOMMERCE", stages: [{ label: "Compras", ratePct: "", ticket: "" }] },
+  { key: "seguidores", label: "Seguidores (impulsionar)", objective: "SEGUIDORES", stages: [{ label: "Seguidores", ratePct: "", ticket: "" }] },
+]
 let _fseq = 0
 const newFunnelForm = (): FunnelForm => ({ id: `nf${_fseq++}`, name: "", objective: "LEAD", platform: "META", campaignFunnelId: "", budget: "", cpl: "", ticket: "", stages: defaultStages() })
 const funnelFormFromPlan = (sf: PlanFunnel): FunnelForm => ({
@@ -336,7 +357,16 @@ function SubFunnelEditor({ f, idx, campaignFunnels, onChange, onRemove }: { f: F
     <div className="space-y-3 rounded-lg border border-white/10 bg-black/20 p-3">
       <div className="flex items-center gap-2">
         <span className="text-[11px] font-semibold text-zinc-500">Funil {idx + 1}</span>
-        {onRemove && <button onClick={onRemove} className="ml-auto text-zinc-600 hover:text-red-300"><Trash2 size={14} /></button>}
+        <select
+          value=""
+          onChange={(e) => { const t = FUNNEL_TEMPLATES.find((x) => x.key === e.target.value); if (t) onChange({ objective: t.objective, stages: t.stages.map((s) => ({ ...s })) }) }}
+          className="dash-input ml-auto min-h-8 rounded-lg px-2.5 py-1 text-[11px]"
+          title="Aplica um modelo de funil (substitui as etapas; você ajusta depois)"
+        >
+          <option value="">Modelo…</option>
+          {FUNNEL_TEMPLATES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+        </select>
+        {onRemove && <button onClick={onRemove} className="text-zinc-600 hover:text-red-300"><Trash2 size={14} /></button>}
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <FormField label="Nome do funil"><Input value={f.name} onChange={(e) => onChange({ name: e.target.value })} placeholder="Captação / Impulsionar…" /></FormField>
