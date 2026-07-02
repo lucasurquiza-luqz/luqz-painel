@@ -80,18 +80,27 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // CLIENTE: acesso restrito ao proprio cliente e apenas a superficie liberada.
-  if (session.role === "CLIENTE" && session.clientId) {
+  // Papel EFETIVO: ADMIN/OPERADOR com impersonate ligado é confinado ao painel do
+  // cliente impersonado, igual a um CLIENTE de verdade.
+  const impersonating = (session.role === "ADMIN" || session.role === "OPERADOR") && !!session.impersonateClientId
+  const effRole = impersonating ? "CLIENTE" : session.role
+  const effClientId = impersonating ? session.impersonateClientId : session.clientId
+
+  // CLIENTE (real ou impersonado): acesso restrito ao proprio cliente e apenas a superficie liberada.
+  if (effRole === "CLIENTE" && effClientId) {
     if (pathname.startsWith("/api/")) {
-      // APIs: bloqueia outros clientes; a autorizacao fina fica em requireApiUser.
-      if (pathname.startsWith("/api/clients/") && !pathname.startsWith(`/api/clients/${session.clientId}`)) {
+      // /api/impersonate (ligar/desligar) sempre passa; a autorizacao fina fica no handler.
+      if (pathname.startsWith("/api/impersonate")) {
+        // segue o fluxo normal
+      } else if (pathname.startsWith("/api/clients/") && !pathname.startsWith(`/api/clients/${effClientId}`)) {
+        // APIs: bloqueia outros clientes; a autorizacao fina fica em requireApiUser.
         return NextResponse.json({ error: "Acesso negado" }, { status: 403 })
       }
-    } else if (!isClientAllowedPath(pathname, session.clientId)) {
-      // Paginas internas (metas, tarefas, cadastro, contexto, etc.) e outros clientes
+    } else if (!isClientAllowedPath(pathname, effClientId)) {
+      // Paginas internas (tarefas, cadastro, contexto, etc.) e outros clientes
       // caem aqui e voltam pra home do cliente. Allowlist em lib/client-access.ts.
       const url = request.nextUrl.clone()
-      url.pathname = clientHome(session.clientId)
+      url.pathname = clientHome(effClientId)
       return NextResponse.redirect(url)
     }
   }

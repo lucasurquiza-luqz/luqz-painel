@@ -12,6 +12,8 @@ export type ApiUser = {
   email: string
   role: Role
   clientId: string | null
+  realRole?: Role // papel real quando impersonando (role acima = efetivo)
+  impersonating?: boolean
 }
 
 type AuthSuccess = { ok: true; user: ApiUser }
@@ -55,7 +57,14 @@ export async function requireApiUser(roles?: Role[]): Promise<AuthResult> {
     }
   }
 
-  if (roles && !roles.includes(user.role)) {
+  // Impersonação: ADMIN/OPERADOR com impersonateClientId passa a ser tratado como
+  // CLIENTE daquele cliente. O papel EFETIVO governa permissões (mutações caem
+  // em 403, como pra um cliente de verdade) e o escopo de canAccessClient.
+  const impersonating = (user.role === "ADMIN" || user.role === "OPERADOR") && !!session.impersonateClientId
+  const effectiveRole: Role = impersonating ? "CLIENTE" : user.role
+  const effectiveClientId = impersonating ? session.impersonateClientId! : user.clientId
+
+  if (roles && !roles.includes(effectiveRole)) {
     return {
       ok: false,
       response: NextResponse.json({ error: "Acesso negado." }, { status: 403 }),
@@ -68,8 +77,10 @@ export async function requireApiUser(roles?: Role[]): Promise<AuthResult> {
       userId: user.id,
       name: user.name,
       email: user.email,
-      role: user.role,
-      clientId: user.clientId,
+      role: effectiveRole,
+      clientId: effectiveClientId,
+      realRole: user.role,
+      impersonating,
     },
   }
 }

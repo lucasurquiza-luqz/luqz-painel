@@ -6,6 +6,7 @@ export interface SessionData {
   email: string
   role: "ADMIN" | "OPERADOR" | "CLIENTE"
   clientId?: string // preenchido apenas para role CLIENTE
+  impersonateClientId?: string // ADMIN/OPERADOR vendo o painel COMO este cliente (preview read-only)
 }
 
 export const sessionOptions: SessionOptions = {

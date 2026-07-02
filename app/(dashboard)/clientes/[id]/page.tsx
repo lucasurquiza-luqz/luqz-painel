@@ -1,7 +1,5 @@
 import { prisma } from "@/lib/db"
 import { notFound } from "next/navigation"
-import { getIronSession } from "iron-session"
-import { cookies } from "next/headers"
 import Link from "next/link"
 import { formatInTimeZone } from "date-fns-tz"
 import { ptBR } from "date-fns/locale"
@@ -19,11 +17,12 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react"
-import { sessionOptions, type SessionData, isEquipe } from "@/lib/auth"
+import { getSessionView } from "@/lib/session-view"
 import { buildReading, daysAgo, LEVEL_LABEL, PERCEPTION, type Level } from "@/lib/client-health"
 import { PageHeader, Panel, StatusBadge } from "@/components/ui/primitives"
 import { NextActionCard } from "@/components/NextActionCard"
 import { PerformanceSummaryCard } from "@/components/PerformanceSummaryCard"
+import { ImpersonateButton } from "@/components/ImpersonateButton"
 import { cn } from "@/lib/utils"
 
 const TZ = "America/Sao_Paulo"
@@ -40,8 +39,9 @@ function fmtDay(date: Date | null | undefined) {
 
 export default async function ClienteVisaoGeralPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: clientId } = await params
-  const session = await getIronSession<SessionData>(await cookies(), sessionOptions)
-  const internal = isEquipe(session.role ?? "")
+  const view = await getSessionView()
+  const internal = view.role === "ADMIN" || view.role === "OPERADOR" // papel efetivo (impersonando = CLIENTE)
+  const canImpersonate = !view.impersonating && (view.realRole === "ADMIN" || view.realRole === "OPERADOR")
 
   const client = await prisma.client.findUnique({
     where: { id: clientId },
@@ -119,9 +119,12 @@ export default async function ClienteVisaoGeralPage({ params }: { params: Promis
         title={client.name}
         description={client.description ?? "Leitura consolidada do relacionamento, evidências e próximas ações."}
         actions={
-          <StatusBadge status={client.active ? "healthy" : "unknown"}>
-            {client.active ? "Cliente ativo" : "Inativo"}
-          </StatusBadge>
+          <div className="flex items-center gap-2">
+            {canImpersonate && <ImpersonateButton clientId={clientId} />}
+            <StatusBadge status={client.active ? "healthy" : "unknown"}>
+              {client.active ? "Cliente ativo" : "Inativo"}
+            </StatusBadge>
+          </div>
         }
       />
 
