@@ -1377,27 +1377,59 @@ function FunnelView({ clientId, provider, since, until, plans, month, canEdit = 
   )
 }
 
-// Meta × realizado de um funil de campanha vs seu sub-funil no plano.
+// Meta × realizado de um funil de campanha, ETAPA A ETAPA. O topo tem dado real
+// dos Ads; as etapas de baixo são PROJEÇÃO pelas taxas do plano (viram real quando
+// o CRM conectar). Propaga o realizado do topo pelas taxas planejadas.
 function FunnelPlanCompare({ node, sf }: { node: TNode; sf: PlanFunnel }) {
   const proj = projectPlanFunnel(sf)
-  const leadsTarget = Math.round(proj.rows[0]?.value ?? 0) || null
-  const rows: { label: string; cur: string; target: string; pct: number; good: boolean }[] = []
-  if (sf.budget) rows.push({ label: "Gasto", cur: brl(node.spend), target: brl(sf.budget), pct: Math.round((node.spend / sf.budget) * 100), good: node.spend <= sf.budget * 1.05 })
-  if (leadsTarget) { const p = Math.round((node.results / leadsTarget) * 100); rows.push({ label: OBJ_LABEL[sf.objective] ?? "Resultados", cur: String(node.results), target: String(leadsTarget), pct: p, good: p >= 100 }) }
-  if (sf.cpl && node.cpa != null) rows.push({ label: "Custo/result.", cur: brl(node.cpa), target: `≤ ${brl(sf.cpl)}`, pct: Math.round((node.cpa / sf.cpl) * 100), good: node.cpa <= sf.cpl })
+  const rows = proj.rows
+  // Realizado propagado: topo real, cada etapa seguinte = anterior × taxa do plano.
+  let acc = node.results
+  const realVals = rows.map((r, i) => { if (i > 0) acc = acc * (r.rate ?? 0); return acc })
+  // Receita projetada pelo realizado (se as taxas se mantiverem).
+  const fcRevenue = rows.reduce((s, r, i) => s + (r.ticket ? realVals[i] * r.ticket : 0), 0)
+  const hasRevenue = rows.some((r) => r.ticket)
+  const spendPct = sf.budget ? Math.round((node.spend / sf.budget) * 100) : null
+
   return (
     <div className="rounded-xl border border-white/8 bg-black/20 p-3">
-      <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-sky-300">{node.name} <span className="rounded bg-[#FF8F50]/15 px-1.5 py-0.5 text-[10px] text-[#FFB185]">{OBJ_LABEL[sf.objective] ?? sf.objective}</span></p>
-      <div className="grid gap-2 sm:grid-cols-3">
-        {rows.map((r) => (
-          <div key={r.label}>
-            <div className="mb-1 flex items-center justify-between text-[11px]">
-              <span className="text-zinc-500">{r.label}</span>
-              <span className={r.good ? "text-emerald-300" : "text-amber-300"}>{r.cur} <span className="text-zinc-600">/ {r.target}</span></span>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold text-sky-300">{node.name}</span>
+        <span className="rounded bg-[#FF8F50]/15 px-1.5 py-0.5 text-[10px] text-[#FFB185]">{OBJ_LABEL[sf.objective] ?? sf.objective}</span>
+        <span className="ml-auto text-[11px] text-zinc-500">
+          Gasto <b className={sf.budget && node.spend > sf.budget * 1.05 ? "text-amber-300" : "text-zinc-200"}>{brl(node.spend)}</b>{sf.budget ? <span className="text-zinc-600"> / {brl(sf.budget)}{spendPct != null ? ` · ${spendPct}%` : ""}</span> : ""}
+          {sf.cpl && node.cpa != null ? <> · CPL <b className={node.cpa <= sf.cpl ? "text-emerald-300" : "text-amber-300"}>{brl(node.cpa)}</b><span className="text-zinc-600"> / ≤ {brl(sf.cpl)}</span></> : null}
+        </span>
+      </div>
+
+      <div className="space-y-1.5">
+        {rows.map((r, i) => {
+          const meta = Math.round(r.value)
+          const real = Math.round(realVals[i])
+          const pct = meta > 0 ? Math.round((realVals[i] / r.value) * 100) : 0
+          const isTop = i === 0
+          const good = pct >= 100
+          return (
+            <div key={i}>
+              <div className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-zinc-300">{r.label}</span>
+                  {i > 0 && r.rate != null && <span className="shrink-0 text-[9px] text-zinc-600">taxa {(r.rate * 100).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%</span>}
+                  <span className={`shrink-0 rounded px-1 py-px text-[8px] ${isTop ? "bg-emerald-500/15 text-emerald-300" : "bg-white/5 text-zinc-500"}`}>{isTop ? "real" : "proj."}</span>
+                </span>
+                <span className="shrink-0 text-zinc-400"><b className={isTop ? (good ? "text-emerald-300" : "text-amber-300") : "text-zinc-300"}>{real.toLocaleString("pt-BR")}</b> <span className="text-zinc-600">/ {meta.toLocaleString("pt-BR")}</span></span>
+              </div>
+              <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/8">
+                <div className={`h-full rounded-full ${isTop ? (good ? "bg-emerald-400" : "bg-amber-400") : "bg-sky-400/50"}`} style={{ width: `${Math.min(100, Math.max(3, pct))}%` }} />
+              </div>
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/8"><div className={`h-full rounded-full ${r.good ? "bg-emerald-400" : "bg-amber-400"}`} style={{ width: `${Math.min(100, Math.max(3, r.pct))}%` }} /></div>
-          </div>
-        ))}
+          )
+        })}
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-white/8 pt-2 text-[10px] text-zinc-600">
+        {hasRevenue && <span>Receita projetada <b className="text-emerald-300/80">{brl(fcRevenue)}</b>{node.spend > 0 ? <> · ROAS <b className="text-zinc-300">{(fcRevenue / node.spend).toFixed(1)}x</b></> : null}</span>}
+        <span className="ml-auto">Etapas de baixo são projeção pelas taxas do plano · viram real com o CRM</span>
       </div>
     </div>
   )
